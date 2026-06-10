@@ -14,11 +14,19 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  const token = await getToken({
-    req: request,
-    secret: process.env.AUTH_SECRET,
-    secureCookie: process.env.NODE_ENV === "production",
-  });
+  // Cookie name depends on transport (https → __Secure- prefix); accept both
+  // so the app works behind any proxy/TLS topology.
+  const token =
+    (await getToken({
+      req: request,
+      secret: process.env.AUTH_SECRET,
+      secureCookie: true,
+    })) ??
+    (await getToken({
+      req: request,
+      secret: process.env.AUTH_SECRET,
+      secureCookie: false,
+    }));
   if (!token) {
     const url = new URL("/login", request.url);
     url.searchParams.set("callbackUrl", pathname);

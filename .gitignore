@@ -29,3 +29,4 @@ storage/
 .pm2/
 
 # Drizzle local artifacts (migrations ARE committed)
+dump.rdb

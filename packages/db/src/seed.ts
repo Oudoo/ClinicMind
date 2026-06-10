@@ -177,6 +177,7 @@ async function main() {
       status: "connected",
       lastSyncAt: new Date(),
       lastSuccessfulSyncAt: new Date(),
+      syncFrequencyMinutes: 10080,
       config: { demo: true },
     })
     .returning();
@@ -191,6 +192,7 @@ async function main() {
       status: "connected",
       lastSyncAt: new Date(),
       lastSuccessfulSyncAt: new Date(),
+      syncFrequencyMinutes: 10080,
       config: { demo: true },
     })
     .returning();
