@@ -1,0 +1,53 @@
+name: Deploy to Hostinger
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Build packages and apps
+        run: npm run build
+        env:
+          # Build-time placeholders; real values live on the server
+          DATABASE_URL: postgres://build:build@localhost:5432/build
+          REDIS_URL: redis://localhost:6379
+          AUTH_SECRET: build-placeholder
+          CREDENTIAL_ENCRYPTION_KEY: "0000000000000000000000000000000000000000000000000000000000000000"
+
+  deploy:
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Deploy over SSH (push-to-deploy)
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.HOSTINGER_HOST }}
+          username: ${{ secrets.HOSTINGER_USER }}
+          key: ${{ secrets.HOSTINGER_SSH_KEY }}
+          port: ${{ secrets.HOSTINGER_PORT || 22 }}
+          script_stop: true
+          script: |
+            cd ${{ secrets.HOSTINGER_APP_DIR }}
+            git fetch origin main
+            git reset --hard origin/main
+            npm ci
+            npm run build
+            npm run db:migrate
+            pm2 startOrReload ecosystem.config.cjs
+            pm2 save

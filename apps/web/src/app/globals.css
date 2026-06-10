@@ -1,0 +1,44 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 220 20% 98%;
+    --foreground: 224 25% 12%;
+    --card: 0 0% 100%;
+    --card-foreground: 224 25% 12%;
+    --primary: 162 84% 30%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 220 14% 94%;
+    --secondary-foreground: 224 20% 20%;
+    --muted: 220 14% 94%;
+    --muted-foreground: 224 10% 45%;
+    --accent: 162 60% 94%;
+    --accent-foreground: 162 84% 22%;
+    --destructive: 0 72% 50%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 220 13% 89%;
+    --input: 220 13% 89%;
+    --ring: 162 84% 30%;
+    --radius: 0.5rem;
+  }
+
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground antialiased;
+  }
+}
+
+.prose-doc h1 { @apply text-2xl font-bold mt-6 mb-3; }
+.prose-doc h2 { @apply text-xl font-semibold mt-5 mb-2; }
+.prose-doc h3 { @apply text-lg font-semibold mt-4 mb-2; }
+.prose-doc p { @apply my-2 leading-relaxed; }
+.prose-doc ul { @apply list-disc ml-6 my-2; }
+.prose-doc ol { @apply list-decimal ml-6 my-2; }
+.prose-doc table { @apply w-full text-sm my-3 border-collapse; }
+.prose-doc th, .prose-doc td { @apply border px-2 py-1 text-left; }
+.prose-doc code { @apply bg-muted px-1 rounded text-sm; }
+.prose-doc blockquote { @apply border-l-4 pl-3 italic text-muted-foreground my-2; }
