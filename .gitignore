@@ -1,0 +1,31 @@
+# Dependencies
+node_modules/
+
+# Build outputs
+.next/
+dist/
+out/
+*.tsbuildinfo
+
+# Environment
+.env
+.env.local
+.env.production
+.env.*.local
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+
+# OS
+.DS_Store
+
+# Uploads / local storage
+uploads/
+storage/
+
+# PM2
+.pm2/
+
+# Drizzle local artifacts (migrations ARE committed)
