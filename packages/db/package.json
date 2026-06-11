@@ -19,9 +19,9 @@
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "generate": "drizzle-kit generate",
-    "migrate": "tsx src/migrate.ts",
+    "migrate": "npm run build && node dist/migrate.js",
     "push": "drizzle-kit push",
-    "seed": "tsx src/seed.ts"
+    "seed": "npm run build && node dist/seed.js"
   },
   "dependencies": {
     "drizzle-orm": "^0.44.2",

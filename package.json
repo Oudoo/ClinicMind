@@ -18,6 +18,7 @@
     "db:migrate": "npm run migrate --workspace=@growengine/db",
     "db:push": "npm run push --workspace=@growengine/db",
     "db:seed": "npm run seed --workspace=@growengine/db",
+    "uat": "npm run build && npm run db:migrate && npm run db:seed && npm-run-all --parallel start:web start:worker",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "lint": "npm run lint --workspace=@growengine/web"
   },

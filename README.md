@@ -48,7 +48,24 @@ packages/
 
 ## Local development
 
-Prereqs: Node 22+, PostgreSQL 16 with `pgvector`, Redis.
+### macOS one-command setup
+
+```bash
+git clone https://github.com/Oudoo/The-Grow-Engine.git
+cd The-Grow-Engine
+git checkout claude/grow-engine-platform-build-5vz9zu   # until merged to main
+bash scripts/setup-mac.sh
+```
+
+The script installs/starts the matching PostgreSQL + pgvector pair and Redis via Homebrew, creates the database, writes `.env`, installs dependencies (with an automatic fallback for the known esbuild postinstall failure on some Macs), builds, migrates and seeds. Then start the platform:
+
+```bash
+npx npm-run-all --parallel start:web start:worker   # http://localhost:3000
+```
+
+### Manual setup (any OS)
+
+Prereqs: Node 22+, PostgreSQL 16+ with `pgvector`, Redis.
 
 ```bash
 cp .env.example .env          # fill in at least DATABASE_URL, REDIS_URL, AUTH_SECRET, CREDENTIAL_ENCRYPTION_KEY
