@@ -38,7 +38,7 @@ See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) and
 ### Demo, costs & SaaS
 
 - **Live demo (GitHub Pages):** a fully static, seeded, zero-backend build lives in
-  [`demo/`](demo/) and deploys to GitHub Pages (`https://oudoo.github.io/the-grow-engine/`).
+  [`demo/`](demo/) and deploys to GitHub Pages (`https://oudoo.github.io/ClinicMind/`).
   It's the permanent sales/pitch asset and includes an interactive **Production
   Report** tab (architecture, security, costs, SaaS readiness).
 - **Demo script:** [`docs/DEMO_SCENARIO.md`](docs/DEMO_SCENARIO.md)
