@@ -24,7 +24,7 @@ JetBrains Mono).
 | Appointments (week view, conflict detection, waitlist) | ✅ |
 | Consultation Intelligence (transcript → extract → **review → sign**) | ✅ |
 | Doctor AI Assistant (RAG, citations, "never answer without retrieval") | ✅ |
-| AI provider abstraction (OpenAI / Anthropic / offline `echo`) | ✅ |
+| AI provider abstraction (OpenAI / Anthropic / **Gemini** / offline `echo`) | ✅ |
 | Immutable audit log + soft delete | ✅ |
 | pgvector RAG store + ivfflat index + Postgres RLS | ✅ |
 | Embeddable surface + `embed.js` loader + provisioning API | ✅ |
@@ -34,6 +34,20 @@ JetBrains Mono).
 
 See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) and
 [`docs/INTEGRATION.md`](docs/INTEGRATION.md).
+
+### Demo, costs & SaaS
+
+- **Live demo (GitHub Pages):** a fully static, seeded, zero-backend build lives in
+  [`demo/`](demo/) and deploys to GitHub Pages (`https://oudoo.github.io/the-grow-engine/`).
+  It's the permanent sales/pitch asset and includes an interactive **Production
+  Report** tab (architecture, security, costs, SaaS readiness).
+- **Demo script:** [`docs/DEMO_SCENARIO.md`](docs/DEMO_SCENARIO.md)
+- **What costs money (and how to run at $0):** [`docs/COSTS_AND_PAYMENTS.md`](docs/COSTS_AND_PAYMENTS.md)
+- **Turning it into a paid subscription SaaS:** [`docs/SAAS_MODEL.md`](docs/SAAS_MODEL.md)
+
+> **AI providers:** OpenAI, Anthropic, **Google Gemini**, and an offline `echo`
+> fallback are all supported via one adapter interface. Set `AI_DEFAULT_PROVIDER`
+> (`gemini` has a free tier; `echo` is $0 and offline).
 
 ---
 

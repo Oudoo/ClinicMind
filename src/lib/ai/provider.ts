@@ -1,6 +1,7 @@
 import { env } from "@/lib/env";
 import { OpenAiProvider } from "./openai";
 import { AnthropicProvider } from "./anthropic";
+import { GeminiProvider } from "./gemini";
 import { EchoProvider } from "./echo";
 import type { AiProvider } from "./types";
 
@@ -12,6 +13,7 @@ import type { AiProvider } from "./types";
 const registry: Record<string, AiProvider> = {
   openai: new OpenAiProvider(),
   anthropic: new AnthropicProvider(),
+  gemini: new GeminiProvider(),
   echo: new EchoProvider(),
 };
 
