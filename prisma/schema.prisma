@@ -1,0 +1,534 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// ClinicMind — Prisma schema
+//
+// AI-first, multi-tenant Medical OS. Every domain row is scoped to a Tenant so
+// that each client gets a fully isolated instance of the tool. The schema is
+// built for: row-level isolation, soft delete, immutable audit, full-text search
+// and pgvector RAG embeddings.
+// ─────────────────────────────────────────────────────────────────────────────
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions", "fullTextSearch"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  extensions = [pgcrypto, vector, pg_trgm]
+}
+
+// ── Enums ───────────────────────────────────────────────────────────────────
+
+enum TenantStatus {
+  PROVISIONING
+  ACTIVE
+  SUSPENDED
+  ARCHIVED
+}
+
+enum UserRole {
+  SUPER_ADMIN
+  CLINIC_OWNER
+  DOCTOR
+  RECEPTIONIST
+  NURSE
+  ASSISTANT
+}
+
+enum UserStatus {
+  INVITED
+  ACTIVE
+  DISABLED
+}
+
+enum Gender {
+  MALE
+  FEMALE
+  OTHER
+  UNDISCLOSED
+}
+
+enum AppointmentStatus {
+  SCHEDULED
+  CONFIRMED
+  CHECKED_IN
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+  NO_SHOW
+  WAITLISTED
+}
+
+enum ChannelType {
+  WHATSAPP
+  VOICE
+  SMS
+  WEB_CHAT
+  IN_PERSON
+}
+
+enum ConversationDirection {
+  INBOUND
+  OUTBOUND
+}
+
+enum ConsultationStatus {
+  RECORDING
+  TRANSCRIBING
+  EXTRACTING
+  PENDING_REVIEW
+  SIGNED
+  DISCARDED
+}
+
+enum AiRunStatus {
+  PENDING
+  RUNNING
+  SUCCEEDED
+  FAILED
+}
+
+enum TimelineKind {
+  APPOINTMENT
+  CALL
+  WHATSAPP_MESSAGE
+  DIAGNOSIS
+  PRESCRIPTION
+  AUDIO
+  DOCUMENT
+  AI_NOTE
+  VISIT
+}
+
+enum EmbeddingSource {
+  TRANSCRIPT
+  VISIT_NOTE
+  DIAGNOSIS
+  MEDICATION
+  CONVERSATION
+}
+
+// ── Tenancy & branding ───────────────────────────────────────────────────────
+
+/// A Tenant is one client's fully isolated ClinicMind instance. Resolved at
+/// request time by custom domain or subdomain (see lib/tenant.ts).
+model Tenant {
+  id        String       @id @default(cuid())
+  slug      String       @unique // subdomain, e.g. "acme" -> acme.clinics.host
+  name      String
+  status    TenantStatus @default(PROVISIONING)
+
+  // White-label / custom-domain integration so each client can run it on their
+  // own website. customDomain is verified before traffic is served.
+  customDomain         String?  @unique
+  customDomainVerified Boolean  @default(false)
+
+  branding  Json?    // { accent, logoUrl, productName, ... } overrides brand.ts defaults
+  settings  Json?    // tenant feature flags & locale (ar / en / arz)
+  embed     TenantEmbedConfig?
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  clinics       Clinic[]
+  users         User[]
+  patients      Patient[]
+  appointments  Appointment[]
+  visits        Visit[]
+  conversations Conversation[]
+  consultations Consultation[]
+  aiRuns        AiRun[]
+  embeddings    KnowledgeEmbedding[]
+  timeline      TimelineEvent[]
+  auditLogs     AuditLog[]
+
+  @@index([status])
+  @@map("tenants")
+}
+
+/// Configuration governing how a tenant may embed ClinicMind into their own site
+/// or into the GROW Engine admin dashboard.
+model TenantEmbedConfig {
+  id             String   @id @default(cuid())
+  tenantId       String   @unique
+  tenant         Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  // Origins permitted to frame the /embed surface (CSP frame-ancestors).
+  allowedOrigins String[] @default([])
+  // Public key clients put in their <script> snippet; pairs with EMBED_SIGNING_SECRET.
+  publicKey      String   @unique @default(cuid())
+  enabled        Boolean  @default(false)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@map("tenant_embed_configs")
+}
+
+model Clinic {
+  id        String    @id @default(cuid())
+  tenantId  String
+  tenant    Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name      String
+  address   String?
+  phone     String?
+  timezone  String    @default("Africa/Cairo")
+  status    String    @default("active")
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  users        User[]
+  appointments Appointment[]
+
+  @@index([tenantId])
+  @@map("clinics")
+}
+
+// ── Identity, RBAC & sessions ────────────────────────────────────────────────
+
+model User {
+  id           String     @id @default(cuid())
+  tenantId     String
+  tenant       Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  clinicId     String?
+  clinic       Clinic?    @relation(fields: [clinicId], references: [id])
+  role         UserRole
+  email        String
+  fullName     String?
+  passwordHash String?
+  status       UserStatus @default(INVITED)
+
+  mfaEnabled   Boolean    @default(false)
+  mfaSecret    String?
+
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  deletedAt    DateTime?
+
+  sessions       Session[]
+  loginHistory   LoginEvent[]
+  doctorVisits   Visit[]        @relation("DoctorVisits")
+  authoredAiRuns AiRun[]
+
+  @@unique([tenantId, email])
+  @@index([tenantId, role])
+  @@map("users")
+}
+
+model Session {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash  String   @unique
+  device     String?
+  ip         String?
+  userAgent  String?
+  expiresAt  DateTime
+  revokedAt  DateTime?
+  createdAt  DateTime @default(now())
+  lastSeenAt DateTime @default(now())
+
+  @@index([userId])
+  @@map("sessions")
+}
+
+model LoginEvent {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  success   Boolean
+  ip        String?
+  device    String?
+  userAgent String?
+  createdAt DateTime @default(now())
+
+  @@index([userId, createdAt])
+  @@map("login_events")
+}
+
+// ── Patients & clinical records ──────────────────────────────────────────────
+
+model Patient {
+  id               String    @id @default(cuid())
+  tenantId         String
+  tenant           Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  fullName         String
+  gender           Gender    @default(UNDISCLOSED)
+  dateOfBirth      DateTime?
+  phone            String?
+  whatsapp         String?
+  email            String?
+  emergencyContact String?
+
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  deletedAt        DateTime?
+
+  medicalHistory MedicalHistory?
+  medications    Medication[]
+  appointments   Appointment[]
+  visits         Visit[]
+  conversations  Conversation[]
+  consultations  Consultation[]
+  documents      Document[]
+  timeline       TimelineEvent[]
+
+  @@index([tenantId])
+  @@index([tenantId, phone])
+  @@map("patients")
+}
+
+model MedicalHistory {
+  id                String   @id @default(cuid())
+  patientId         String   @unique
+  patient           Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  diagnoses         Json     @default("[]")
+  symptoms          Json     @default("[]")
+  allergies         Json     @default("[]")
+  surgeries         Json     @default("[]")
+  chronicConditions Json     @default("[]")
+  updatedAt         DateTime @updatedAt
+
+  @@map("medical_histories")
+}
+
+model Medication {
+  id         String    @id @default(cuid())
+  patientId  String
+  patient    Patient   @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  name       String
+  dosage     String?
+  frequency  String?
+  startDate  DateTime?
+  endDate    DateTime?
+  active     Boolean   @default(true)
+  createdAt  DateTime  @default(now())
+
+  @@index([patientId, active])
+  @@map("medications")
+}
+
+// ── Appointments ─────────────────────────────────────────────────────────────
+
+model Appointment {
+  id        String            @id @default(cuid())
+  tenantId  String
+  tenant    Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  clinicId  String?
+  clinic    Clinic?           @relation(fields: [clinicId], references: [id])
+  patientId String
+  patient   Patient           @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  doctorId  String?
+  room      String?
+  startsAt  DateTime
+  endsAt    DateTime
+  status    AppointmentStatus @default(SCHEDULED)
+  reason    String?
+  source    ChannelType       @default(IN_PERSON)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  visit Visit?
+
+  @@index([tenantId, startsAt])
+  @@index([tenantId, status])
+  @@index([doctorId, startsAt])
+  @@map("appointments")
+}
+
+// ── Visits / consultations & AI ──────────────────────────────────────────────
+
+model Visit {
+  id            String       @id @default(cuid())
+  tenantId      String
+  tenant        Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  appointmentId String?      @unique
+  appointment   Appointment? @relation(fields: [appointmentId], references: [id])
+  patientId     String
+  patient       Patient      @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  doctorId      String?
+  doctor        User?        @relation("DoctorVisits", fields: [doctorId], references: [id])
+
+  notes      String?
+  transcript String?
+  summary    String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  consultation Consultation?
+
+  @@index([tenantId, patientId])
+  @@map("visits")
+}
+
+/// A live consultation capture: audio -> transcript -> structured extraction.
+/// Clinical decisions are NEVER auto-saved; a doctor must review & sign.
+model Consultation {
+  id        String             @id @default(cuid())
+  tenantId  String
+  tenant    Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  patientId String
+  patient   Patient            @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  visitId   String?            @unique
+  visit     Visit?             @relation(fields: [visitId], references: [id])
+  doctorId  String?
+  status    ConsultationStatus @default(RECORDING)
+
+  audioKey       String? // S3 object key
+  transcript     String?
+  // Structured extraction stored separately from free text.
+  extraction     Json?   // { symptoms[], diagnoses[], medications[], tests[], followUps[] }
+  summary        String?
+  reviewedById   String?
+  reviewedAt     DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId, patientId])
+  @@index([tenantId, status])
+  @@map("consultations")
+}
+
+/// Every AI invocation is recorded immutably — prompt, retrieved context, output
+/// and confidence. History is append-only; rows are never overwritten.
+model AiRun {
+  id               String      @id @default(cuid())
+  tenantId         String
+  tenant           Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  authorId         String?
+  author           User?       @relation(fields: [authorId], references: [id])
+  kind             String // "assistant_chat" | "summary" | "extraction" | "briefing"
+  provider         String
+  model            String
+  rawPrompt        String
+  retrievedContext Json?
+  generatedOutput  String?
+  citations        Json?
+  confidenceScore  Float?
+  status           AiRunStatus @default(PENDING)
+  latencyMs        Int?
+  error            String?
+  createdAt        DateTime    @default(now())
+
+  @@index([tenantId, kind, createdAt])
+  @@map("ai_runs")
+}
+
+// ── Conversations (AI receptionist & voice agent) ────────────────────────────
+
+model Conversation {
+  id        String      @id @default(cuid())
+  tenantId  String
+  tenant    Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  patientId String?
+  patient   Patient?    @relation(fields: [patientId], references: [id])
+  channel   ChannelType
+  externalId String?    // WhatsApp wa_id / call sid
+  locale    String      @default("ar")
+  recordingKey String?
+  transcript   String?
+  summary      String?
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+
+  messages Message[]
+
+  @@index([tenantId, channel, createdAt])
+  @@map("conversations")
+}
+
+model Message {
+  id             String                @id @default(cuid())
+  conversationId String
+  conversation   Conversation          @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  direction      ConversationDirection
+  body           String
+  meta           Json?
+  createdAt      DateTime              @default(now())
+
+  @@index([conversationId, createdAt])
+  @@map("messages")
+}
+
+// ── Documents & unified timeline ─────────────────────────────────────────────
+
+model Document {
+  id        String   @id @default(cuid())
+  patientId String
+  patient   Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  name      String
+  kind      String   // pdf | image | lab | attachment
+  s3Key     String
+  mimeType  String?
+  sizeBytes Int?
+  scanned   Boolean  @default(false) // malware scan completed
+  safe      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([patientId])
+  @@map("documents")
+}
+
+/// Denormalized chronological feed powering the unified patient timeline.
+model TimelineEvent {
+  id         String       @id @default(cuid())
+  tenantId   String
+  tenant     Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  patientId  String
+  patient    Patient      @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  kind       TimelineKind
+  title      String
+  body       String?
+  refId      String? // id of the source record
+  occurredAt DateTime
+  createdAt  DateTime     @default(now())
+
+  @@index([tenantId, patientId, occurredAt])
+  @@map("timeline_events")
+}
+
+// ── RAG embeddings (pgvector) ────────────────────────────────────────────────
+
+model KnowledgeEmbedding {
+  id         String          @id @default(cuid())
+  tenantId   String
+  tenant     Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  source     EmbeddingSource
+  refId      String
+  content    String
+  // 1536-dim OpenAI text-embedding-3-small vector. Indexed with ivfflat/hnsw in
+  // a migration (Prisma can't express vector indexes yet — see migration SQL).
+  embedding  Unsupported("vector(1536)")?
+  createdAt  DateTime        @default(now())
+
+  @@index([tenantId, source])
+  @@map("knowledge_embeddings")
+}
+
+// ── Immutable audit log ──────────────────────────────────────────────────────
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  tenantId   String
+  tenant     Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  actorId    String?
+  actorEmail String?
+  action     String
+  entity     String
+  entityId   String?
+  ip         String?
+  device     String?
+  before     Json?
+  after      Json?
+  createdAt  DateTime @default(now())
+
+  @@index([tenantId, createdAt])
+  @@index([tenantId, entity, entityId])
+  @@map("audit_logs")
+}
