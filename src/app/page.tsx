@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Activity, ArrowRight, ShieldCheck, Sparkles, Boxes } from "lucide-react";
+import { ArrowRight, ShieldCheck, Sparkles, Boxes } from "lucide-react";
 import { BRAND } from "@/lib/brand";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/primitives";
@@ -9,9 +9,8 @@ export default function LandingPage() {
     <div className="min-h-screen bg-background">
       <header className="mx-auto flex max-w-6xl items-center justify-between px-6 py-5">
         <div className="flex items-center gap-2">
-          <div className="flex h-7 w-7 items-center justify-center rounded-md bg-indigo-flow text-white">
-            <Activity className="h-4 w-4" />
-          </div>
+          {/* Swap the logo by replacing /public/logo.svg */}
+          <img src="/logo.svg" alt={BRAND.productName} width={28} height={28} className="h-7 w-7 rounded-md" />
           <span className="font-display text-base font-semibold tracking-tight">
             {BRAND.productName}
           </span>

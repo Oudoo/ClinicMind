@@ -57,6 +57,7 @@ h1, h2, h3 { letter-spacing: -0.02em; margin: 0; }
   width: 30px; height: 30px; border-radius: 7px; display: grid; place-items: center; color: #fff;
   background: linear-gradient(135deg, #4f46e5, #6366f1 55%, #818cf8);
 }
+.brand .logo-img { width: 30px; height: 30px; border-radius: 7px; display: block; }
 .brand .name { font-weight: 700; font-size: 15px; line-height: 1; }
 .brand .sub { font-size: 10px; color: var(--muted); letter-spacing: 0.06em; text-transform: uppercase; }
 .nav { padding: 12px; display: flex; flex-direction: column; gap: 2px; flex: 1; overflow-y: auto; }
@@ -85,7 +86,7 @@ h1, h2, h3 { letter-spacing: -0.02em; margin: 0; }
 .content { padding: 24px; max-width: 1200px; width: 100%; margin: 0 auto; }
 
 /* Bento + cards */
-.bento { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--gap); }
+.bento { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--gap); }
 .card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: var(--pad); box-shadow: 0 1px 2px rgba(26,32,44,0.04); }
 .card.tight { padding: 16px; }
 .col-2 { grid-column: span 2; }
@@ -96,7 +97,9 @@ h1, h2, h3 { letter-spacing: -0.02em; margin: 0; }
 .stack { display: flex; flex-direction: column; gap: 16px; }
 .row { display: flex; gap: 16px; }
 .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
-.grid-2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
+.grid-2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+/* Responsive, overflow-safe week column grid (wraps instead of overflowing). */
+.week-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; }
 
 .data-label { font-family: "JetBrains Mono", monospace; font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
 .metric { font-size: 30px; font-weight: 700; letter-spacing: -0.03em; font-variant-numeric: tabular-nums; }
@@ -172,7 +175,6 @@ tbody tr:hover { background: var(--muted-bg); }
 .note { background: var(--indigo-50); border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; color: var(--fg); }
 ul.tight { margin: 8px 0; padding-left: 18px; } ul.tight li { margin: 4px 0; }
 
-.demo-banner { background: linear-gradient(135deg, #4f46e5, #6366f1); color: #fff; text-align: center; font-size: 12px; padding: 6px; font-weight: 600; letter-spacing: 0.02em; }
 
 @media (max-width: 920px) {
   .sidebar { display: none; }

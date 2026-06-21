@@ -10,7 +10,6 @@ import {
   Sparkles,
   MessagesSquare,
   Settings,
-  Activity,
 } from "lucide-react";
 import { BRAND } from "@/lib/brand";
 import { Badge } from "@/components/ui/primitives";
@@ -47,9 +46,8 @@ export function DashboardShell({
     <div className="flex min-h-screen bg-background">
       <aside className="hidden w-60 shrink-0 flex-col border-r border-border bg-card lg:flex">
         <div className="flex h-14 items-center gap-2 border-b border-border px-5">
-          <div className="flex h-7 w-7 items-center justify-center rounded-md bg-indigo-flow text-white">
-            <Activity className="h-4 w-4" />
-          </div>
+          {/* Swap the logo by replacing /public/logo.svg */}
+          <img src="/logo.svg" alt={productName} width={28} height={28} className="h-7 w-7 rounded-md" />
           <div className="flex flex-col leading-none">
             <span className="font-display text-sm font-semibold tracking-tight">{productName}</span>
             <span className="font-mono text-[10px] text-muted-foreground">medical ai os</span>

@@ -85,7 +85,7 @@
       }).join("");
       return `<div class="stack">
         <div class="section-head"><div><h2>Appointments</h2><div class="desc">Week schedule with conflict detection &amp; waitlist.</div></div><span class="badge accent">${D.appointments.length} this week</span></div>
-        <div class="grid-2" style="grid-template-columns:repeat(4,1fr)">${cols}</div>
+        <div class="week-grid">${cols}</div>
       </div>`;
     },
 
@@ -213,10 +213,9 @@
   function renderShell() {
     const nav = NAV.map((n) => `<a data-id="${n.id}" href="#${n.id}"><span style="display:flex;align-items:center;gap:10px"><span class="ic">${svg(ic[n.icon])}</span>${n.label}</span>${n.badge ? `<span class="badge accent">${n.badge}</span>` : ""}</a>`).join("");
     document.body.innerHTML = `
-      <div class="demo-banner">DEMO BUILD · seeded data · no backend · for evaluation &amp; client pitches</div>
       <div class="app">
         <aside class="sidebar">
-          <div class="brand"><div class="logo">${svg('M12 2v20M2 12h20', 18)}</div><div><div class="name">ClinicMind</div><div class="sub">medical ai os</div></div></div>
+          <div class="brand"><img class="logo-img" src="assets/logo.svg" alt="ClinicMind" width="30" height="30" /><div><div class="name">ClinicMind</div><div class="sub">medical ai os</div></div></div>
           <nav class="nav">${nav}</nav>
           <div class="foot"><div class="tenant-pill"><div class="l">tenant</div><div class="v">${D.tenant.name}</div></div></div>
         </aside>
