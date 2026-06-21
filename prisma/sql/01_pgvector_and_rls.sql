@@ -21,7 +21,7 @@ CREATE INDEX IF NOT EXISTS knowledge_embeddings_embedding_idx
 
 -- Trigram indexes accelerate patient full-text/fuzzy search.
 CREATE INDEX IF NOT EXISTS patients_fullname_trgm_idx
-  ON patients USING gin (full_name gin_trgm_ops);
+  ON patients USING gin ("fullName" gin_trgm_ops);
 
 -- ── Row-Level Security ───────────────────────────────────────────────────────
 -- Defense-in-depth: even if an application query forgets its tenant filter, the
