@@ -1,0 +1,71 @@
+name: CI
+
+on:
+  push:
+    branches: [main, "claude/**"]
+  pull_request:
+    branches: [main]
+
+# Cancel superseded runs and collapse the duplicate push+PR runs for a branch.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: clinicmind
+          POSTGRES_PASSWORD: clinicmind
+          POSTGRES_DB: clinicmind_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U clinicmind"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgresql://clinicmind:clinicmind@localhost:5432/clinicmind_test?schema=public
+      AUTH_SECRET: ci-auth-secret-ci-auth-secret
+      EMBED_SIGNING_SECRET: ci-embed-secret-ci-embed-secret
+      AI_DEFAULT_PROVIDER: echo
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci || npm install
+
+      - name: Prisma generate
+        run: npx prisma generate
+
+      - name: Push schema
+        run: npx prisma db push --skip-generate
+
+      - name: Apply pgvector + RLS
+        # Strip Prisma's `?schema=public` suffix — libpq/psql rejects it.
+        run: |
+          PSQL_URL="${DATABASE_URL%%\?*}"
+          psql "$PSQL_URL" -f prisma/sql/01_pgvector_and_rls.sql
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Build
+        run: npm run build
