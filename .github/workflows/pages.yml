@@ -3,9 +3,14 @@ name: Deploy demo to GitHub Pages
 # Publishes the static client-side demo in /demo to GitHub Pages.
 # One-time setup: repo Settings → Pages → Source = "GitHub Actions".
 
+# NOTE: GitHub Pages must be enabled once before this can deploy:
+#   repo Settings → Pages → Source = "GitHub Actions".
+# The org restricts API-based auto-enablement, so this is a manual one-time step.
+# After enabling, deploy by merging to main, or run this workflow manually
+# (Actions tab → "Deploy demo to GitHub Pages" → Run workflow → pick the branch).
 on:
   push:
-    branches: [main, "claude/**"]
+    branches: [main]
     paths:
       - "demo/**"
       - ".github/workflows/pages.yml"
