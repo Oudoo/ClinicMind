@@ -6,6 +6,11 @@ on:
   pull_request:
     branches: [main]
 
+# Cancel superseded runs and collapse the duplicate push+PR runs for a branch.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -48,7 +53,10 @@ jobs:
         run: npx prisma db push --skip-generate
 
       - name: Apply pgvector + RLS
-        run: psql "$DATABASE_URL" -f prisma/sql/01_pgvector_and_rls.sql
+        # Strip Prisma's `?schema=public` suffix — libpq/psql rejects it.
+        run: |
+          PSQL_URL="${DATABASE_URL%%\?*}"
+          psql "$PSQL_URL" -f prisma/sql/01_pgvector_and_rls.sql
 
       - name: Typecheck
         run: npm run typecheck

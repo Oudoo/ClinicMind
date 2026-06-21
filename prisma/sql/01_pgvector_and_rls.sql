@@ -4,7 +4,8 @@
 -- Prisma can't yet express pgvector indexes or Postgres Row-Level Security, so
 -- this runs after `prisma db push` / `prisma migrate deploy`:
 --
---   psql "$DATABASE_URL" -f prisma/sql/01_pgvector_and_rls.sql
+--   psql "${DATABASE_URL%%\?*}" -f prisma/sql/01_pgvector_and_rls.sql
+--   (the ${..%%\?*} strips Prisma's `?schema=` suffix, which libpq/psql rejects)
 -- ─────────────────────────────────────────────────────────────────────────────
 
 -- Extensions (also declared in schema.prisma datasource.extensions).

@@ -57,7 +57,8 @@ docker compose up -d db redis minio
 # 2) install + schema
 npm install
 npx prisma db push
-psql "$DATABASE_URL" -f prisma/sql/01_pgvector_and_rls.sql   # vector index + RLS
+# Apply pgvector index + RLS. Strip Prisma's ?schema= suffix, which psql rejects:
+psql "${DATABASE_URL%%\?*}" -f prisma/sql/01_pgvector_and_rls.sql
 npm run db:seed                 # seeds the "demo" tenant
 
 # 3) run
