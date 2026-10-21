@@ -1,0 +1,44 @@
+name: Deploy demo to GitHub Pages
+
+# Publishes the static client-side demo in /demo to GitHub Pages.
+# One-time setup: repo Settings → Pages → Source = "GitHub Actions".
+
+# GitHub Pages is enabled with Source = "GitHub Actions". This deploys the
+# static demo in /demo. It runs on main and on the active feature branch so the
+# demo can go live for evaluation before the production merge. To deploy any
+# other branch manually: Actions tab → "Deploy demo to GitHub Pages" → Run workflow.
+on:
+  push:
+    branches: [main, "claude/**"]
+    paths:
+      - "demo/**"
+      - ".github/workflows/pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/configure-pages@v5
+        with:
+          # Auto-create the Pages site via the API (uses pages: write permission),
+          # so no manual Settings → Pages step is required.
+          enablement: true
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: ./demo
+      - id: deployment
+        uses: actions/deploy-pages@v4

@@ -1,0 +1,61 @@
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: clinicmind
+      POSTGRES_PASSWORD: clinicmind
+      POSTGRES_DB: clinicmind
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./.docker-data/pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U clinicmind"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - ./.docker-data/redis:/data
+
+  # S3-compatible object storage for audio / documents / images.
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: clinicmind
+      MINIO_ROOT_PASSWORD: clinicmind-secret
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - ./.docker-data/minio:/data
+
+  web:
+    build: .
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    environment:
+      NODE_ENV: production
+      APP_URL: http://localhost:3000
+      ROOT_DOMAIN: lvh.me:3000
+      DATABASE_URL: postgresql://clinicmind:clinicmind@db:5432/clinicmind?schema=public
+      REDIS_URL: redis://redis:6379
+      AUTH_SECRET: ${AUTH_SECRET:-dev-insecure-auth-secret-change-me}
+      EMBED_SIGNING_SECRET: ${EMBED_SIGNING_SECRET:-dev-insecure-embed-secret-change-me}
+      AI_DEFAULT_PROVIDER: ${AI_DEFAULT_PROVIDER:-echo}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      S3_ENDPOINT: http://minio:9000
+      S3_BUCKET: clinicmind
+      S3_ACCESS_KEY_ID: clinicmind
+      S3_SECRET_ACCESS_KEY: clinicmind-secret
+    ports:
+      - "3000:3000"

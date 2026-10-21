@@ -1,0 +1,95 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+ * Institutional Tech tokens. Light mode is canonical (per brand); a dark mode is
+ * provided for the embedded-in-dashboard context. Accent variables are overridable
+ * per tenant at runtime (see lib/brand.ts -> tenantThemeStyle).
+ */
+@layer base {
+  :root {
+    --background: 210 17% 98%; /* Alabaster #F8F9FA */
+    --foreground: 218 27% 14%; /* Charcoal Slate #1A202C */
+
+    --card: 0 0% 100%; /* Stark White */
+    --card-foreground: 218 27% 14%;
+
+    --muted: 210 17% 96%;
+    --muted-foreground: 218 12% 42%;
+
+    --border: 218 15% 90%;
+    --input: 218 15% 88%;
+
+    --accent: 243 75% 59%; /* Electric Indigo #4F46E5 */
+    --accent-foreground: 0 0% 100%;
+    --accent-muted: 243 75% 96%;
+    --ring: 243 75% 59%;
+
+    --success: 152 60% 40%;
+    --warning: 38 92% 50%;
+    --danger: 0 72% 51%;
+  }
+
+  .dark {
+    --background: 218 27% 11%; /* Charcoal Slate depth */
+    --foreground: 210 17% 96%;
+
+    --card: 218 24% 14%;
+    --card-foreground: 210 17% 96%;
+
+    --muted: 218 20% 18%;
+    --muted-foreground: 218 12% 64%;
+
+    --border: 218 18% 22%;
+    --input: 218 18% 24%;
+
+    --accent: 243 75% 64%;
+    --accent-foreground: 0 0% 100%;
+    --accent-muted: 243 40% 22%;
+    --ring: 243 75% 64%;
+
+    --success: 152 50% 50%;
+    --warning: 38 92% 58%;
+    --danger: 0 72% 60%;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-feature-settings: "cv11", "ss01";
+  }
+}
+
+@layer components {
+  /* Bento cell — the structural unit of the institutional grid. */
+  .bento {
+    @apply rounded-lg border border-border bg-card p-6 shadow-[0_1px_2px_rgba(26,32,44,0.04)];
+  }
+
+  .bento-tight {
+    @apply rounded-lg border border-border bg-card p-4;
+  }
+
+  .glass {
+    @apply bg-card/70 backdrop-blur-glass;
+  }
+
+  /* Monospace data readout label. */
+  .data-label {
+    @apply font-mono text-[11px] uppercase tracking-[0.08em] text-muted-foreground;
+  }
+
+  .metric-value {
+    @apply font-display text-3xl font-semibold tracking-tightest tabular-nums;
+  }
+
+  /* Blueprint mesh background for chart containers. */
+  .mesh {
+    background-image: theme("backgroundImage.mesh-grid");
+    background-size: theme("backgroundSize.mesh");
+  }
+}
