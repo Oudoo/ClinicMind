@@ -132,17 +132,21 @@ model Tenant {
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
 
-  clinics       Clinic[]
-  users         User[]
-  patients      Patient[]
-  appointments  Appointment[]
-  visits        Visit[]
-  conversations Conversation[]
-  consultations Consultation[]
-  aiRuns        AiRun[]
-  embeddings    KnowledgeEmbedding[]
-  timeline      TimelineEvent[]
-  auditLogs     AuditLog[]
+  clinics          Clinic[]
+  users            User[]
+  patients         Patient[]
+  medicalHistories MedicalHistory[]
+  medications      Medication[]
+  appointments     Appointment[]
+  visits           Visit[]
+  conversations    Conversation[]
+  messages         Message[]
+  consultations    Consultation[]
+  aiRuns           AiRun[]
+  embeddings       KnowledgeEmbedding[]
+  timeline         TimelineEvent[]
+  documents        Document[]
+  auditLogs        AuditLog[]
 
   @@index([status])
   @@map("tenants")
@@ -155,10 +159,19 @@ model TenantEmbedConfig {
   tenantId       String   @unique
   tenant         Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
-  // Origins permitted to frame the /embed surface (CSP frame-ancestors).
+  // Exact origins (scheme + host [+ port]) allowed to frame the /embed surface
+  // and to mint embed tokens. An empty list refuses every token request.
   allowedOrigins String[] @default([])
-  // Public key clients put in their <script> snippet; pairs with EMBED_SIGNING_SECRET.
-  publicKey      String   @unique @default(cuid())
+
+  // The embed *secret* is the credential a client's backend presents to
+  // POST /api/embed/token. It is generated with a CSPRNG, stored only as a
+  // SHA-256 hash, and shown to the tenant exactly once at (re)generation.
+  // `secretPrefix` keeps the first, non-secret characters so the UI can show
+  // which secret is live without ever rendering the secret itself.
+  secretHash      String?   @unique
+  secretPrefix    String?
+  secretRotatedAt DateTime?
+
   enabled        Boolean  @default(false)
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
@@ -282,6 +295,9 @@ model Patient {
 
 model MedicalHistory {
   id                String   @id @default(cuid())
+  // Denormalized from the patient so the row is tenant-scoped on its own.
+  tenantId          String
+  tenant            Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   patientId         String   @unique
   patient           Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
   diagnoses         Json     @default("[]")
@@ -291,11 +307,14 @@ model MedicalHistory {
   chronicConditions Json     @default("[]")
   updatedAt         DateTime @updatedAt
 
+  @@index([tenantId])
   @@map("medical_histories")
 }
 
 model Medication {
   id         String    @id @default(cuid())
+  tenantId   String
+  tenant     Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   patientId  String
   patient    Patient   @relation(fields: [patientId], references: [id], onDelete: Cascade)
   name       String
@@ -307,6 +326,7 @@ model Medication {
   createdAt  DateTime  @default(now())
 
   @@index([patientId, active])
+  @@index([tenantId])
   @@map("medications")
 }
 
@@ -445,6 +465,9 @@ model Conversation {
 
 model Message {
   id             String                @id @default(cuid())
+  // Must always equal conversation.tenantId; denormalized for RLS and checks.
+  tenantId       String
+  tenant         Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   conversationId String
   conversation   Conversation          @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   direction      ConversationDirection
@@ -453,6 +476,7 @@ model Message {
   createdAt      DateTime              @default(now())
 
   @@index([conversationId, createdAt])
+  @@index([tenantId])
   @@map("messages")
 }
 
@@ -460,6 +484,8 @@ model Message {
 
 model Document {
   id        String   @id @default(cuid())
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   patientId String
   patient   Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
   name      String
@@ -472,6 +498,7 @@ model Document {
   createdAt DateTime @default(now())
 
   @@index([patientId])
+  @@index([tenantId])
   @@map("documents")
 }
 

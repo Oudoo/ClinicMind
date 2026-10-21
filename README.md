@@ -73,7 +73,7 @@ npm install
 npx prisma db push
 # Apply pgvector index + RLS. Strip Prisma's ?schema= suffix, which psql rejects:
 psql "${DATABASE_URL%%\?*}" -f prisma/sql/01_pgvector_and_rls.sql
-npm run db:seed                 # seeds the "demo" tenant
+npm run db:seed                 # seeds the "demo" tenant; prints its embed secret once
 
 # 3) run
 npm run dev                     # http://localhost:3000
@@ -82,6 +82,12 @@ npm run dev                     # http://localhost:3000
 In development the app auto-authenticates as the seeded **demo** tenant owner, so
 `/dashboard` works immediately. Without AI keys it uses the deterministic `echo`
 provider, which still enforces the retrieval guardrail.
+
+**Upgrading a database that already holds data:** `tenantId` was added to the
+clinical child tables and the plaintext embed key was replaced by a hashed
+secret. Run `prisma/sql/02_tenant_scope_upgrade.sql` *before* `prisma db push`
+to back-fill the new columns (it is a no-op on fresh databases), then generate a
+new embed secret from **Settings → Embed**.
 
 ### Full stack in Docker
 
@@ -112,8 +118,11 @@ src/
 
 ## Security posture
 
-RBAC at every API boundary · clinical decisions require explicit clinician
-**sign-off** (never auto-saved) · append-only audit log (enforced in app + RLS) ·
-tenant isolation in queries **and** Postgres Row-Level Security · short-lived
-signed embed tokens · strict per-route framing policy · Zod validation on all input.
+RBAC at every API boundary (platform provisioning is SUPER_ADMIN-only) · clinical
+decisions require explicit clinician **sign-off** (never auto-saved) · append-only
+audit log (enforced in app + RLS) · tenant isolation in queries **and** Postgres
+Row-Level Security, with every client-supplied foreign key proven to belong to the
+acting tenant · per-tenant embed secrets stored hashed and shown once · short-lived
+signed embed tokens bound to an active user with a role ceiling · strict per-route
+framing policy · Zod validation on all input.
 ```

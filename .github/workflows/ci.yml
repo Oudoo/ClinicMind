@@ -60,6 +60,9 @@ jobs:
         run: |
           PSQL_URL="${DATABASE_URL%%\?*}"
           psql "$PSQL_URL" -f prisma/sql/01_pgvector_and_rls.sql
+          # No-op on a fresh database; exercised here so it keeps working for
+          # databases that pre-date the tenant-scope columns.
+          psql "$PSQL_URL" -v ON_ERROR_STOP=1 -f prisma/sql/02_tenant_scope_upgrade.sql
 
       - name: Typecheck
         run: npm run typecheck

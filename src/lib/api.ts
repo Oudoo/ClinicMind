@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { ZodError } from "zod";
 import { RbacError } from "@/lib/auth/rbac";
 import { TenantNotFoundError } from "@/lib/tenant";
+import { TenantScopeError } from "@/lib/tenant-scope";
 
 /** Uniform JSON error mapping for route handlers. */
 export function handleApiError(err: unknown): NextResponse {
@@ -13,6 +14,10 @@ export function handleApiError(err: unknown): NextResponse {
   }
   if (err instanceof TenantNotFoundError) {
     return NextResponse.json({ error: "tenant_not_found" }, { status: 404 });
+  }
+  if (err instanceof TenantScopeError) {
+    // A foreign-tenant id looks exactly like a missing one — never confirm it exists.
+    return NextResponse.json({ error: "not_found", entity: err.entity }, { status: 404 });
   }
   console.error("[api] unhandled error", err);
   return NextResponse.json({ error: "internal_error" }, { status: 500 });

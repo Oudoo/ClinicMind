@@ -10,10 +10,13 @@
  *           data-clinicmind-token-endpoint="/api/clinicmind/token"
  *           defer></script>
  *
- * Token flow: the iframe asks for a session token; this loader fetches one from
- * YOUR backend's `token-endpoint` (which calls ClinicMind's POST /api/embed/token
- * with your secret embed key) and relays it to the iframe. The key never touches
- * the browser.
+ * Token flow: the iframe asks for a session token; this loader POSTs
+ * `{ tenant }` to YOUR backend's `token-endpoint`, which calls ClinicMind's
+ * POST /api/embed/token with your embed *secret* (header
+ * `x-clinicmind-embed-secret`), the logged-in staff member's ClinicMind user id
+ * and your page's origin, then answers `{ token }`. This loader relays the token
+ * to the iframe. The embed secret never touches the browser — never put it in a
+ * data-* attribute.
  */
 (function () {
   "use strict";

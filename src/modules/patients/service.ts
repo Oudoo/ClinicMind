@@ -64,7 +64,7 @@ export async function createPatient(
       whatsapp: data.whatsapp,
       email: data.email,
       emergencyContact: data.emergencyContact,
-      medicalHistory: { create: {} },
+      medicalHistory: { create: { tenantId } },
     },
   });
   await audit({
