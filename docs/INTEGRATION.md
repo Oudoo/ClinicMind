@@ -1,6 +1,6 @@
 # ClinicMind — Integration Guide
 
-ClinicMind mounts into the **GROW Engine** admin dashboard as a tab, and embeds on
+ClinicMind embeds on
 any client's **own website/domain**. Every client gets an isolated, white-labeled
 instance. This guide covers both.
 
@@ -60,9 +60,9 @@ list refuses every token request.
 
 ---
 
-## B. Embed inside the GROW Engine dashboard (a tab)
+## B. Embed inside another portal
 
-The GROW Engine renders ClinicMind as a tab by framing the embed surface:
+A portal renders ClinicMind by framing the embed surface:
 
 ```html
 <iframe
@@ -73,11 +73,11 @@ The GROW Engine renders ClinicMind as a tab by framing the embed surface:
 ```
 
 On load the iframe requests a session token via `postMessage`
-(`{ type: "clinicmind:request-token" }`). The GROW Engine backend mints one (step
+(`{ type: "clinicmind:request-token" }`). The portal's backend mints one (step
 D) and posts it back (`{ type: "clinicmind:token", token }`). ClinicMind exchanges
 it for an httpOnly cookie and renders the tenant-scoped surface.
 
-Add the GROW Engine origin to the tenant's `embed.allowedOrigins` and pass it as
+Add the portal's origin to the tenant's `embed.allowedOrigins` and pass it as
 `origin` when minting.
 
 ---

@@ -3,7 +3,7 @@ import type { Config } from "tailwindcss";
 /**
  * ClinicMind — Institutional Tech design system.
  *
- * Palette, type scale and spacing are derived from the GROW "Institutional Tech"
+ * Palette, type scale and spacing follow the "Institutional Tech"
  * brand (Stripe x McKinsey). All colors are exposed as CSS variables so that each
  * tenant can override the accent at runtime (white-labeling) without a rebuild.
  * See src/lib/brand.ts for the per-tenant theming bridge.

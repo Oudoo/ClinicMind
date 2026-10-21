@@ -142,7 +142,7 @@ export default async function SettingsPage() {
       <Card className="space-y-4">
         <SectionTitle
           title="Embed on your website"
-          description="Drop ClinicMind into the client's site or the GROW Engine dashboard as a tab."
+          description="Drop ClinicMind into the clinic's website or another portal."
           action={
             <Badge tone={embed?.enabled ? "success" : "default"}>
               {embed?.enabled ? "embedding enabled" : "embedding off"}

@@ -5,8 +5,8 @@ const nextConfig = {
   // Emit a self-contained server in .next/standalone so the Docker image ships
   // only the traced production modules instead of the full node_modules tree.
   output: "standalone",
-  // ClinicMind is designed to be embedded as a tab inside host admin dashboards
-  // (e.g. the GROW Engine) and on client websites. We therefore do NOT globally
+  // ClinicMind can be embedded on a clinic's own website or inside another
+  // portal of theirs. We therefore do NOT globally
   // deny framing. Per-route framing policy is enforced in src/proxy.ts where the
   // embed surface (/embed/*) is allowed to be framed by the tenant's allowed origins
   // and everything else stays same-origin only.

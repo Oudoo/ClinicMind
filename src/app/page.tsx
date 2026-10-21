@@ -31,7 +31,7 @@ export default function LandingPage() {
             The AI-first operating system for clinics.
           </h1>
           <p className="mx-auto mt-5 max-w-xl text-base text-muted-foreground">
-            {BRAND.tagline} ClinicMind runs as a tab inside the GROW Engine and embeds on any
+            {BRAND.tagline} ClinicMind runs on the clinic's own domain and embeds on any
             client's own domain — each clinic gets its own isolated, white-labeled instance.
           </p>
           <div className="mt-8 flex items-center justify-center gap-3">
@@ -64,7 +64,7 @@ export default function LandingPage() {
 
       <footer className="mx-auto max-w-6xl px-6 py-10 text-center">
         <p className="font-mono text-xs text-muted-foreground">
-          {BRAND.productName} — a GROW Engine tool · Institutional Tech
+          {BRAND.productName} · Institutional Tech
         </p>
       </footer>
     </div>

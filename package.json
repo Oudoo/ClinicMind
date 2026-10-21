@@ -2,7 +2,7 @@
   "name": "clinicmind",
   "version": "0.1.0",
   "private": true,
-  "description": "ClinicMind \u2014 AI-first, multi-tenant Medical OS. A standalone, integration-ready tool for the GROW Engine admin dashboard.",
+  "description": "ClinicMind \u2014 AI-first, multi-tenant clinic operating system.",
   "license": "UNLICENSED",
   "scripts": {
     "dev": "next dev",

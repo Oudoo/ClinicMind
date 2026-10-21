@@ -2,21 +2,17 @@
 
 ## 1. Positioning
 
-ClinicMind is a **separate tool** that integrates into the GROW Engine without
-modifying it. Two integration surfaces:
+ClinicMind is a standalone product. Two surfaces reach one **Tenant**, the unit of
+isolation:
 
-1. **Admin tab** — the GROW Engine frames `/embed/<tenant>` (or links to
-   `/dashboard`) inside its own chrome.
-2. **Client website** — a clinic drops `public/embed.js` on their own domain to
-   embed their isolated instance.
-
-Both resolve to exactly one **Tenant**, the unit of isolation.
+1. **The clinic's own domain** — staff sign in at `https://<slug>.<ROOT_DOMAIN>`
+   (or a verified custom domain) and work in `/dashboard`.
+2. **Embedded surface** — the clinic drops `public/embed.js` on its website, or
+   frames `/embed/<tenant>` inside another portal, with a server-minted token.
 
 ```
-GROW Engine dashboard ─┐
-Client website ────────┼──► embed.js ──► /embed/<tenant> ──► tenant-scoped session
-Custom domain ─────────┘                       │
-Subdomain ─────────────────────────────────────┘
+Clinic domain / subdomain ──► /login ──► session cookie ──► /dashboard
+Clinic website / portal  ──► embed.js ──► /embed/<tenant> ──► embed token ──► cookie
 ```
 
 ## 2. Modular monolith

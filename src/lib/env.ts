@@ -20,7 +20,6 @@ const schema = z.object({
   ANTHROPIC_API_KEY: z.string().optional(),
   GEMINI_API_KEY: z.string().optional(),
 
-  HOST_DASHBOARD_ORIGIN: z.string().optional(),
 
   // Outbound e-mail for invitation / password-reset links (lib/mailer.ts).
   // Empty strings count as unset so a blank line in .env does not break boot.
@@ -55,7 +54,6 @@ export const env = parsed.success
       OPENAI_API_KEY: process.env.OPENAI_API_KEY,
       ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
       GEMINI_API_KEY: process.env.GEMINI_API_KEY,
-      HOST_DASHBOARD_ORIGIN: process.env.HOST_DASHBOARD_ORIGIN,
       SMTP_URL: process.env.SMTP_URL || undefined,
       MAIL_FROM: process.env.MAIL_FROM || undefined,
     } satisfies z.infer<typeof schema>);

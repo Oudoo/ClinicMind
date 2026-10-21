@@ -34,8 +34,7 @@ const NAV = [
 ] as const;
 
 /**
- * The ClinicMind application shell. When ClinicMind is mounted as a *tab* inside
- * the GROW Engine, the host renders this surface inside its own chrome.
+ * The ClinicMind application shell: sidebar navigation, top bar and content area.
  */
 export function DashboardShell({
   children,

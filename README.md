@@ -2,13 +2,11 @@
 
 > Integrated Clinical Intelligence, Operating as One.
 
-ClinicMind is an **AI-first, multi-tenant Medical Operating System**, built as a
-**standalone, integration-ready tool** for the **GROW Engine** admin dashboard.
-It does not replace or modify the GROW Engine — it mounts into it as a tab and can
-equally be embedded on any client's own website/domain, where **each client runs
-their own fully isolated, white-labeled instance**.
+ClinicMind is an **AI-first, multi-tenant clinic operating system**. Each clinic
+runs its own fully isolated, white-labeled instance on its own domain, and the
+assistant surface can be embedded on the clinic's website or in another portal.
 
-It is themed with the GROW **Institutional Tech** brand system (Stripe × McKinsey:
+It uses the **Institutional Tech** brand system (Stripe × McKinsey:
 bento grids, stark negative space, electric-indigo data viz, Plus Jakarta Sans +
 JetBrains Mono).
 

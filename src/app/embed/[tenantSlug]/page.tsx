@@ -6,7 +6,7 @@ export const dynamic = "force-dynamic";
 
 /**
  * Public embeddable surface for a tenant. Framed by the client's website or the
- * GROW Engine dashboard. Branding is resolved server-side so the first paint is
+ * another portal of theirs. Branding is resolved server-side so the first paint is
  * already white-labeled; authentication is bootstrapped client-side via the
  * embed token relay.
  */

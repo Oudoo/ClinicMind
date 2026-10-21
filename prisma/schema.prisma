@@ -158,7 +158,7 @@ model Tenant {
 }
 
 /// Configuration governing how a tenant may embed ClinicMind into their own site
-/// or into the GROW Engine admin dashboard.
+/// or into another portal of theirs.
 model TenantEmbedConfig {
   id             String   @id @default(cuid())
   tenantId       String   @unique
