@@ -5,35 +5,39 @@ import { Copy, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 /**
- * Client-facing integration snippet. A client drops this on their own website to
- * embed their isolated ClinicMind instance; the host backend mints a short-lived
- * embed token (see /api/embed/token) so the iframe loads an authenticated,
- * tenant-scoped session.
+ * Client-facing integration snippets. A client drops the loader on their own
+ * website; their backend mints a short-lived embed token (see /api/embed/token)
+ * with the tenant's embed secret so the iframe loads an authenticated,
+ * tenant-scoped session. The secret itself never appears here or in the page.
+ *
+ * Keep these in sync with `public/embed.js` and `docs/INTEGRATION.md`.
  */
-export function EmbedInstructions({
-  appUrl,
-  tenantSlug,
-  publicKey,
-}: {
-  appUrl: string;
-  tenantSlug: string;
-  publicKey: string;
-}) {
+export function EmbedInstructions({ appUrl, tenantSlug }: { appUrl: string; tenantSlug: string }) {
   const snippet = `<!-- ClinicMind embed — place where the tool should appear -->
 <div id="clinicmind-root" style="height:800px"></div>
 <script
   src="${appUrl}/embed.js"
   data-clinicmind-tenant="${tenantSlug}"
-  data-clinicmind-key="${publicKey}"
   data-clinicmind-host="${appUrl}"
+  data-clinicmind-token-endpoint="/api/clinicmind/token"
   defer
 ></script>`;
 
-  const serverSnippet = `// Your backend mints a short-lived token for the logged-in staff member.
-// POST ${appUrl}/api/embed/token
-//   Authorization: Bearer <your service credential>
-//   body: { tenantSlug: "${tenantSlug}", userId, role }
-// -> { token }  // hand this to embed.js via window.postMessage`;
+  const serverSnippet = `// Your backend route (e.g. /api/clinicmind/token), for the logged-in staff member only.
+// Exchange the embed secret — stored server-side, never in the browser — for a session token:
+//
+//   POST ${appUrl}/api/embed/token
+//   x-clinicmind-embed-secret: <your embed secret>
+//   Content-Type: application/json
+//
+//   { "tenantSlug": "${tenantSlug}",
+//     "userId": "<the staff member's ClinicMind user id>",
+//     "origin": "https://your-site.example",   // must be on the allowed-origins list
+//     "role": "DOCTOR" }                        // optional; never wider than the user's own role
+//
+//   -> { "token": "<jwt>", "expiresIn": 600, "role": "DOCTOR" }
+//
+// Reply to embed.js with { "token": "<jwt>" }.`;
 
   return (
     <div className="space-y-4">

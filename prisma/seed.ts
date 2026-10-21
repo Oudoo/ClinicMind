@@ -1,4 +1,5 @@
 import { PrismaClient } from "@prisma/client";
+import { generateEmbedSecret } from "../src/lib/embed";
 
 const db = new PrismaClient();
 
@@ -9,6 +10,12 @@ const db = new PrismaClient();
 async function main() {
   console.log("🌱 Seeding ClinicMind demo tenant…");
 
+  const existing = await db.tenant.findUnique({ where: { slug: "demo" }, select: { id: true } });
+
+  // The embed secret is stored hashed and shown once (SEC-2). It is generated
+  // only when the demo tenant is first created; rotate it from Settings → Embed.
+  const embedSecret = generateEmbedSecret();
+
   const tenant = await db.tenant.upsert({
     where: { slug: "demo" },
     update: { status: "ACTIVE" },
@@ -18,7 +25,15 @@ async function main() {
       status: "ACTIVE",
       branding: { accent: "#4F46E5", productName: "ClinicMind" },
       settings: { locale: "en", channels: { whatsapp: false, voice: false } },
-      embed: { create: { enabled: true, allowedOrigins: ["http://localhost:3000"] } },
+      embed: {
+        create: {
+          enabled: true,
+          allowedOrigins: ["http://localhost:3000"],
+          secretHash: embedSecret.hash,
+          secretPrefix: embedSecret.prefix,
+          secretRotatedAt: new Date(),
+        },
+      },
       clinics: { create: { name: "Aura Demo Clinic", timezone: "Africa/Cairo" } },
     },
     include: { clinics: true },
@@ -69,13 +84,20 @@ async function main() {
         whatsapp: `+20100000000${i}`,
         medicalHistory: {
           create: {
+            tenantId: tenant.id,
             chronicConditions: p.conditions,
             diagnoses: p.diagnoses,
             allergies: i % 2 === 0 ? ["Penicillin"] : [],
           },
         },
         medications: {
-          create: p.meds.map((name) => ({ name, dosage: "1 tab", frequency: "Daily", startDate: new Date() })),
+          create: p.meds.map((name) => ({
+            tenantId: tenant.id,
+            name,
+            dosage: "1 tab",
+            frequency: "Daily",
+            startDate: new Date(),
+          })),
         },
       },
     });
@@ -106,6 +128,10 @@ async function main() {
   }
 
   console.log(`✅ Seeded tenant "${tenant.slug}" with ${patientsSeed.length} patients.`);
+  if (!existing) {
+    console.log(`🔑 Demo embed secret (shown once, stored hashed): ${embedSecret.secret}`);
+    console.log("   Keep it server-side; rotate it any time from Settings → Embed.");
+  }
   console.log("   Visit http://localhost:3000/dashboard (dev auto-auths as the demo owner).");
 }
 

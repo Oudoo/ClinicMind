@@ -55,3 +55,25 @@ CREATE POLICY tenant_isolation_audit ON audit_logs
 DROP POLICY IF EXISTS audit_append_only ON audit_logs;
 CREATE POLICY audit_append_only ON audit_logs
   FOR UPDATE USING (false);
+
+-- Child clinical tables carry their own tenantId (SEC-4) so the same policy
+-- applies without joining through patients / conversations.
+ALTER TABLE medical_histories ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation_medical_histories ON medical_histories;
+CREATE POLICY tenant_isolation_medical_histories ON medical_histories
+  USING ("tenantId" = current_setting('app.current_tenant', true));
+
+ALTER TABLE medications ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation_medications ON medications;
+CREATE POLICY tenant_isolation_medications ON medications
+  USING ("tenantId" = current_setting('app.current_tenant', true));
+
+ALTER TABLE documents ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation_documents ON documents;
+CREATE POLICY tenant_isolation_documents ON documents
+  USING ("tenantId" = current_setting('app.current_tenant', true));
+
+ALTER TABLE messages ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation_messages ON messages;
+CREATE POLICY tenant_isolation_messages ON messages
+  USING ("tenantId" = current_setting('app.current_tenant', true));

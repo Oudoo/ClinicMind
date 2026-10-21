@@ -5,8 +5,15 @@ import type { UserRole } from "@prisma/client";
  *
  * Permissions are coarse-grained capabilities; each role maps to a set. The
  * `can()` helper is the single choke point used by API routes and server actions.
+ *
+ * Two scopes exist:
+ *   - `platform:manage` — platform-wide operations (provisioning and listing
+ *     tenants). Held by SUPER_ADMIN only; never by a tenant role.
+ *   - `tenant:manage` — settings of the actor's *own* tenant (branding, domain,
+ *     embed configuration). Held by CLINIC_OWNER and SUPER_ADMIN.
  */
 export type Permission =
+  | "platform:manage"
   | "tenant:manage"
   | "tenant:billing"
   | "users:manage"
@@ -24,6 +31,7 @@ export type Permission =
   | "embed:manage";
 
 const ALL: Permission[] = [
+  "platform:manage",
   "tenant:manage",
   "tenant:billing",
   "users:manage",
@@ -110,4 +118,45 @@ export class RbacError extends Error {
     super(message);
     this.name = "RbacError";
   }
+}
+
+// ── Tenant roles & the embed role ceiling ────────────────────────────────────
+
+/**
+ * Roles that exist *inside* a tenant. SUPER_ADMIN is a platform role: it is
+ * never mintable through the embed bridge and never carried by an embed token.
+ */
+export const TENANT_ROLES = [
+  "CLINIC_OWNER",
+  "DOCTOR",
+  "NURSE",
+  "RECEPTIONIST",
+  "ASSISTANT",
+] as const satisfies readonly UserRole[];
+
+export type TenantRole = (typeof TENANT_ROLES)[number];
+
+export function isTenantRole(role: unknown): role is TenantRole {
+  return typeof role === "string" && (TENANT_ROLES as readonly string[]).includes(role);
+}
+
+/** True when `requested` grants nothing that `ceiling` does not already grant. */
+export function roleWithinCeiling(requested: UserRole, ceiling: UserRole): boolean {
+  const allowed = new Set(permissionsFor(ceiling));
+  return permissionsFor(requested).every((p) => allowed.has(p));
+}
+
+/**
+ * Resolve the role an embed token may carry for a user whose stored role is
+ * `userRole`. The host backend may ask for a *narrower* role than the user's
+ * own (e.g. mint a read-only session for a doctor) but can never widen it, and
+ * SUPER_ADMIN is never mintable. Returns null when the request is not allowed.
+ */
+export function resolveEmbedRole(userRole: UserRole, requested?: string | null): TenantRole | null {
+  if (requested == null) {
+    // A platform admin acting inside a tenant gets that tenant's top role.
+    return isTenantRole(userRole) ? userRole : "CLINIC_OWNER";
+  }
+  if (!isTenantRole(requested)) return null;
+  return roleWithinCeiling(requested, userRole) ? requested : null;
 }

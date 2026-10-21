@@ -2,6 +2,7 @@ import { z } from "zod";
 import { getActingContext } from "@/lib/auth/session";
 import { assertCan } from "@/lib/auth/rbac";
 import { db } from "@/lib/db";
+import { requireTenantPatient } from "@/lib/tenant-scope";
 import { audit } from "@/lib/audit";
 import { handleApiError, ok, unauthorized } from "@/lib/api";
 
@@ -45,6 +46,10 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     const summary = body.summary ?? consultation.summary ?? "";
 
     const result = await db.$transaction(async (tx) => {
+      // Re-prove the patient belongs to this tenant inside the transaction
+      // (SEC-4): the clinical record below is appended to that patient.
+      await requireTenantPatient(ctx.tenantId, consultation.patientId, tx);
+
       const visit = await tx.visit.create({
         data: {
           tenantId: ctx.tenantId,
@@ -77,7 +82,11 @@ export async function POST(req: Request, { params }: { params: { id: string } })
         const existing = Array.isArray(history?.diagnoses) ? (history!.diagnoses as string[]) : [];
         await tx.medicalHistory.upsert({
           where: { patientId: consultation.patientId },
-          create: { patientId: consultation.patientId, diagnoses: diagnoses as never },
+          create: {
+            tenantId: ctx.tenantId,
+            patientId: consultation.patientId,
+            diagnoses: diagnoses as never,
+          },
           update: { diagnoses: [...existing, ...diagnoses] as never },
         });
       }
@@ -87,6 +96,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       for (const m of meds) {
         await tx.medication.create({
           data: {
+            tenantId: ctx.tenantId,
             patientId: consultation.patientId,
             name: m.name,
             dosage: m.dosage,

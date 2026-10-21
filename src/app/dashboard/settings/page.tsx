@@ -1,8 +1,10 @@
 import { getActingContext } from "@/lib/auth/session";
+import { can } from "@/lib/auth/rbac";
 import { db } from "@/lib/db";
 import { env } from "@/lib/env";
 import { Card, SectionTitle, Badge } from "@/components/ui/primitives";
 import { EmbedInstructions } from "@/components/clinicmind/embed-instructions";
+import { EmbedSecretCard } from "@/components/clinicmind/embed-secret-card";
 import { BRAND, type TenantBranding } from "@/lib/brand";
 
 export const dynamic = "force-dynamic";
@@ -14,13 +16,16 @@ export default async function SettingsPage() {
   const tenant = await db.tenant
     .findUnique({
       where: { id: ctx.tenantId },
-      include: { embed: true },
+      include: {
+        // Only non-secret embed fields are read here; the hash never reaches a page.
+        embed: { select: { enabled: true, allowedOrigins: true, secretPrefix: true, secretRotatedAt: true } },
+      },
     })
     .catch(() => null);
 
   const branding = (ctx.branding as TenantBranding | null) ?? null;
   const accent = branding?.accent ?? BRAND.primitives.electricIndigo;
-  const publicKey = tenant?.embed?.publicKey ?? "—";
+  const embed = tenant?.embed ?? null;
 
   return (
     <div className="space-y-6">
@@ -73,27 +78,25 @@ export default async function SettingsPage() {
           title="Embed on your website"
           description="Drop ClinicMind into the client's site or the GROW Engine dashboard as a tab."
           action={
-            <Badge tone={tenant?.embed?.enabled ? "success" : "default"}>
-              {tenant?.embed?.enabled ? "embedding enabled" : "embedding off"}
+            <Badge tone={embed?.enabled ? "success" : "default"}>
+              {embed?.enabled ? "embedding enabled" : "embedding off"}
             </Badge>
           }
         />
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <Row label="Public key" value={<span className="font-mono text-xs">{publicKey}</span>} />
-          <Row
-            label="Allowed origins"
-            value={
-              tenant?.embed?.allowedOrigins?.length
-                ? tenant.embed.allowedOrigins.join(", ")
-                : "none configured"
-            }
-          />
-        </div>
-        <EmbedInstructions
-          appUrl={env.APP_URL}
-          tenantSlug={ctx.tenantSlug}
-          publicKey={publicKey}
+        <Row
+          label="Allowed origins"
+          value={
+            embed?.allowedOrigins?.length
+              ? embed.allowedOrigins.join(", ")
+              : "none configured — token requests are refused"
+          }
         />
+        <EmbedSecretCard
+          secretPrefix={embed?.secretPrefix ?? null}
+          rotatedAt={embed?.secretRotatedAt?.toISOString() ?? null}
+          canRotate={can(ctx.role, "embed:manage")}
+        />
+        <EmbedInstructions appUrl={env.APP_URL} tenantSlug={ctx.tenantSlug} />
       </Card>
     </div>
   );

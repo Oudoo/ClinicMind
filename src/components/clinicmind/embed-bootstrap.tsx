@@ -106,7 +106,7 @@ export function EmbedBootstrap({ tenantSlug, productName }: { tenantSlug: string
       </p>
       <p className="max-w-xs text-xs text-muted-foreground">
         {phase === "denied"
-          ? "The host did not provide a valid embed token. Verify your integration key and allowed origins."
+          ? "The host did not provide a valid embed token. Verify the embed secret, the user id being minted for, and the allowed origins."
           : "Authenticating your tenant session."}
       </p>
     </div>

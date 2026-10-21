@@ -29,20 +29,29 @@ audit, settings, billing, embed.
 ## 3. Multi-tenancy
 
 - **Resolution** (`lib/tenant.ts`): custom domain → subdomain → explicit header.
-- **Isolation**: every domain row carries `tenantId`; services always filter by
-  it; Postgres **RLS** (`prisma/sql/01_pgvector_and_rls.sql`) is the
-  defense-in-depth backstop.
+- **Isolation**: every domain row carries `tenantId` (including the clinical
+  child tables `medical_histories`, `medications`, `documents`, `messages`);
+  services always filter by it, and every client-supplied foreign key
+  (`patientId`, `doctorId`, `clinicId`) is proven to belong to the acting tenant
+  by `lib/tenant-scope.ts` before a write. Postgres **RLS**
+  (`prisma/sql/01_pgvector_and_rls.sql`) is the defense-in-depth backstop.
 - **White-label**: `Tenant.branding` drives runtime CSS-variable overrides
   (`lib/brand.ts` → `tenantThemeStyle`) — no rebuild per client.
 
 ## 4. AuthN / AuthZ
 
-- **Embed token** (`lib/embed.ts`): host backend signs a short-lived JWT
-  (tenant, user, role, origin). Exchanged for an httpOnly cookie at
-  `/api/embed/session`.
+- **Embed bridge** (`lib/embed.ts`): the host backend presents the tenant's
+  **embed secret** (CSPRNG, stored as a SHA-256 hash, shown once) to
+  `/api/embed/token`, which mints a short-lived JWT for an *active user of that
+  tenant* (tenant, user, capped role, allow-listed origin). Exchanged for an
+  httpOnly cookie at `/api/embed/session`.
 - **RBAC** (`lib/auth/rbac.ts`): 6 roles → capability sets, enforced at every API
-  edge via `assertCan`. Clinical sign-off is gated to clinicians.
+  edge via `assertCan`. Clinical sign-off is gated to clinicians;
+  `platform:manage` (provisioning / listing tenants) is SUPER_ADMIN-only while
+  `tenant:manage` is scoped to the owner's own tenant.
 - `lib/auth/session.ts` resolves the acting context (token → header → dev demo).
+  A token's role is honoured only if it is a tenant role within the ceiling of
+  the user's stored role — the bridge can narrow a session, never widen it.
 
 ## 5. AI layer
 

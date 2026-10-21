@@ -4,12 +4,13 @@ import { assertCan } from "@/lib/auth/rbac";
 import { extractClinicalData } from "@/lib/ai/extraction";
 import { chatProvider } from "@/lib/ai/provider";
 import { db } from "@/lib/db";
+import { requireTenantPatient } from "@/lib/tenant-scope";
 import { handleApiError, ok, unauthorized } from "@/lib/api";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
-const Body = z.object({ patientId: z.string(), transcript: z.string().min(1) });
+const Body = z.object({ patientId: z.string().min(1), transcript: z.string().min(1) });
 
 /**
  * Run extraction on a transcript and persist a PENDING_REVIEW consultation.
@@ -22,6 +23,10 @@ export async function POST(req: Request) {
     assertCan(ctx.role, "consultations:read");
 
     const { patientId, transcript } = Body.parse(await req.json());
+
+    // The patient must belong to the acting tenant (SEC-4). Checked before any
+    // model call so a foreign id costs nothing and leaks nothing.
+    await requireTenantPatient(ctx.tenantId, patientId);
 
     const [{ data, provider, model }, summary] = await Promise.all([
       extractClinicalData(transcript),

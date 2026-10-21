@@ -1,10 +1,12 @@
 import { db, notDeleted } from "@/lib/db";
 import { audit } from "@/lib/audit";
+import { requireTenantClinic, requireTenantPatient, requireTenantUser } from "@/lib/tenant-scope";
 import { z } from "zod";
 
 export const AppointmentInput = z.object({
-  patientId: z.string(),
-  doctorId: z.string().optional(),
+  patientId: z.string().min(1),
+  doctorId: z.string().min(1).optional(),
+  clinicId: z.string().min(1).optional(),
   room: z.string().optional(),
   startsAt: z.string().datetime(),
   endsAt: z.string().datetime(),
@@ -56,6 +58,13 @@ export async function createAppointment(
   const startsAt = new Date(data.startsAt);
   const endsAt = new Date(data.endsAt);
 
+  // Every client-supplied foreign key must belong to the acting tenant (SEC-4);
+  // otherwise a booking (and its timeline event) could land on another
+  // tenant's patient, doctor or clinic.
+  await requireTenantPatient(tenantId, data.patientId);
+  if (data.doctorId) await requireTenantUser(tenantId, data.doctorId);
+  if (data.clinicId) await requireTenantClinic(tenantId, data.clinicId);
+
   const conflicts = await findConflicts(tenantId, {
     doctorId: data.doctorId,
     room: data.room,
@@ -66,6 +75,7 @@ export async function createAppointment(
   const appointment = await db.appointment.create({
     data: {
       tenantId,
+      clinicId: data.clinicId,
       patientId: data.patientId,
       doctorId: data.doctorId,
       room: data.room,
