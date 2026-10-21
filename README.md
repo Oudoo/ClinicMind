@@ -19,6 +19,7 @@ JetBrains Mono).
 | Capability | Status |
 |---|---|
 | Multi-tenant core (custom domain + subdomain + branding) | ✅ |
+| Authentication: argon2id passwords, server-side sessions, invitations, password reset, login history + lockout | ✅ |
 | RBAC (6 roles) + embed-token session bridge | ✅ |
 | Patient CRM + unified timeline | ✅ |
 | Appointments (week view, conflict detection, waitlist) | ✅ |
@@ -73,15 +74,45 @@ npm install
 npx prisma db push
 # Apply pgvector index + RLS. Strip Prisma's ?schema= suffix, which psql rejects:
 psql "${DATABASE_URL%%\?*}" -f prisma/sql/01_pgvector_and_rls.sql
-npm run db:seed                 # seeds the "demo" tenant
+npm run db:seed                 # seeds the "demo" tenant and prints the demo password
 
 # 3) run
-npm run dev                     # http://localhost:3000
+npm run dev                     # http://localhost:3000/login
 ```
 
-In development the app auto-authenticates as the seeded **demo** tenant owner, so
-`/dashboard` works immediately. Without AI keys it uses the deterministic `echo`
-provider, which still enforces the retrieval guardrail.
+The seed creates two demo staff accounts, `owner@demo.clinic` (clinic owner) and
+`doctor@demo.clinic` (doctor), and **prints their password** at the end. Set
+`SEED_DEMO_PASSWORD` to choose it (12+ characters); re-running the seed resets it.
+Sign in at `/login`; there is no development bypass — every request to
+`/dashboard` and `/api/*` needs a session (or an embed token). Without AI keys
+the app uses the deterministic `echo` provider, which still enforces the
+retrieval guardrail.
+
+### Accounts, invitations and password reset
+
+- **Invite staff** from *Settings → Team* (or `POST /api/users`). The new user is
+  created `INVITED` and receives a single-use link (valid 7 days) to choose a
+  password; the link is also shown to the inviting administrator.
+- **Forgot password:** `/forgot-password` e-mails a single-use reset link
+  (valid 1 hour). A user who never set a password gets a fresh invitation instead.
+- **E-mail delivery:** set `SMTP_URL` (and `MAIL_FROM`) to send through any SMTP
+  relay. Without it, messages are written to the server log — fine for local
+  development, not for a real deployment.
+- Sessions are server-side rows in `Session` (12-hour lifetime, revoked on sign
+  out); passwords are argon2id hashes; sign-ins are rate limited and every
+  attempt is recorded in `LoginEvent`. Details in
+  [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md#4-authn--authz).
+
+### Tests
+
+```bash
+npm test                        # unit tests + route tests against TEST_DATABASE_URL
+```
+
+The route tests (`src/__tests__/`) need a Postgres database with the schema
+pushed (same steps as above, against `TEST_DATABASE_URL`; they fall back to
+`DATABASE_URL`). They create and delete their own tenants. They are skipped when
+neither variable is set; CI provides one.
 
 ### Full stack in Docker
 
@@ -99,12 +130,17 @@ public/embed.js         client website embed loader
 src/
   app/
     page.tsx            marketing landing
+    login/ forgot-password/ invite/[token]/ reset-password/[token]/
+                        sign-in, password reset and invitation acceptance
     dashboard/          the ClinicMind tab (overview, patients, appointments,
-                        consultations, assistant, conversations, settings)
+                        consultations, assistant, conversations, settings · team)
     embed/[tenantSlug]/ public embeddable surface
-    api/                assistant · consultations · embed · tenants · patients · …
+    api/                auth · users · assistant · consultations · embed · tenants · patients · …
   components/           ui primitives (bento, metric, chart) · dashboard shell · clinicmind widgets
-  lib/                  env · db · tenant · auth(rbac/session) · ai(adapters/rag/extraction) · brand · embed · audit
+  lib/                  env · db · tenant · auth(session/login/password/auth-tokens/rbac/rate-limit)
+                        · ai(adapters/rag/extraction) · brand · embed · audit · mailer
+  test/                 helpers for the database-backed route tests
+  __tests__/            route tests: 401 without a session, tenant isolation, auth flows
   modules/              domain services (patients · appointments · analytics)
 ```
 
@@ -112,8 +148,10 @@ src/
 
 ## Security posture
 
-RBAC at every API boundary · clinical decisions require explicit clinician
-**sign-off** (never auto-saved) · append-only audit log (enforced in app + RLS) ·
-tenant isolation in queries **and** Postgres Row-Level Security · short-lived
-signed embed tokens · strict per-route framing policy · Zod validation on all input.
+Password sign-in (argon2id) with server-side sessions in httpOnly `SameSite=Lax`
+cookies, single-use invitation/reset links, login history and lockout · RBAC at
+every API boundary · clinical decisions require explicit clinician **sign-off**
+(never auto-saved) · append-only audit log (enforced in app + RLS) · tenant
+isolation in queries **and** Postgres Row-Level Security · short-lived signed
+embed tokens · strict per-route framing policy · Zod validation on all input.
 ```

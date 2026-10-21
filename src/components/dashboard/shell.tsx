@@ -13,6 +13,15 @@ import {
 } from "lucide-react";
 import { BRAND } from "@/lib/brand";
 import { Badge } from "@/components/ui/primitives";
+import { LogoutButton } from "@/components/dashboard/logout-button";
+
+export interface ShellUser {
+  email: string | null;
+  fullName: string | null;
+  role: string;
+  /** False for embed-token sessions, which have nothing to sign out of here. */
+  canSignOut: boolean;
+}
 
 const NAV = [
   { href: "/dashboard", label: "Overview", icon: LayoutDashboard },
@@ -32,10 +41,12 @@ export function DashboardShell({
   children,
   tenantName,
   productName = BRAND.productName,
+  user,
 }: {
   children: React.ReactNode;
   tenantName: string;
   productName?: string;
+  user: ShellUser;
 }) {
   const pathname = usePathname() ?? "/dashboard";
   const currentLabel =
@@ -93,7 +104,13 @@ export function DashboardShell({
             <span className="text-muted-foreground">/</span>
             <span className="text-sm font-medium">{currentLabel}</span>
           </div>
-          <Badge tone="success">live</Badge>
+          <div className="flex items-center gap-3">
+            <div className="hidden flex-col items-end leading-tight sm:flex">
+              <span className="text-xs font-medium">{user.fullName ?? user.email ?? "Embedded session"}</span>
+              <span className="font-mono text-[10px] uppercase text-muted-foreground">{user.role}</span>
+            </div>
+            {user.canSignOut ? <LogoutButton /> : <Badge tone="success">live</Badge>}
+          </div>
         </header>
         <main className="flex-1 overflow-y-auto p-6">{children}</main>
       </div>

@@ -89,6 +89,23 @@ const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
   ASSISTANT: ["patients:read", "appointments:read", "conversations:read"],
 };
 
+/** Every role a tenant administrator may assign to staff. */
+export const TENANT_ROLES: readonly UserRole[] = [
+  "CLINIC_OWNER",
+  "DOCTOR",
+  "NURSE",
+  "RECEPTIONIST",
+  "ASSISTANT",
+];
+
+/**
+ * Roles an actor may grant when inviting staff. Only a super-admin can mint
+ * another super-admin; everyone else is limited to the tenant roles.
+ */
+export function grantableRoles(actorRole: UserRole): readonly UserRole[] {
+  return actorRole === "SUPER_ADMIN" ? ["SUPER_ADMIN", ...TENANT_ROLES] : TENANT_ROLES;
+}
+
 export function permissionsFor(role: UserRole): Permission[] {
   return ROLE_PERMISSIONS[role] ?? [];
 }

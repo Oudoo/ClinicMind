@@ -21,7 +21,16 @@ const schema = z.object({
   GEMINI_API_KEY: z.string().optional(),
 
   HOST_DASHBOARD_ORIGIN: z.string().optional(),
+
+  // Outbound e-mail for invitation / password-reset links (lib/mailer.ts).
+  // Empty strings count as unset so a blank line in .env does not break boot.
+  SMTP_URL: z.preprocess(blankToUndefined, z.string().url().optional()),
+  MAIL_FROM: z.preprocess(blankToUndefined, z.string().optional()),
 });
+
+function blankToUndefined(value: unknown): unknown {
+  return typeof value === "string" && value.trim() === "" ? undefined : value;
+}
 
 // During `next build` / CI without a real env, fall back to safe defaults so the
 // build can complete; runtime still validates the critical secrets.
@@ -47,6 +56,8 @@ export const env = parsed.success
       ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
       GEMINI_API_KEY: process.env.GEMINI_API_KEY,
       HOST_DASHBOARD_ORIGIN: process.env.HOST_DASHBOARD_ORIGIN,
+      SMTP_URL: process.env.SMTP_URL || undefined,
+      MAIL_FROM: process.env.MAIL_FROM || undefined,
     } satisfies z.infer<typeof schema>);
 
 export type Env = z.infer<typeof schema>;

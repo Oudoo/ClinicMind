@@ -3,6 +3,8 @@ import { db, notDeleted } from "@/lib/db";
 import { getActingContext } from "@/lib/auth/session";
 import { assertCan } from "@/lib/auth/rbac";
 import { audit } from "@/lib/audit";
+import { inviteUser } from "@/lib/auth/auth-tokens";
+import { normalizeEmail } from "@/lib/auth/request";
 import { handleApiError, ok, unauthorized } from "@/lib/api";
 
 export const dynamic = "force-dynamic";
@@ -24,11 +26,13 @@ const ProvisionInput = z.object({
 /**
  * Provision a new tenant (client instance). SUPER_ADMIN only. Creates the tenant,
  * its embed config, a default clinic and the owner user in one transaction so a
- * new client gets a fully isolated, ready-to-embed ClinicMind.
+ * new client gets a fully isolated, ready-to-embed ClinicMind. The owner is
+ * created INVITED and receives an invitation link to set their password; the
+ * link is also returned to the caller.
  */
 export async function POST(req: Request) {
   try {
-    const ctx = await getActingContext();
+    const ctx = await getActingContext(req);
     if (!ctx) return unauthorized();
     assertCan(ctx.role, "tenant:manage");
 
@@ -37,7 +41,7 @@ export async function POST(req: Request) {
     const existing = await db.tenant.findFirst({ where: { slug: input.slug } });
     if (existing) return ok({ error: "slug_taken" }, { status: 409 });
 
-    const tenant = await db.$transaction(async (tx) => {
+    const { tenant, owner } = await db.$transaction(async (tx) => {
       const t = await tx.tenant.create({
         data: {
           slug: input.slug,
@@ -49,11 +53,19 @@ export async function POST(req: Request) {
           clinics: { create: { name: input.name } },
         },
       });
-      await tx.user.create({
-        data: { tenantId: t.id, email: input.ownerEmail, role: "CLINIC_OWNER", status: "INVITED" },
+      const u = await tx.user.create({
+        data: {
+          tenantId: t.id,
+          email: normalizeEmail(input.ownerEmail),
+          role: "CLINIC_OWNER",
+          status: "INVITED",
+        },
+        select: { id: true, email: true, fullName: true },
       });
-      return t;
+      return { tenant: t, owner: u };
     });
+
+    const invite = await inviteUser({ ...owner, tenantName: tenant.name });
 
     await audit({
       tenantId: tenant.id,
@@ -65,15 +77,23 @@ export async function POST(req: Request) {
       after: { slug: tenant.slug },
     });
 
-    return ok({ tenant: { id: tenant.id, slug: tenant.slug } }, { status: 201 });
+    return ok(
+      {
+        tenant: { id: tenant.id, slug: tenant.slug },
+        owner: { id: owner.id, email: owner.email },
+        inviteUrl: invite.url,
+        inviteExpiresAt: invite.expiresAt.toISOString(),
+      },
+      { status: 201 },
+    );
   } catch (err) {
     return handleApiError(err);
   }
 }
 
-export async function GET() {
+export async function GET(req: Request) {
   try {
-    const ctx = await getActingContext();
+    const ctx = await getActingContext(req);
     if (!ctx) return unauthorized();
     assertCan(ctx.role, "tenant:manage");
     const tenants = await db.tenant.findMany({

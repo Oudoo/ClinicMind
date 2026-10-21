@@ -21,8 +21,12 @@ instance. This guide covers both.
 ```
 
 This creates the tenant, its embed config (with a `publicKey`), a default clinic,
-and the owner user. The instance is immediately reachable at
-`https://acme.<ROOT_DOMAIN>` and embeddable.
+and the owner user (`INVITED`). The owner is e-mailed a single-use invitation
+link to choose a password, and the link is also returned in the response
+(`inviteUrl`, valid 7 days) so you can hand it over directly. Once the owner has
+signed in at `/login` they invite the rest of the staff from *Settings → Team*.
+The instance is immediately reachable at `https://acme.<ROOT_DOMAIN>` and
+embeddable.
 
 ---
 

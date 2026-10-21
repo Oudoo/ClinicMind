@@ -13,7 +13,7 @@ const Body = z.object({ query: z.string().min(1).max(2000) });
 /** Doctor AI chat — RAG-grounded, tenant-scoped, audited as an AiRun. */
 export async function POST(req: Request) {
   try {
-    const ctx = await getActingContext();
+    const ctx = await getActingContext(req);
     if (!ctx) return unauthorized();
     assertCan(ctx.role, "ai:assistant");
 

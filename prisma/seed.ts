@@ -1,13 +1,25 @@
 import { PrismaClient } from "@prisma/client";
+import { generatePassword, hashPassword, PasswordSchema } from "../src/lib/auth/password";
 
 const db = new PrismaClient();
 
 /**
  * Seeds a demo tenant ("demo") with realistic clinical data so the dashboard,
  * AI assistant and embed flow are demonstrable end-to-end out of the box.
+ *
+ * The two demo staff accounts get a password: `SEED_DEMO_PASSWORD` if set,
+ * otherwise a fresh random one. Either way it is printed at the end — there is
+ * no other way in; the application has no development sign-in bypass.
  */
 async function main() {
   console.log("🌱 Seeding ClinicMind demo tenant…");
+
+  const demoPassword = process.env.SEED_DEMO_PASSWORD ?? generatePassword();
+  const policy = PasswordSchema.safeParse(demoPassword);
+  if (!policy.success) {
+    throw new Error(`SEED_DEMO_PASSWORD rejected: ${policy.error.issues[0]?.message}`);
+  }
+  const passwordHash = await hashPassword(demoPassword);
 
   const tenant = await db.tenant.upsert({
     where: { slug: "demo" },
@@ -26,7 +38,7 @@ async function main() {
 
   const owner = await db.user.upsert({
     where: { tenantId_email: { tenantId: tenant.id, email: "owner@demo.clinic" } },
-    update: {},
+    update: { status: "ACTIVE", passwordHash },
     create: {
       tenantId: tenant.id,
       clinicId: tenant.clinics[0]?.id,
@@ -34,12 +46,13 @@ async function main() {
       fullName: "Dr. Layla Hassan",
       role: "CLINIC_OWNER",
       status: "ACTIVE",
+      passwordHash,
     },
   });
 
   await db.user.upsert({
     where: { tenantId_email: { tenantId: tenant.id, email: "doctor@demo.clinic" } },
-    update: {},
+    update: { status: "ACTIVE", passwordHash },
     create: {
       tenantId: tenant.id,
       clinicId: tenant.clinics[0]?.id,
@@ -47,6 +60,7 @@ async function main() {
       fullName: "Dr. Omar Fahmy",
       role: "DOCTOR",
       status: "ACTIVE",
+      passwordHash,
     },
   });
 
@@ -106,7 +120,11 @@ async function main() {
   }
 
   console.log(`✅ Seeded tenant "${tenant.slug}" with ${patientsSeed.length} patients.`);
-  console.log("   Visit http://localhost:3000/dashboard (dev auto-auths as the demo owner).");
+  console.log("");
+  console.log("   Sign in at http://localhost:3000/login with either demo account:");
+  console.log(`     owner@demo.clinic   (clinic owner)   password: ${demoPassword}`);
+  console.log(`     doctor@demo.clinic  (doctor)         password: ${demoPassword}`);
+  console.log("   Set SEED_DEMO_PASSWORD to choose the password; re-running the seed resets it.");
 }
 
 main()

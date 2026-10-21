@@ -17,7 +17,7 @@ const Body = z.object({ patientId: z.string(), transcript: z.string().min(1) });
  */
 export async function POST(req: Request) {
   try {
-    const ctx = await getActingContext();
+    const ctx = await getActingContext(req);
     if (!ctx) return unauthorized();
     assertCan(ctx.role, "consultations:read");
 
