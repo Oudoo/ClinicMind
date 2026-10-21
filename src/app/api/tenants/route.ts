@@ -4,6 +4,8 @@ import { getActingContext } from "@/lib/auth/session";
 import { assertCan } from "@/lib/auth/rbac";
 import { generateEmbedSecret } from "@/lib/embed";
 import { audit } from "@/lib/audit";
+import { inviteUser } from "@/lib/auth/auth-tokens";
+import { normalizeEmail } from "@/lib/auth/request";
 import { handleApiError, ok, unauthorized } from "@/lib/api";
 
 export const dynamic = "force-dynamic";
@@ -14,7 +16,7 @@ const ProvisionInput = z.object({
     .min(2)
     .max(40)
     .regex(/^[a-z0-9-]+$/, "slug must be lowercase alphanumeric with dashes"),
-  name: z.string().min(1),
+  name: z.string().min(1).max(120),
   ownerEmail: z.string().email(),
   branding: z
     .object({ accent: z.string().optional(), productName: z.string().optional(), logoUrl: z.string().optional() })
@@ -28,11 +30,13 @@ const ProvisionInput = z.object({
  * tenant's settings, never the platform. Creates the tenant, its embed config
  * (with a freshly generated embed secret), a default clinic and the owner user
  * in one transaction so a new client gets a fully isolated, ready-to-embed
- * ClinicMind. The embed secret is returned once, in this response only.
+ * ClinicMind. The owner is created INVITED and receives an invitation link to
+ * set their password; the link is also returned to the caller. The embed secret
+ * is returned once, in this response only.
  */
 export async function POST(req: Request) {
   try {
-    const ctx = await getActingContext();
+    const ctx = await getActingContext(req);
     if (!ctx) return unauthorized();
     assertCan(ctx.role, "platform:manage");
 
@@ -43,7 +47,7 @@ export async function POST(req: Request) {
 
     const embedSecret = generateEmbedSecret();
 
-    const tenant = await db.$transaction(async (tx) => {
+    const { tenant, owner } = await db.$transaction(async (tx) => {
       const t = await tx.tenant.create({
         data: {
           slug: input.slug,
@@ -62,11 +66,19 @@ export async function POST(req: Request) {
           clinics: { create: { name: input.name } },
         },
       });
-      await tx.user.create({
-        data: { tenantId: t.id, email: input.ownerEmail, role: "CLINIC_OWNER", status: "INVITED" },
+      const u = await tx.user.create({
+        data: {
+          tenantId: t.id,
+          email: normalizeEmail(input.ownerEmail),
+          role: "CLINIC_OWNER",
+          status: "INVITED",
+        },
+        select: { id: true, email: true, fullName: true },
       });
-      return t;
+      return { tenant: t, owner: u };
     });
+
+    const invite = await inviteUser({ ...owner, tenantName: tenant.name });
 
     await audit({
       tenantId: tenant.id,
@@ -75,12 +87,15 @@ export async function POST(req: Request) {
       action: "tenant.provision",
       entity: "Tenant",
       entityId: tenant.id,
-      after: { slug: tenant.slug, embedSecretPrefix: embedSecret.prefix },
+      after: { slug: tenant.slug, embedSecretPrefix: embedSecret.prefix, ownerId: owner.id },
     });
 
     return ok(
       {
         tenant: { id: tenant.id, slug: tenant.slug },
+        owner: { id: owner.id, email: owner.email },
+        inviteUrl: invite.url,
+        inviteExpiresAt: invite.expiresAt.toISOString(),
         // Shown once. Hand it to the client's backend; it is not stored in plaintext.
         embedSecret: embedSecret.secret,
       },
@@ -92,9 +107,9 @@ export async function POST(req: Request) {
 }
 
 /** List every tenant on the platform. SUPER_ADMIN only (`platform:manage`). */
-export async function GET() {
+export async function GET(req: Request) {
   try {
-    const ctx = await getActingContext();
+    const ctx = await getActingContext(req);
     if (!ctx) return unauthorized();
     assertCan(ctx.role, "platform:manage");
     const tenants = await db.tenant.findMany({

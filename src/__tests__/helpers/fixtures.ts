@@ -109,7 +109,9 @@ export function actorA(role: UserRole = "DOCTOR", userId = "doctor-a"): ActingCo
     branding: null,
     userId,
     email: `${userId}@acme`,
+    fullName: null,
     role,
+    auth: { method: "session", sessionId: `session-${userId}` },
   };
 }
 

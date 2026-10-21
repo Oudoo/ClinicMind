@@ -3,15 +3,14 @@ import { env } from "@/lib/env";
 import type { Tenant } from "@prisma/client";
 
 /**
- * Multi-tenancy resolution.
+ * Multi-tenancy resolution from the request host.
  *
- * A request reaches ClinicMind through one of three surfaces, all mapping to one
- * Tenant:
- *   1. Custom domain   — clinic.acme.com           -> Tenant.customDomain
- *   2. Subdomain       — acme.clinics.host         -> Tenant.slug
- *   3. Explicit header — x-clinicmind-tenant: acme (host dashboard / embed)
- *
- * This keeps each client's instance fully isolated end-to-end.
+ * A tenant can be reached on a custom domain (clinic.acme.com ->
+ * Tenant.customDomain) or a subdomain (acme.clinics.host -> Tenant.slug). The
+ * host is only a *hint* used for public surfaces (pre-filling the clinic on the
+ * sign-in page, the /embed/<slug> shell). The acting tenant of an authenticated
+ * request always comes from the session or embed token (lib/auth/session.ts),
+ * never from the host or from a client-supplied header.
  */
 
 /** Strip port and extract the candidate tenant slug from a host header. */

@@ -30,3 +30,11 @@ export function ok<T>(data: T, init?: ResponseInit) {
 export function unauthorized() {
   return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 }
+
+/** 429 with a `Retry-After` header; `error` distinguishes IP throttling from an account lockout. */
+export function tooManyRequests(retryAfterSeconds: number, error = "rate_limited") {
+  return NextResponse.json(
+    { error, retryAfterSeconds },
+    { status: 429, headers: { "Retry-After": String(retryAfterSeconds) } },
+  );
+}

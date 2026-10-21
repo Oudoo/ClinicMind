@@ -16,8 +16,8 @@ export default function LandingPage() {
           </span>
         </div>
         <Button asChild variant="outline" size="sm">
-          <Link href="/dashboard">
-            Open Console <ArrowRight className="h-4 w-4" />
+          <Link href="/login">
+            Sign in <ArrowRight className="h-4 w-4" />
           </Link>
         </Button>
       </header>

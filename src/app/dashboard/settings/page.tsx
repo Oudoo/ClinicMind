@@ -1,11 +1,19 @@
 import { getActingContext } from "@/lib/auth/session";
-import { can } from "@/lib/auth/rbac";
 import { db } from "@/lib/db";
 import { env } from "@/lib/env";
 import { Card, SectionTitle, Badge } from "@/components/ui/primitives";
 import { EmbedInstructions } from "@/components/clinicmind/embed-instructions";
 import { EmbedSecretCard } from "@/components/clinicmind/embed-secret-card";
+import { InviteMemberForm, ResendInviteButton } from "@/components/clinicmind/team-management";
+import { can, grantableRoles } from "@/lib/auth/rbac";
 import { BRAND, type TenantBranding } from "@/lib/brand";
+import { formatDate } from "@/lib/utils";
+
+const STATUS_TONE: Record<string, "default" | "success" | "warning" | "danger"> = {
+  ACTIVE: "success",
+  INVITED: "warning",
+  DISABLED: "danger",
+};
 
 export const dynamic = "force-dynamic";
 
@@ -22,6 +30,15 @@ export default async function SettingsPage() {
       },
     })
     .catch(() => null);
+
+  const canManageUsers = can(ctx.role, "users:manage");
+  const team = canManageUsers
+    ? await db.user.findMany({
+        where: { tenantId: ctx.tenantId, deletedAt: null },
+        orderBy: { createdAt: "asc" },
+        select: { id: true, email: true, fullName: true, role: true, status: true, createdAt: true },
+      })
+    : [];
 
   const branding = (ctx.branding as TenantBranding | null) ?? null;
   const accent = branding?.accent ?? BRAND.primitives.electricIndigo;
@@ -72,6 +89,55 @@ export default async function SettingsPage() {
           <Row label="Subdomain" value={`${ctx.tenantSlug}.${env.ROOT_DOMAIN}`} />
         </Card>
       </div>
+
+      {canManageUsers ? (
+        <Card className="space-y-4">
+          <SectionTitle
+            title="Team"
+            description="Staff accounts of this clinic. Invited members choose their password through a single-use link."
+            action={<Badge tone="accent">{team.length} members</Badge>}
+          />
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-border text-left">
+                <th className="py-2 pr-4 data-label font-normal">Member</th>
+                <th className="py-2 pr-4 data-label font-normal">Role</th>
+                <th className="py-2 pr-4 data-label font-normal">Status</th>
+                <th className="py-2 pr-4 data-label font-normal">Since</th>
+                <th className="py-2 data-label font-normal text-right" />
+              </tr>
+            </thead>
+            <tbody>
+              {team.map((member) => (
+                <tr key={member.id} className="border-b border-border last:border-0">
+                  <td className="py-2.5 pr-4">
+                    <div className="font-medium">{member.fullName ?? member.email}</div>
+                    {member.fullName ? (
+                      <div className="font-mono text-xs text-muted-foreground">{member.email}</div>
+                    ) : null}
+                  </td>
+                  <td className="py-2.5 pr-4 font-mono text-xs uppercase text-muted-foreground">
+                    {member.role}
+                  </td>
+                  <td className="py-2.5 pr-4">
+                    <Badge tone={STATUS_TONE[member.status] ?? "default"}>{member.status}</Badge>
+                  </td>
+                  <td className="py-2.5 pr-4 font-mono text-xs text-muted-foreground">
+                    {formatDate(member.createdAt)}
+                  </td>
+                  <td className="py-2.5 text-right">
+                    {member.status === "INVITED" ? <ResendInviteButton userId={member.id} /> : null}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <div className="border-t border-border pt-4">
+            <p className="data-label mb-3">Invite a member</p>
+            <InviteMemberForm roles={grantableRoles(ctx.role)} />
+          </div>
+        </Card>
+      ) : null}
 
       <Card className="space-y-4">
         <SectionTitle

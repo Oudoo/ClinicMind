@@ -2,7 +2,7 @@
   "name": "clinicmind",
   "version": "0.1.0",
   "private": true,
-  "description": "ClinicMind — AI-first, multi-tenant Medical OS. A standalone, integration-ready tool for the GROW Engine admin dashboard.",
+  "description": "ClinicMind \u2014 AI-first, multi-tenant Medical OS. A standalone, integration-ready tool for the GROW Engine admin dashboard.",
   "license": "UNLICENSED",
   "scripts": {
     "dev": "next dev",
@@ -25,11 +25,13 @@
   "dependencies": {
     "@prisma/client": "^5.22.0",
     "@radix-ui/react-slot": "^1.1.0",
+    "argon2": "^0.45.1",
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.1",
     "jose": "^5.9.6",
     "lucide-react": "^0.460.0",
     "next": "^16.4.2",
+    "nodemailer": "^7.0.13",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
     "tailwind-merge": "^2.5.4",
@@ -37,6 +39,7 @@
   },
   "devDependencies": {
     "@types/node": "^22.20.5",
+    "@types/nodemailer": "^8.0.2",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "autoprefixer": "^10.4.20",

@@ -36,10 +36,21 @@ tenant's settings, never the platform.
 Response `201`:
 
 ```json
-{ "tenant": { "id": "…", "slug": "acme" }, "embedSecret": "cmembed_…" }
+{
+  "tenant": { "id": "…", "slug": "acme" },
+  "owner": { "id": "…", "email": "owner@acme.clinic" },
+  "inviteUrl": "https://app.clinicmind.example/invite/…",
+  "inviteExpiresAt": "…",
+  "embedSecret": "cmembed_…"
+}
 ```
 
-This creates the tenant, its embed config, a default clinic and the owner user.
+This creates the tenant, its embed config, a default clinic and the owner user
+(`INVITED`). The owner is e-mailed a single-use invitation link to choose a
+password, and the link is also returned in the response (`inviteUrl`, valid 7
+days) so you can hand it over directly. Once the owner has signed in at `/login`
+they invite the rest of the staff from *Settings → Team*.
+
 `embedSecret` is returned **once**: hand it to the client's backend. If it is
 lost, rotate it (section E) — the old one stops working immediately.
 

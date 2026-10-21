@@ -7,7 +7,7 @@ export const dynamic = "force-dynamic";
 
 export async function GET(req: Request) {
   try {
-    const ctx = await getActingContext();
+    const ctx = await getActingContext(req);
     if (!ctx) return unauthorized();
     assertCan(ctx.role, "patients:read");
     const q = new URL(req.url).searchParams.get("q") ?? undefined;
@@ -19,7 +19,7 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
   try {
-    const ctx = await getActingContext();
+    const ctx = await getActingContext(req);
     if (!ctx) return unauthorized();
     assertCan(ctx.role, "patients:write");
     const input = PatientInput.parse(await req.json());

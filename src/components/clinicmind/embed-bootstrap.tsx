@@ -9,7 +9,7 @@ type Phase = "checking" | "awaiting-token" | "ready" | "denied";
 /**
  * Boots an embedded ClinicMind session inside an iframe.
  *
- * 1. Probe /api/me — a session may already exist (or dev demo fallback applies).
+ * 1. Probe /api/me — an embed cookie from a previous exchange may still be valid.
  * 2. Otherwise ask the host page for a token via postMessage and exchange it for
  *    an httpOnly cookie at /api/embed/session.
  * 3. Render the tenant-scoped surface once authenticated.

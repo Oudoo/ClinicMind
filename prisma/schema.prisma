@@ -42,6 +42,11 @@ enum UserStatus {
   DISABLED
 }
 
+enum AuthTokenKind {
+  INVITE
+  PASSWORD_RESET
+}
+
 enum Gender {
   MALE
   FEMALE
@@ -201,6 +206,9 @@ model Clinic {
 
 // ── Identity, RBAC & sessions ────────────────────────────────────────────────
 
+/// A staff member of one tenant. `passwordHash` is an argon2id hash
+/// (lib/auth/password.ts) and stays null until the user accepts their
+/// invitation; only ACTIVE users with a password can sign in.
 model User {
   id           String     @id @default(cuid())
   tenantId     String
@@ -222,6 +230,7 @@ model User {
 
   sessions       Session[]
   loginHistory   LoginEvent[]
+  authTokens     AuthToken[]
   doctorVisits   Visit[]        @relation("DoctorVisits")
   authoredAiRuns AiRun[]
 
@@ -230,6 +239,8 @@ model User {
   @@map("users")
 }
 
+/// Server-side login session. The browser holds a random token in an httpOnly
+/// cookie; only its keyed hash is stored here (lib/auth/session.ts).
 model Session {
   id         String   @id @default(cuid())
   userId     String
@@ -247,6 +258,8 @@ model Session {
   @@map("sessions")
 }
 
+/// One row per password sign-in attempt against a known user, successful or
+/// not. Recent failures drive the per-account lockout in lib/auth/login.ts.
 model LoginEvent {
   id        String   @id @default(cuid())
   userId    String
@@ -259,6 +272,23 @@ model LoginEvent {
 
   @@index([userId, createdAt])
   @@map("login_events")
+}
+
+/// Single-use, expiring tokens for accepting an invitation or resetting a
+/// password. As with sessions only the keyed hash is stored; the raw token
+/// travels once, inside the emailed link (lib/auth/auth-tokens.ts).
+model AuthToken {
+  id        String        @id @default(cuid())
+  userId    String
+  user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  kind      AuthTokenKind
+  tokenHash String        @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime      @default(now())
+
+  @@index([userId, kind])
+  @@map("auth_tokens")
 }
 
 // ── Patients & clinical records ──────────────────────────────────────────────

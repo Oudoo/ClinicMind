@@ -97,6 +97,29 @@ const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
   ASSISTANT: ["patients:read", "appointments:read", "conversations:read"],
 };
 
+/**
+ * Roles that exist *inside* a tenant. SUPER_ADMIN is a platform role: it is
+ * never mintable through the embed bridge and never carried by an embed token.
+ * These are also the roles a tenant administrator may assign to staff.
+ */
+export const TENANT_ROLES = [
+  "CLINIC_OWNER",
+  "DOCTOR",
+  "NURSE",
+  "RECEPTIONIST",
+  "ASSISTANT",
+] as const satisfies readonly UserRole[];
+
+export type TenantRole = (typeof TENANT_ROLES)[number];
+
+/**
+ * Roles an actor may grant when inviting staff. Only a super-admin can mint
+ * another super-admin; everyone else is limited to the tenant roles.
+ */
+export function grantableRoles(actorRole: UserRole): readonly UserRole[] {
+  return actorRole === "SUPER_ADMIN" ? ["SUPER_ADMIN", ...TENANT_ROLES] : TENANT_ROLES;
+}
+
 export function permissionsFor(role: UserRole): Permission[] {
   return ROLE_PERMISSIONS[role] ?? [];
 }
@@ -121,20 +144,6 @@ export class RbacError extends Error {
 }
 
 // ── Tenant roles & the embed role ceiling ────────────────────────────────────
-
-/**
- * Roles that exist *inside* a tenant. SUPER_ADMIN is a platform role: it is
- * never mintable through the embed bridge and never carried by an embed token.
- */
-export const TENANT_ROLES = [
-  "CLINIC_OWNER",
-  "DOCTOR",
-  "NURSE",
-  "RECEPTIONIST",
-  "ASSISTANT",
-] as const satisfies readonly UserRole[];
-
-export type TenantRole = (typeof TENANT_ROLES)[number];
 
 export function isTenantRole(role: unknown): role is TenantRole {
   return typeof role === "string" && (TENANT_ROLES as readonly string[]).includes(role);

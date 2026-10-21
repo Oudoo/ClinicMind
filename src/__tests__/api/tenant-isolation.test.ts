@@ -5,6 +5,14 @@ vi.mock("@/lib/db", async () => {
   return { db: fake.db, notDeleted: { deletedAt: null } };
 });
 vi.mock("@/lib/auth/session", () => ({ getActingContext: vi.fn() }));
+vi.mock("@/lib/auth/auth-tokens", () => ({
+  // Invitations write AuthToken rows and send mail; neither is part of what these
+  // tests assert, and the in-memory fake has no AuthToken model.
+  inviteUser: vi.fn(async () => ({
+    url: "http://localhost:3000/invite/test-token",
+    expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+  })),
+}));
 vi.mock("@/lib/ai/extraction", () => ({
   extractClinicalData: vi.fn(async () => ({
     data: { symptoms: [], diagnoses: ["Tension headache"], medications: [{ name: "Paracetamol" }], tests: [], followUps: [] },
@@ -66,14 +74,14 @@ describe("SEC-4 · consultations/extract", () => {
 
 describe("SEC-4 · consultations/[id]/sign", () => {
   it("cannot sign another tenant's consultation", async () => {
-    const res = await sign(jsonRequest("/api/consultations/consult-b/sign", {}), { params: { id: "consult-b" } });
+    const res = await sign(jsonRequest("/api/consultations/consult-b/sign", {}), { params: Promise.resolve({ id: "consult-b" }) });
     expect(res.status).toBe(404);
     expect(fake.rows("visit")).toHaveLength(0);
     expect(fake.rows("consultation").find((c) => c.id === "consult-b")?.status).toBe("PENDING_REVIEW");
   });
 
   it("refuses to append clinical data to a foreign patient even from an own-tenant consultation", async () => {
-    const res = await sign(jsonRequest("/api/consultations/consult-a-cross/sign", {}), { params: { id: "consult-a-cross" } });
+    const res = await sign(jsonRequest("/api/consultations/consult-a-cross/sign", {}), { params: Promise.resolve({ id: "consult-a-cross" }) });
     expect(res.status).toBe(404);
     await expect(res.json()).resolves.toEqual({ error: "not_found", entity: "patient" });
     expect(fake.rows("visit")).toHaveLength(0);
@@ -89,7 +97,7 @@ describe("SEC-4 · consultations/[id]/sign", () => {
         summary: "Tension-type headache.",
         extraction: { diagnoses: ["Tension headache"], medications: [{ name: "Paracetamol", dosage: "500mg" }] },
       }),
-      { params: { id: "consult-a" } },
+      { params: Promise.resolve({ id: "consult-a" }) },
     );
     expect(res.status).toBe(200);
     const { visitId } = await res.json();
@@ -109,7 +117,7 @@ describe("SEC-4 · consultations/[id]/sign", () => {
 
   it("requires the consultations:sign permission", async () => {
     mockedContext.mockResolvedValue(actorA("RECEPTIONIST", "reception-a"));
-    const res = await sign(jsonRequest("/api/consultations/consult-a/sign", {}), { params: { id: "consult-a" } });
+    const res = await sign(jsonRequest("/api/consultations/consult-a/sign", {}), { params: Promise.resolve({ id: "consult-a" }) });
     expect(res.status).toBe(403);
   });
 });
@@ -179,7 +187,7 @@ describe("SEC-3 · /api/tenants requires platform:manage", () => {
 
   it("a clinic owner can neither list nor provision tenants", async () => {
     mockedContext.mockResolvedValue(actorA("CLINIC_OWNER", "owner-a"));
-    const list = await listTenants();
+    const list = await listTenants(new Request("http://localhost/api/tenants"));
     expect(list.status).toBe(403);
     await expect(list.json()).resolves.toMatchObject({ error: "forbidden" });
 
@@ -191,13 +199,13 @@ describe("SEC-3 · /api/tenants requires platform:manage", () => {
   it("staff roles are refused too", async () => {
     for (const role of ["DOCTOR", "NURSE", "RECEPTIONIST", "ASSISTANT"] as const) {
       mockedContext.mockResolvedValue(actorA(role));
-      expect((await listTenants()).status, role).toBe(403);
+      expect((await listTenants(new Request("http://localhost/api/tenants"))).status, role).toBe(403);
     }
   });
 
   it("a super admin lists every tenant and provisions one with a hashed, once-shown embed secret", async () => {
     mockedContext.mockResolvedValue(actorA("SUPER_ADMIN", "super"));
-    const list = await listTenants();
+    const list = await listTenants(new Request("http://localhost/api/tenants"));
     expect(list.status).toBe(200);
     await expect(list.json()).resolves.toMatchObject({
       tenants: expect.arrayContaining([
