@@ -8,10 +8,11 @@ export const dynamic = "force-dynamic";
 export default async function PatientsPage({
   searchParams,
 }: {
-  searchParams: { q?: string };
+  searchParams: Promise<{ q?: string }>;
 }) {
+  const { q } = await searchParams;
   const ctx = await getActingContext();
-  const patients = ctx ? await listPatients(ctx.tenantId, searchParams.q) : [];
+  const patients = ctx ? await listPatients(ctx.tenantId, q) : [];
 
   return (
     <div className="space-y-6">

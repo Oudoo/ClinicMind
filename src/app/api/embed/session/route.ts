@@ -18,7 +18,8 @@ export async function POST(req: Request) {
     const { token } = Body.parse(await req.json());
     const claims = await verifyEmbedToken(token); // throws if invalid/expired
 
-    cookies().set("cm_embed", token, {
+    const cookieStore = await cookies();
+    cookieStore.set("cm_embed", token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       sameSite: "none", // allow the cookie inside a cross-site iframe
