@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { resolveTenantHintFromHost } from "@/lib/tenant";
 
 /**
- * Edge middleware.
+ * Request proxy (the Next.js 16 successor of `middleware.ts`; runs on the Node.js runtime).
  *
  *  - Resolves the tenant hint from the host (custom domain / subdomain) and
  *    forwards it downstream via `x-clinicmind-tenant`.
@@ -10,10 +10,10 @@ import { resolveTenantHintFromHost } from "@/lib/tenant";
  *    allowed to be framed (frame-ancestors is finalized per-tenant in the route
  *    handler from its allow-list); everything else is same-origin only.
  *
- * Note: full DB lookups don't run at the edge — only host parsing. The route
- * layer performs the authoritative tenant + embed-origin checks.
+ * Note: no DB lookups run here — only host parsing. The route layer performs
+ * the authoritative tenant + embed-origin checks.
  */
-export function middleware(req: NextRequest) {
+export function proxy(req: NextRequest) {
   const host = req.headers.get("host");
   const hint = resolveTenantHintFromHost(host);
 

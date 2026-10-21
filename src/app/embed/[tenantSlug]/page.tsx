@@ -10,10 +10,11 @@ export const dynamic = "force-dynamic";
  * already white-labeled; authentication is bootstrapped client-side via the
  * embed token relay.
  */
-export default async function EmbedPage({ params }: { params: { tenantSlug: string } }) {
+export default async function EmbedPage({ params }: { params: Promise<{ tenantSlug: string }> }) {
+  const { tenantSlug } = await params;
   const tenant = await db.tenant
     .findFirst({
-      where: { slug: params.tenantSlug, status: "ACTIVE", ...notDeleted },
+      where: { slug: tenantSlug, status: "ACTIVE", ...notDeleted },
       select: { name: true, branding: true },
     })
     .catch(() => null);
@@ -23,7 +24,7 @@ export default async function EmbedPage({ params }: { params: { tenantSlug: stri
 
   return (
     <div style={tenantThemeStyle(branding)}>
-      <EmbedBootstrap tenantSlug={params.tenantSlug} productName={productName} />
+      <EmbedBootstrap tenantSlug={tenantSlug} productName={productName} />
     </div>
   );
 }

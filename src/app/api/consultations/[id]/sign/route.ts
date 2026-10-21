@@ -28,8 +28,9 @@ const Body = z.object({
  * history and medications, and emit timeline events. The consultation row's prior
  * state is preserved in the audit log.
  */
-export async function POST(req: Request, { params }: { params: { id: string } }) {
+export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
+    const { id } = await params;
     const ctx = await getActingContext();
     if (!ctx) return unauthorized();
     assertCan(ctx.role, "consultations:sign");
@@ -37,7 +38,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     const body = Body.parse(await req.json());
 
     const consultation = await db.consultation.findFirst({
-      where: { id: params.id, tenantId: ctx.tenantId },
+      where: { id, tenantId: ctx.tenantId },
     });
     if (!consultation) return ok({ error: "not_found" }, { status: 404 });
 

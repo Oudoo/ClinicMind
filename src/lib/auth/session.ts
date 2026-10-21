@@ -10,7 +10,7 @@ import type { UserRole } from "@prisma/client";
  * Order of resolution:
  *   1. Embed token (cookie `cm_embed` or `Authorization: Bearer`) — the path used
  *      when ClinicMind is framed inside the GROW Engine dashboard or a client site.
- *   2. Host tenant header `x-clinicmind-tenant` (set by middleware from the URL).
+ *   2. Host tenant header `x-clinicmind-tenant` (set by the proxy from the URL).
  *   3. Development fallback to the seeded `demo` tenant so the app is runnable
  *      end-to-end without standing up the host SSO.
  */
@@ -25,8 +25,8 @@ export interface ActingContext {
 }
 
 export async function getActingContext(): Promise<ActingContext | null> {
-  const cookieStore = cookies();
-  const headerStore = headers();
+  const cookieStore = await cookies();
+  const headerStore = await headers();
 
   const bearer = headerStore.get("authorization")?.replace(/^Bearer\s+/i, "");
   const token = cookieStore.get("cm_embed")?.value ?? bearer;

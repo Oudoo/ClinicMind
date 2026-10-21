@@ -1,0 +1,12 @@
+node_modules
+.next
+.git
+.github
+.docker-data
+.env
+.env.*
+coverage
+*.tsbuildinfo
+npm-debug.log*
+demo
+docs

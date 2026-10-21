@@ -53,7 +53,7 @@ See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) and
 
 ## Tech stack
 
-- **Frontend/Backend:** Next.js 14 (App Router, RSC, Server Actions), TypeScript, Tailwind, Radix, React Hook Form, Zod
+- **Frontend/Backend:** Next.js 16 (App Router, RSC), TypeScript, Tailwind, Radix, Zod
 - **Database:** PostgreSQL + pgvector via Prisma (soft delete, audit, RLS, full-text)
 - **AI:** provider-agnostic adapter layer (OpenAI GPT-4o / Anthropic Claude / offline echo) with a RAG pipeline
 - **Infra:** Docker, Docker Compose (Postgres+pgvector, Redis, MinIO), GitHub Actions
