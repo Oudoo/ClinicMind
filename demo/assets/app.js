@@ -43,7 +43,7 @@ window.CM = (function () {
   let failures = {};
   function session() { try { return JSON.parse(sessionStorage.getItem(SESSION) || localStorage.getItem(SESSION) || "null"); } catch (e) { return null; } }
   function setSession(v) { try { if (v) localStorage.setItem(SESSION, JSON.stringify(v)); else localStorage.removeItem(SESSION); } catch (e) { /* ignore */ } }
-  function currentUser() { const s = session(); if (!s) return null; return S.users.find((u) => u.id === s.userId && u.status === "ACTIVE") || null; }
+  function currentUser() { const s = session(); if (!s) return null; const t = tenantById(s.tenantId); if (!t || t.status !== "ACTIVE") return null; return S.users.find((u) => u.id === s.userId && u.status === "ACTIVE") || null; }
   function currentTenant() { const u = currentUser(); if (!u) return null; return tenantById(u.tenantId); }
   function tenantById(id) { if (id === "ten-platform") return { ...S.platformTenant, status: "ACTIVE", branding: { productName: "ClinicMind", accent: "#4F46E5", logoUrl: "" } }; return S.tenants.find((t) => t.id === id) || null; }
   function tenantBySlug(slug) { if (slug === "platform") return tenantById("ten-platform"); return S.tenants.find((t) => t.slug === slug) || null; }
