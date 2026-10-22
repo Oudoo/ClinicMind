@@ -191,11 +191,15 @@ end-to-end suite.
 
 ## Deployment
 
-`docker-compose.prod.yml` runs Caddy (automatic HTTPS), PostgreSQL with
-pgvector, a one-shot migration service, the standalone web server and a nightly
-`pg_dump` with retention; `scripts/backup.sh` and `scripts/restore.sh` cover the
-backup drill. Configuration, upgrades, secret rotation, monitoring and
-troubleshooting are in [`docs/RUNBOOK.md`](docs/RUNBOOK.md).
+`docker-compose.prod.yml` runs Caddy (automatic HTTPS, with on-demand
+certificates for tenant subdomains and verified custom domains), PostgreSQL with
+pgvector, a one-shot migration service, the standalone web server, an optional
+demo seed and a nightly `pg_dump` with retention. The *Release image* workflow
+publishes the images to GitHub Container Registry once CI is green; the
+*Deploy* workflow updates a server over SSH; `scripts/server-setup.sh` prepares
+a fresh Ubuntu server in one command. Configuration, the cm.growcdx.com
+checklist, upgrades, backups, secret rotation, monitoring and troubleshooting
+are in [`docs/RUNBOOK.md`](docs/RUNBOOK.md).
 
 ---
 

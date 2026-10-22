@@ -1,0 +1,79 @@
+name: Deploy
+
+# Manual deployment to the production server over SSH. Needs three repository
+# secrets (Settings → Secrets and variables → Actions):
+#   DEPLOY_HOST      the server's hostname or IP
+#   DEPLOY_USER      a user who can run docker and owns the checkout
+#   DEPLOY_SSH_KEY   the private key whose public half is in that user's authorized_keys
+# and, on the server, a checkout at ~/clinicmind with a filled-in .env (see
+# docs/RUNBOOK.md). The server pulls the images published by "Release image";
+# if it cannot pull them it builds locally.
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Image tag to deploy (a commit sha from Release image, or latest)"
+        required: true
+        default: latest
+      seed:
+        description: "Rebuild the demo clinic after deploying (destroys the demo tenant's data)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Install the deploy key
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          test -n "$DEPLOY_SSH_KEY" || { echo "DEPLOY_SSH_KEY secret is not set"; exit 1; }
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/deploy_key && chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Deploy
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          TAG: ${{ inputs.tag }}
+          SEED: ${{ inputs.seed }}
+          OWNER: ${{ github.repository_owner }}
+        run: |
+          owner="${OWNER,,}"
+          ssh -i ~/.ssh/deploy_key "$DEPLOY_USER@$DEPLOY_HOST" \
+            "TAG='$TAG' SEED='$SEED' OWNER='$owner' bash -s" <<'REMOTE'
+            set -euo pipefail
+            cd ~/clinicmind
+            git fetch --quiet origin main
+            git checkout --quiet main
+            git reset --hard --quiet origin/main
+            export CLINICMIND_IMAGE="ghcr.io/$OWNER/clinicmind:$TAG"
+            export CLINICMIND_TOOLS_IMAGE="ghcr.io/$OWNER/clinicmind-tools:$TAG"
+            compose="docker compose -f docker-compose.prod.yml --env-file .env"
+            if $compose pull --quiet web migrate; then
+              $compose up -d --remove-orphans
+            else
+              echo "Could not pull images; building on the server instead."
+              $compose up -d --build --remove-orphans
+            fi
+            if [ "$SEED" = "true" ]; then
+              $compose --profile seed run --rm seed
+            fi
+            domain=$(grep -E '^DOMAIN=' .env | cut -d= -f2)
+            for i in $(seq 1 30); do
+              if curl -fsS "https://$domain/api/health" >/dev/null 2>&1; then echo "healthy: https://$domain"; exit 0; fi
+              sleep 2
+            done
+            echo "health check failed"; $compose logs --tail=50 web; exit 1
+          REMOTE

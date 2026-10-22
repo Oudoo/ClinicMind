@@ -1,7 +1,10 @@
-# Production stack: Caddy (automatic HTTPS) → app, Postgres with a named volume,
-# one-shot migrations, nightly backups. See docs/RUNBOOK.md.
+# Production stack: Caddy (automatic HTTPS, on-demand certificates for tenant
+# subdomains and custom domains) → app, Postgres with a named volume, one-shot
+# migrations, nightly backups, optional demo seed. See docs/RUNBOOK.md.
 #
-#   docker compose -f docker-compose.prod.yml --env-file .env up -d --build
+#   docker compose -f docker-compose.prod.yml --env-file .env up -d          # pulls the published images
+#   docker compose -f docker-compose.prod.yml --env-file .env up -d --build  # or builds them here
+#   docker compose -f docker-compose.prod.yml --env-file .env --profile seed run --rm seed
 services:
   caddy:
     image: caddy:2-alpine
@@ -37,6 +40,7 @@ services:
     # Not published: only reachable from the other services on this network.
 
   migrate:
+    image: ${CLINICMIND_TOOLS_IMAGE:-ghcr.io/oudoo/clinicmind-tools:latest}
     build:
       context: .
       target: tools
@@ -48,6 +52,7 @@ services:
     command: ["npx", "prisma", "migrate", "deploy"]
 
   web:
+    image: ${CLINICMIND_IMAGE:-ghcr.io/oudoo/clinicmind:latest}
     build: .
     restart: unless-stopped
     depends_on:
@@ -73,6 +78,32 @@ services:
       MAIL_FROM: ${MAIL_FROM:-}
       LOG_LEVEL: ${LOG_LEVEL:-info}
     # Not published: Caddy is the only entry point.
+
+  # Demo clinic (six accounts, seeded data, assistant index). Rebuilds the demo
+  # tenant from scratch each time: `--profile seed run --rm seed`.
+  seed:
+    profiles: ["seed"]
+    image: ${CLINICMIND_TOOLS_IMAGE:-ghcr.io/oudoo/clinicmind-tools:latest}
+    build:
+      context: .
+      target: tools
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      APP_URL: https://${DOMAIN}
+      ROOT_DOMAIN: ${ROOT_DOMAIN:-${DOMAIN}}
+      DATABASE_URL: postgresql://clinicmind:${POSTGRES_PASSWORD}@db:5432/clinicmind?schema=public
+      AUTH_SECRET: ${AUTH_SECRET:?set AUTH_SECRET (openssl rand -base64 48)}
+      EMBED_SIGNING_SECRET: ${EMBED_SIGNING_SECRET:?set EMBED_SIGNING_SECRET (openssl rand -base64 48)}
+      AI_DEFAULT_PROVIDER: ${AI_DEFAULT_PROVIDER:-auto}
+      AI_EMBEDDING_PROVIDER: ${AI_EMBEDDING_PROVIDER:-auto}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      SEED_DEMO_PASSWORD: ${SEED_DEMO_PASSWORD:-}
+    command: ["npx", "tsx", "prisma/seed.ts"]
 
   backup:
     image: pgvector/pgvector:pg16

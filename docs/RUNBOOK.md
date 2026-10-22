@@ -46,24 +46,57 @@ Open http://localhost:3000/login. `docker compose logs -f web` tails the app.
 
 ## 5. Deploy to a server (production)
 
-1. Provision a Linux host with Docker, a DNS A record for `DOMAIN` pointing at it, ports 80/443 open.
-2. Clone the repository, create `.env` with `DOMAIN`, `ACME_EMAIL`, `POSTGRES_PASSWORD`, `AUTH_SECRET`, `EMBED_SIGNING_SECRET`, the AI key(s), SMTP settings.
-3. `docker compose -f docker-compose.prod.yml --env-file .env up -d --build`
-   - `migrate` runs `prisma migrate deploy` and exits; `web` starts only after it succeeds.
-   - `caddy` obtains and renews the TLS certificate automatically and proxies to `web`.
-   - `backup` writes a nightly `pg_dump` to `./backups` and prunes after `BACKUP_RETENTION_DAYS`.
-4. Create the first clinic: either seed (`docker compose -f docker-compose.prod.yml --env-file .env run --rm --entrypoint "npx tsx prisma/seed.ts" migrate`) for a demo, or provision through `POST /api/tenants` as a SUPER_ADMIN (see `docs/INTEGRATION.md`) and send the owner the printed invitation link.
-5. Verify: `curl -s https://$DOMAIN/api/health` → `{"status":"ok","database":"up",...,"devSecrets":false}`.
+Everything runs from `docker-compose.prod.yml`: Caddy terminates TLS, the app
+and Postgres are reachable only on the Compose network, migrations run before
+the app starts, a nightly `pg_dump` lands in `./backups`.
 
-Per-clinic subdomains (`<slug>.ROOT_DOMAIN`) need a wildcard DNS record and a wildcard certificate; add a DNS-challenge module to the Caddy image for your DNS provider, or list the hostnames explicitly in `deploy/Caddyfile`.
+1. **Server:** Ubuntu 22.04/24.04, 2 vCPU, 4 GB RAM, 40 GB disk, ports 22/80/443 open.
+2. **DNS:** an A record for `DOMAIN` and a wildcard A record `*.ROOT_DOMAIN`
+   pointing at the server (tenants are served as `<slug>.ROOT_DOMAIN`). Caddy
+   obtains the app certificate at start and tenant and custom-domain
+   certificates on first use, gated by the app's `/api/tls/ask` endpoint so
+   only active tenants and verified custom domains get one.
+3. **Check out and configure:**
+   ```bash
+   git clone <repository> ~/clinicmind && cd ~/clinicmind
+   cp deploy/env.production.example .env   # fill in DOMAIN, ACME_EMAIL, secrets, an AI key, SEED_DEMO_PASSWORD
+   ```
+   Or let `scripts/server-setup.sh <domain> <acme e-mail>` do steps 3 to 5 on a fresh server: it installs Docker, opens the firewall, writes `.env` with generated secrets, starts the stack and seeds the demo.
+4. **Start:** `docker compose -f docker-compose.prod.yml --env-file .env up -d`
+   pulls the images published by the *Release image* workflow
+   (`ghcr.io/<owner>/clinicmind` and `…/clinicmind-tools`; `docker login ghcr.io`
+   first when the repository is private). `up -d --build` builds them on the
+   server instead.
+5. **Demo data:** `docker compose -f docker-compose.prod.yml --env-file .env --profile seed run --rm seed`
+   creates the demo clinic and prints the six accounts; re-running it rebuilds
+   the demo tenant.
+6. **Platform administrator (real clients):**
+   `docker compose -f docker-compose.prod.yml --env-file .env run --rm migrate npx tsx scripts/platform-bootstrap.ts --email you@example.com --name "Your Name"`
+   prints an invitation link; the console is at `https://DOMAIN/platform`.
+7. **Verify:** `curl -s https://DOMAIN/api/health` → `{"status":"ok","database":"up",…,"devSecrets":false}`,
+   then open `https://DOMAIN/login` and `https://demo.ROOT_DOMAIN/login`.
+
+### Publishing the demo at cm.growcdx.com
+
+| Item | Value |
+|---|---|
+| App domain (`DOMAIN`) | `cm.growcdx.com` → landing page, sign-in, platform console |
+| Tenants (`ROOT_DOMAIN`) | `cm.growcdx.com` → `demo.cm.growcdx.com`, `nour-clinics.cm.growcdx.com`, … |
+| DNS records | `A cm.growcdx.com → <server IP>` and `A *.cm.growcdx.com → <server IP>` |
+| First run | `bash scripts/server-setup.sh cm.growcdx.com <your e-mail>` on the server, with `GEMINI_API_KEY=<key>` exported first for live AI |
+| Demo accounts | printed by the seed; the password is `SEED_DEMO_PASSWORD` in `.env` |
+| Health | `https://cm.growcdx.com/api/health` |
+| Later deploys | GitHub → Actions → *Deploy* → *Run workflow* (tag `latest` or a commit sha), after adding the `DEPLOY_HOST`, `DEPLOY_USER` and `DEPLOY_SSH_KEY` repository secrets; or `git pull` and `up -d` on the server |
 
 ### Upgrading
 
+Run the *Deploy* workflow, or on the server:
+
 ```bash
-git pull
-docker compose -f docker-compose.prod.yml --env-file .env up -d --build
+cd ~/clinicmind && git pull
+docker compose -f docker-compose.prod.yml --env-file .env pull && docker compose -f docker-compose.prod.yml --env-file .env up -d
 ```
-Migrations run before the new app version starts. Roll back by checking out the previous tag and running the same command; migrations are forward-only, so restore a backup if a migration must be undone.
+Migrations run before the new app version starts. Roll back by deploying the previous image tag; migrations are forward-only, so restore a backup if a migration must be undone.
 
 ## 6. Backups and restore
 
