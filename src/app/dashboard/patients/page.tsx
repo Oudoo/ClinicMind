@@ -10,7 +10,6 @@ import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Pagination } from "@/components/ui/pagination";
 import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/table";
-import { ToastProvider } from "@/components/ui/toast";
 import { AddPatientButton } from "@/components/clinicmind/patient-form-dialog";
 import { GENDER_LABELS } from "@/components/clinicmind/patient-shared";
 
@@ -45,7 +44,7 @@ export default async function PatientsPage({ searchParams }: { searchParams: Pro
   const query: ListQuery = { q, tag, archived: includeArchived ? "1" : undefined };
 
   return (
-    <ToastProvider>
+    <>
       <div className="space-y-6">
         <SectionTitle
           title="Patients"
@@ -206,6 +205,6 @@ export default async function PatientsPage({ searchParams }: { searchParams: Pro
           ) : null}
         </Card>
       </div>
-    </ToastProvider>
+    </>
   );
 }

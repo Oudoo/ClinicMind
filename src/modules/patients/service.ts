@@ -2,6 +2,7 @@ import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { db, notDeleted } from "@/lib/db";
 import { audit } from "@/lib/audit";
+import { ingestInBackground } from "@/modules/knowledge/ingest";
 import { parsePaging, zDate, zOptionalText, zPhone, zText } from "@/lib/validation";
 
 /**
@@ -351,6 +352,8 @@ export async function createPatient(tenantId: string, input: unknown, actor: Act
     entityId: patient.id,
     after: snapshot(patient),
   });
+  // Keep the assistant's knowledge of this patient current (fire-and-forget).
+  ingestInBackground({ kind: "patient", tenantId, id: patient.id });
   return patient;
 }
 
@@ -386,6 +389,8 @@ export async function updatePatient(tenantId: string, id: string, input: unknown
     before: snapshot(existing, keys),
     after: snapshot(patient, keys),
   });
+  // Keep the assistant's knowledge of this patient current (fire-and-forget).
+  ingestInBackground({ kind: "patient", tenantId, id });
   return patient;
 }
 
@@ -419,6 +424,8 @@ export async function archivePatient(tenantId: string, id: string, actor: Actor 
     before: { fullName: existing.fullName, deletedAt: null },
     after: { fullName: patient.fullName, deletedAt: patient.deletedAt?.toISOString() ?? null },
   });
+  // Keep the assistant's knowledge of this patient current (fire-and-forget).
+  ingestInBackground({ kind: "patient", tenantId, id });
   return patient;
 }
 
@@ -448,6 +455,8 @@ export async function restorePatient(tenantId: string, id: string, actor: Actor 
     before: { fullName: existing.fullName, deletedAt: existing.deletedAt?.toISOString() ?? null },
     after: { fullName: patient.fullName, deletedAt: null },
   });
+  // Keep the assistant's knowledge of this patient current (fire-and-forget).
+  ingestInBackground({ kind: "patient", tenantId, id });
   return patient;
 }
 
@@ -507,5 +516,7 @@ export async function updateMedicalHistory(tenantId: string, patientId: string, 
     before,
     after,
   });
+  // Keep the assistant's knowledge of this patient current (fire-and-forget).
+  ingestInBackground({ kind: "patient", tenantId, id: patientId });
   return history;
 }

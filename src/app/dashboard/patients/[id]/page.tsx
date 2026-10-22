@@ -9,7 +9,6 @@ import { ageFrom, formatDate, formatTime, initials } from "@/lib/utils";
 import { Badge, Bento, Card, EmptyState, Metric, SectionTitle } from "@/components/ui/primitives";
 import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ToastProvider } from "@/components/ui/toast";
 import { PatientHeaderActions } from "@/components/clinicmind/patient-actions";
 import { MedicalHistoryEditor } from "@/components/clinicmind/patient-history-editor";
 import { PatientTimeline } from "@/components/clinicmind/patient-timeline";
@@ -76,7 +75,7 @@ export default async function PatientPage({ params }: { params: Promise<{ id: st
   ].sort((a, b) => b.date.getTime() - a.date.getTime());
 
   return (
-    <ToastProvider>
+    <>
       <div className="space-y-6">
         <Link
           href="/dashboard/patients"
@@ -300,7 +299,7 @@ export default async function PatientPage({ params }: { params: Promise<{ id: st
           </TabsContent>
         </Tabs>
       </div>
-    </ToastProvider>
+    </>
   );
 }
 
