@@ -81,7 +81,8 @@ export async function POST(req: Request) {
       },
       tenant: result.user.tenant,
       expiresAt: session.expiresAt.toISOString(),
-      redirectTo: safeRedirectPath(body.next) ?? "/dashboard",
+      // Platform administrators land on the console; everyone else on their clinic.
+      redirectTo: safeRedirectPath(body.next) ?? (result.user.role === "SUPER_ADMIN" ? "/platform" : "/dashboard"),
     });
     res.cookies.set(SESSION_COOKIE, session.token, sessionCookieOptions(session.expiresAt));
     return res;

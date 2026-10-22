@@ -12,6 +12,7 @@ import {
   Sparkles,
   MessagesSquare,
   Settings,
+  Building2,
   Menu,
   X,
 } from "lucide-react";
@@ -33,6 +34,9 @@ const NAV = [
   { href: "/dashboard/settings", label: "Settings", icon: Settings },
 ] as const;
 
+/** Shown to platform administrators (SUPER_ADMIN) above the clinic sections. */
+const PLATFORM_NAV = { href: "/platform", label: "Platform", icon: Building2 } as const;
+
 function isActive(pathname: string, href: string): boolean {
   return pathname === href || (href !== "/dashboard" && pathname.startsWith(href));
 }
@@ -44,21 +48,29 @@ function isActive(pathname: string, href: string): boolean {
 export function DashboardShell({
   children,
   tenantName,
+  tenantLabel = "clinic",
   productName = BRAND.productName,
+  logoUrl,
+  platform = false,
   user,
 }: {
   children: React.ReactNode;
   tenantName: string;
+  tenantLabel?: string;
   productName?: string;
+  logoUrl?: string | null;
+  /** Adds the platform console entry; only for users holding `platform:manage`. */
+  platform?: boolean;
   user: ShellUser;
 }) {
   const pathname = usePathname() ?? "/dashboard";
-  const current = NAV.find((n) => isActive(pathname, n.href));
+  const items = platform ? [PLATFORM_NAV, ...NAV] : NAV;
+  const current = items.find((n) => isActive(pathname, n.href));
   const [open, setOpen] = useState(false);
 
   const nav = (
     <nav className="flex-1 space-y-0.5 p-3" aria-label="Main">
-      {NAV.map((item) => {
+      {items.map((item) => {
         const active = isActive(pathname, item.href);
         const Icon = item.icon;
         return (
@@ -85,8 +97,8 @@ export function DashboardShell({
 
   const brand = (
     <div className="flex h-14 items-center gap-2 border-b border-border px-5">
-      {/* Swap the logo by replacing /public/logo.svg */}
-      <img src="/logo.svg" alt="" width={28} height={28} className="h-7 w-7 rounded-md" />
+      {/* Tenant logo from branding, else the default in /public/logo.svg */}
+      <img src={logoUrl || "/logo.svg"} alt="" width={28} height={28} className="h-7 w-7 rounded-md object-contain" />
       <div className="flex flex-col leading-none">
         <span className="font-display text-sm font-semibold tracking-tight">{productName}</span>
         <span className="font-mono text-[10px] text-muted-foreground">clinic operating system</span>
@@ -97,7 +109,7 @@ export function DashboardShell({
   const tenantCard = (
     <div className="border-t border-border p-3">
       <div className="rounded-md bg-muted px-3 py-2">
-        <p className="data-label">clinic</p>
+        <p className="data-label">{tenantLabel}</p>
         <p className="truncate text-sm font-medium">{tenantName}</p>
       </div>
     </div>

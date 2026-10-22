@@ -5,6 +5,8 @@ import { Card, SectionTitle, Badge } from "@/components/ui/primitives";
 import { EmbedInstructions } from "@/components/clinicmind/embed-instructions";
 import { EmbedSecretCard } from "@/components/clinicmind/embed-secret-card";
 import { InviteMemberForm, ResendInviteButton } from "@/components/clinicmind/team-management";
+import { BrandingForm } from "@/components/platform/tenant-admin";
+import { brandingOf } from "@/modules/platform/service";
 import { can, grantableRoles } from "@/lib/auth/rbac";
 import { BRAND, type TenantBranding } from "@/lib/brand";
 import { formatDate } from "@/lib/utils";
@@ -54,20 +56,23 @@ export default async function SettingsPage() {
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <Card className="space-y-4">
           <SectionTitle title="Branding" description="Each client runs their own white-labeled version." />
-          <Row label="Product name" value={branding?.productName ?? BRAND.productName} />
-          <Row
-            label="Accent color"
-            value={
-              <span className="flex items-center gap-2">
-                <span
-                  className="h-4 w-4 rounded border border-border"
-                  style={{ background: accent }}
-                />
-                <span className="font-mono text-xs">{accent}</span>
-              </span>
-            }
-          />
-          <Row label="Logo" value={branding?.logoUrl ? "Custom" : "Default"} />
+          {can(ctx.role, "tenant:manage") ? (
+            <BrandingForm initial={brandingOf(branding)} target={{ kind: "own" }} fallbackProductName={BRAND.productName} />
+          ) : (
+            <>
+              <Row label="Product name" value={branding?.productName ?? BRAND.productName} />
+              <Row
+                label="Accent color"
+                value={
+                  <span className="flex items-center gap-2">
+                    <span className="h-4 w-4 rounded border border-border" style={{ background: accent }} />
+                    <span className="font-mono text-xs">{accent}</span>
+                  </span>
+                }
+              />
+              <Row label="Logo" value={branding?.logoUrl ? "Custom" : "Default"} />
+            </>
+          )}
         </Card>
 
         <Card className="space-y-4">

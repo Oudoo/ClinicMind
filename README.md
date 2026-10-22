@@ -70,8 +70,9 @@ all indexed for the assistant. It ends by printing the sign-in details:
 | `mariam@demo.clinic` | Dr. Mariam Tarek | Doctor |
 | `nurse@demo.clinic` | Heba Mostafa | Nurse |
 | `reception@demo.clinic` | Youssef Hany | Receptionist |
+| `platform@demo.clinic` | Platform Admin | Platform administrator (system owner, `/platform`) |
 
-All five share one password: `SEED_DEMO_PASSWORD` if set, otherwise a random one
+All six share one password: `SEED_DEMO_PASSWORD` if set, otherwise a random one
 printed by the seed. Re-running the seed rebuilds the demo clinic. There is no
 development bypass: every `/dashboard` and `/api/*` request needs a session or
 an embed token.
@@ -129,6 +130,22 @@ providers, uptime and whether development secrets are in use.
 | `NURSE` | Patients, appointments, consultation capture; bookable; cannot sign. |
 | `RECEPTIONIST` | Patients, appointments, conversations; no AI assistant. |
 | `ASSISTANT` | Read-only patients, appointments and conversations. |
+
+### Platform console (system owner)
+
+Platform administrators (`SUPER_ADMIN`, kept in a dedicated `platform` tenant)
+sign in at `/login` and land on `/platform`, where they create client tenants,
+invite each clinic's owner, white-label the tenant (product name, accent, logo),
+assign a custom domain, control embedding and suspend or activate access. The
+dialog that creates a tenant shows the owner's invitation link and the embed
+secret once. In production, create the first administrator with:
+
+```bash
+npm run platform:bootstrap -- --email admin@example.com --name "Full Name"
+```
+
+Details, the API and the growcdx.com developer-page plan are in
+[`docs/PLATFORM.md`](docs/PLATFORM.md).
 
 Invite staff from *Settings → Team* (or `POST /api/users`); the invitee receives
 a single-use link (7 days) to choose a password, which is also shown to the
@@ -192,6 +209,7 @@ troubleshooting are in [`docs/RUNBOOK.md`](docs/RUNBOOK.md).
 | `npm run db:seed` | Build the demo clinic and index it |
 | `npm run db:reset` | Drop and recreate the database (development only) |
 | `npm run ai:reindex -- <slug> \| --all` | Rebuild the assistant's knowledge store |
+| `npm run platform:bootstrap -- --email <e-mail>` | Create or re-invite a platform administrator |
 | `npm test` / `npm run test:watch` | Unit and route tests |
 | `npm run e2e` / `npm run e2e:ui` | Playwright suite |
 | `npm run lint` / `typecheck` / `format` | Static checks |
@@ -223,6 +241,7 @@ public/embed.js       website embed loader
 ## Documentation
 
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — tenancy, auth, data model, migrations, RLS, security, performance
+- [`docs/PLATFORM.md`](docs/PLATFORM.md) — the system-owner console, provisioning API, growcdx.com developer page, Omni Grow integration
 - [`docs/INTEGRATION.md`](docs/INTEGRATION.md) — embedding ClinicMind in a website or portal, token minting
 - [`docs/RUNBOOK.md`](docs/RUNBOOK.md) — deploy, upgrade, backup and restore, rotation, monitoring
 - [`docs/DEMO_SCENARIO.md`](docs/DEMO_SCENARIO.md) — the guided live demo

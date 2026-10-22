@@ -2,6 +2,7 @@ import { PrismaClient, type Gender, type AppointmentStatus, type ChannelType, ty
 import { generateEmbedSecret } from "../src/lib/embed";
 import { generatePassword, hashPassword, PasswordSchema } from "../src/lib/auth/password";
 import { reindexTenant } from "../src/modules/knowledge/ingest";
+import { PLATFORM_TENANT_SLUG } from "../src/modules/platform/service";
 
 /**
  * Demo seed: "Aura Derma & Hair Clinic" (Cairo), a dermatology and hair-transplant
@@ -15,6 +16,7 @@ import { reindexTenant } from "../src/modules/knowledge/ingest";
  */
 const db = new PrismaClient();
 const TENANT_SLUG = "demo";
+const PLATFORM_ADMIN_EMAIL = "platform@demo.clinic";
 const TZ = "Africa/Cairo";
 
 // ── Deterministic randomness ─────────────────────────────────────────────────
@@ -136,6 +138,22 @@ async function main() {
     { email: "nurse@demo.clinic", fullName: "Heba Mostafa", role: "NURSE" as const, kind: null },
     { email: "reception@demo.clinic", fullName: "Youssef Hany", role: "RECEPTIONIST" as const, kind: null },
   ];
+  // Platform console: SUPER_ADMIN accounts live in their own tenant, never in a clinic.
+  const platformExisting = await db.tenant.findUnique({ where: { slug: PLATFORM_TENANT_SLUG }, select: { id: true } });
+  if (platformExisting) {
+    await db.$transaction([
+      db.$executeRawUnsafe(`SET LOCAL app.allow_audit_delete = 'on'`),
+      db.tenant.delete({ where: { id: platformExisting.id } }),
+    ]);
+  }
+  const platform = await db.tenant.create({
+    data: { slug: PLATFORM_TENANT_SLUG, name: "GrowCDX Platform", status: "ACTIVE", branding: { productName: "ClinicMind" }, settings: { platform: true } },
+    select: { id: true },
+  });
+  await db.user.create({
+    data: { tenantId: platform.id, email: PLATFORM_ADMIN_EMAIL, fullName: "Platform Admin", role: "SUPER_ADMIN", status: "ACTIVE", passwordHash },
+  });
+
   const staff = [] as { id: string; fullName: string; kind: "derm" | "hair" | null }[];
   for (const s of staffSeed) {
     const u = await db.user.create({
@@ -330,8 +348,9 @@ async function main() {
   console.log(`🧠 Indexed ${index.chunks.embedded} chunks for the assistant (${index.errors} errors).`);
   console.log(`🔑 Embed secret (shown once, stored hashed): ${embedSecret.secret}`);
   console.log("");
-  console.log(`   Sign in at ${appUrl}/login — all five demo accounts share one password:`);
+  console.log(`   Sign in at ${appUrl}/login — all six demo accounts share one password:`);
   for (const s of staffSeed) console.log(`     ${s.email.padEnd(24)} ${s.fullName} (${s.role.replace("_", " ").toLowerCase()})`);
+  console.log(`     ${PLATFORM_ADMIN_EMAIL.padEnd(24)} Platform Admin (super admin · ${appUrl}/platform)`);
   console.log(`   Password: ${demoPassword}`);
   console.log("   Set SEED_DEMO_PASSWORD to choose it; re-running the seed rebuilds the demo clinic.");
 }

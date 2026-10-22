@@ -110,6 +110,8 @@ You already have an inbox tool. The spec's Module 1 and the staff-inbox requirem
 
 **What this buys:** Module 1 effort drops from 10 person-weeks to roughly 5 to 6 (qualification logic, booking tools, lead model, follow-up sequences, evaluation set) and Module 5 reuses the same outbound path.
 
+**Decision (22 Oct 2026): integrate Omni Grow from where it is; do not merge it into this codebase.** It keeps running on its own for other clients, clinical data stays inside ClinicMind's boundary, and each product keeps one codebase. The connection is configured per tenant on both sides (endpoint, API key, webhook secret); if a clinic wants the inbox inside the ClinicMind screen it is framed with the embed-token pattern, not moved. Details in [`PLATFORM.md`](PLATFORM.md#omni-grow-the-all-in-one-inbox-integrate-do-not-merge).
+
 ---
 
 ## 6. Module-by-module plan

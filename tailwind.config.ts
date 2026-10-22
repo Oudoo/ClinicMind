@@ -73,9 +73,16 @@ const config: Config = {
         mesh: "24px 24px",
       },
       keyframes: {
+        // Opacity only: a transform in the keyframes would override the
+        // translate utilities of centred elements while it runs.
         "fade-in": {
-          from: { opacity: "0", transform: "translateY(4px)" },
-          to: { opacity: "1", transform: "translateY(0)" },
+          from: { opacity: "0" },
+          to: { opacity: "1" },
+        },
+        // Centred dialogs: keeps the -50%/-50% translate throughout.
+        "dialog-in": {
+          from: { opacity: "0", transform: "translate(-50%, calc(-50% + 6px))" },
+          to: { opacity: "1", transform: "translate(-50%, -50%)" },
         },
         "pulse-spike": {
           "0%, 100%": { opacity: "1" },
@@ -84,6 +91,7 @@ const config: Config = {
       },
       animation: {
         "fade-in": "fade-in 0.25s ease-out",
+        "dialog-in": "dialog-in 0.25s ease-out",
         "pulse-spike": "pulse-spike 1.6s ease-in-out infinite",
       },
     },
