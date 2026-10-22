@@ -1,96 +1,82 @@
 import { getActingContext } from "@/lib/auth/session";
-import { listAppointments } from "@/modules/appointments/service";
-import { Card, SectionTitle, Badge, EmptyState } from "@/components/ui/primitives";
-import { formatTime } from "@/lib/utils";
+import { can } from "@/lib/auth/rbac";
+import {
+  addDays,
+  dateKeyInTz,
+  endOfDayInTz,
+  formatDateInTz,
+  fromDateKey,
+  startOfDayInTz,
+  startOfWeekInTz,
+} from "@/lib/time";
+import { getTenantTimezone, listAppointments, listStaff } from "@/modules/appointments/service";
+import { toAppointmentDTO } from "@/modules/appointments/dto";
+import { AppointmentCalendar, type CalendarView } from "@/components/clinicmind/appointment-calendar";
 
 export const dynamic = "force-dynamic";
 
-const STATUS_TONE: Record<string, "default" | "accent" | "success" | "warning" | "danger"> = {
-  SCHEDULED: "default",
-  CONFIRMED: "accent",
-  CHECKED_IN: "accent",
-  IN_PROGRESS: "accent",
-  COMPLETED: "success",
-  CANCELLED: "danger",
-  NO_SHOW: "danger",
-  WAITLISTED: "warning",
-};
-
-export default async function AppointmentsPage() {
+/**
+ * `/dashboard/appointments?view=week|day&date=YYYY-MM-DD&doctorId=`
+ *
+ * Day and week boundaries follow the clinic's timezone (first clinic of the
+ * tenant); the week starts on Saturday.
+ */
+export default async function AppointmentsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ view?: string; date?: string; doctorId?: string }>;
+}) {
+  const params = await searchParams;
   const ctx = await getActingContext();
+  if (!ctx) return null;
+
+  const timezone = await getTenantTimezone(ctx.tenantId);
+  const view: CalendarView = params.view === "day" ? "day" : "week";
   const now = new Date();
-  const from = new Date(now);
-  from.setHours(0, 0, 0, 0);
-  const to = new Date(from);
-  to.setDate(to.getDate() + 7);
+  const anchor = (params.date ? fromDateKey(params.date, timezone) : null) ?? startOfDayInTz(now, timezone);
+  const doctorFilter = params.doctorId?.trim().slice(0, 64) || undefined;
 
-  const appointments = ctx ? await listAppointments(ctx.tenantId, { from, to }) : [];
+  const rangeStart = view === "week" ? startOfWeekInTz(anchor, timezone) : anchor;
+  const dayCount = view === "week" ? 7 : 1;
+  const rangeEnd = endOfDayInTz(addDays(rangeStart, dayCount - 1, timezone), timezone);
 
-  // Group by day for a week column view.
-  const byDay = new Map<string, typeof appointments>();
-  for (const a of appointments) {
-    const key = a.startsAt.toISOString().slice(0, 10);
-    byDay.set(key, [...(byDay.get(key) ?? []), a]);
-  }
-  const days = [...Array(7)].map((_, i) => {
-    const d = new Date(from);
-    d.setDate(d.getDate() + i);
-    return d;
+  const [appointments, doctors] = await Promise.all([
+    listAppointments(ctx.tenantId, { from: rangeStart, to: rangeEnd, doctorId: doctorFilter }),
+    listStaff(ctx.tenantId, "DOCTOR"),
+  ]);
+
+  const days = Array.from({ length: dayCount }, (_, i) => {
+    const day = addDays(rangeStart, i, timezone);
+    return {
+      key: dateKeyInTz(day, timezone),
+      label: formatDateInTz(day, timezone, { weekday: "short", day: "2-digit", month: "short" }),
+    };
   });
 
-  return (
-    <div className="space-y-6">
-      <SectionTitle
-        title="Appointments"
-        description="Week schedule with conflict detection & waitlist."
-        action={<Badge tone="accent">{appointments.length} this week</Badge>}
-      />
+  const anchorKey = dateKeyInTz(anchor, timezone);
+  const step = dayCount;
+  const rangeLabel =
+    view === "week"
+      ? `${formatDateInTz(rangeStart, timezone, { day: "2-digit", month: "short" })} – ${formatDateInTz(rangeEnd, timezone)}`
+      : formatDateInTz(anchor, timezone, { weekday: "long", day: "2-digit", month: "short", year: "numeric" });
 
-      {appointments.length ? (
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
-          {days.map((d) => {
-            const key = d.toISOString().slice(0, 10);
-            const list = byDay.get(key) ?? [];
-            return (
-              <Card key={key} className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <span className="data-label">
-                    {d.toLocaleDateString("en-GB", { weekday: "short", day: "2-digit", month: "short" })}
-                  </span>
-                  <span className="font-mono text-xs text-muted-foreground">{list.length}</span>
-                </div>
-                <div className="space-y-2">
-                  {list.length ? (
-                    list.map((a) => (
-                      <div key={a.id} className="rounded-md border border-border p-2.5">
-                        <div className="flex items-center justify-between">
-                          <span className="font-mono text-xs tabular-nums">
-                            {formatTime(a.startsAt)}
-                          </span>
-                          <Badge tone={STATUS_TONE[a.status] ?? "default"}>{a.status}</Badge>
-                        </div>
-                        <p className="mt-1 truncate text-sm font-medium">{a.patient.fullName}</p>
-                        {a.reason ? (
-                          <p className="truncate text-xs text-muted-foreground">{a.reason}</p>
-                        ) : null}
-                      </div>
-                    ))
-                  ) : (
-                    <p className="py-4 text-center text-xs text-muted-foreground">—</p>
-                  )}
-                </div>
-              </Card>
-            );
-          })}
-        </div>
-      ) : (
-        <Card>
-          <EmptyState
-            title="No appointments scheduled"
-            hint="Bookings from the AI receptionist or front desk appear here."
-          />
-        </Card>
-      )}
-    </div>
+  return (
+    <AppointmentCalendar
+      view={view}
+      timezone={timezone}
+      anchorKey={anchorKey}
+      todayKey={dateKeyInTz(now, timezone)}
+      rangeLabel={rangeLabel}
+      days={days}
+      appointments={appointments.map(toAppointmentDTO)}
+      doctors={doctors}
+      doctorId={doctorFilter ?? ""}
+      nav={{
+        prev: dateKeyInTz(addDays(anchor, -step, timezone), timezone),
+        next: dateKeyInTz(addDays(anchor, step, timezone), timezone),
+        today: dateKeyInTz(now, timezone),
+      }}
+      canWrite={can(ctx.role, "appointments:write")}
+    />
   );
 }
