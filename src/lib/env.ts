@@ -1,61 +1,95 @@
 import { z } from "zod";
 
 /**
- * Validated, typed environment access. Importing `env` anywhere guarantees the
- * process is configured correctly or fails fast at boot.
+ * Validated, typed environment access.
+ *
+ * In production the process refuses to start on an invalid configuration or on
+ * a known development secret (SEC-5). During `next build` and in development /
+ * test, missing values fall back to clearly labelled dev-only defaults so the
+ * app can be built and run without a full .env.
  */
-const schema = z.object({
-  NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
-  APP_URL: z.string().url().default("http://localhost:3000"),
-  ROOT_DOMAIN: z.string().default("lvh.me:3000"),
+const DEV_AUTH_SECRET = "dev-only-auth-secret-not-for-production";
+const DEV_EMBED_SECRET = "dev-only-embed-secret-not-for-production";
 
-  DATABASE_URL: z.string().min(1),
-  REDIS_URL: z.string().optional(),
-
-  AUTH_SECRET: z.string().min(16, "AUTH_SECRET must be at least 16 chars"),
-  EMBED_SIGNING_SECRET: z.string().min(16, "EMBED_SIGNING_SECRET must be at least 16 chars"),
-
-  AI_DEFAULT_PROVIDER: z.enum(["openai", "anthropic", "gemini", "echo"]).default("openai"),
-  OPENAI_API_KEY: z.string().optional(),
-  ANTHROPIC_API_KEY: z.string().optional(),
-  GEMINI_API_KEY: z.string().optional(),
-
-
-  // Outbound e-mail for invitation / password-reset links (lib/mailer.ts).
-  // Empty strings count as unset so a blank line in .env does not break boot.
-  SMTP_URL: z.preprocess(blankToUndefined, z.string().url().optional()),
-  MAIL_FROM: z.preprocess(blankToUndefined, z.string().optional()),
-});
+const isBuildPhase = process.env.NEXT_PHASE === "phase-production-build";
+const isProduction = process.env.NODE_ENV === "production" && !isBuildPhase;
 
 function blankToUndefined(value: unknown): unknown {
   return typeof value === "string" && value.trim() === "" ? undefined : value;
 }
+const optionalString = () => z.preprocess(blankToUndefined, z.string().optional());
 
-// During `next build` / CI without a real env, fall back to safe defaults so the
-// build can complete; runtime still validates the critical secrets.
-const parsed = schema.safeParse(process.env);
+const schema = z.object({
+  NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
+  APP_URL: z.string().url().default("http://localhost:3000"),
+  /** Root domain tenant subdomains are resolved against, e.g. `clinicmind.app`. */
+  ROOT_DOMAIN: z.string().default("lvh.me:3000"),
 
-if (!parsed.success && process.env.NODE_ENV === "production") {
-  console.error("❌ Invalid environment:", parsed.error.flatten().fieldErrors);
-}
+  DATABASE_URL: z.string().min(1),
+  REDIS_URL: optionalString(),
 
-export const env = parsed.success
-  ? parsed.data
-  : ({
-      NODE_ENV: (process.env.NODE_ENV as "development") ?? "development",
-      APP_URL: process.env.APP_URL ?? "http://localhost:3000",
-      ROOT_DOMAIN: process.env.ROOT_DOMAIN ?? "lvh.me:3000",
-      DATABASE_URL: process.env.DATABASE_URL ?? "postgresql://localhost:5432/clinicmind",
-      REDIS_URL: process.env.REDIS_URL,
-      AUTH_SECRET: process.env.AUTH_SECRET ?? "dev-insecure-auth-secret-change-me",
-      EMBED_SIGNING_SECRET:
-        process.env.EMBED_SIGNING_SECRET ?? "dev-insecure-embed-secret-change-me",
-      AI_DEFAULT_PROVIDER: (process.env.AI_DEFAULT_PROVIDER as "openai") ?? "echo",
-      OPENAI_API_KEY: process.env.OPENAI_API_KEY,
-      ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
-      GEMINI_API_KEY: process.env.GEMINI_API_KEY,
-      SMTP_URL: process.env.SMTP_URL || undefined,
-      MAIL_FROM: process.env.MAIL_FROM || undefined,
-    } satisfies z.infer<typeof schema>);
+  AUTH_SECRET: z.string().min(32, "AUTH_SECRET must be at least 32 characters"),
+  EMBED_SIGNING_SECRET: z.string().min(32, "EMBED_SIGNING_SECRET must be at least 32 characters"),
+
+  // ── AI providers ─────────────────────────────────────────────────────────
+  /** `auto` picks the first configured provider in the order gemini → openai → anthropic → echo. */
+  AI_DEFAULT_PROVIDER: z.enum(["auto", "openai", "anthropic", "gemini", "echo"]).default("auto"),
+  /** `auto` picks gemini → openai → echo (Anthropic has no embeddings endpoint). */
+  AI_EMBEDDING_PROVIDER: z.enum(["auto", "openai", "gemini", "echo"]).default("auto"),
+  OPENAI_API_KEY: optionalString(),
+  ANTHROPIC_API_KEY: optionalString(),
+  GEMINI_API_KEY: optionalString(),
+  OPENAI_MODEL: z.string().default("gpt-4.1-mini"),
+  OPENAI_EMBEDDING_MODEL: z.string().default("text-embedding-3-small"),
+  ANTHROPIC_MODEL: z.string().default("claude-opus-5-5"),
+  GEMINI_MODEL: z.string().default("gemini-2.5-flash"),
+  GEMINI_EMBEDDING_MODEL: z.string().default("gemini-embedding-001"),
+  /** Upstream request timeout for every provider call. */
+  AI_TIMEOUT_MS: z.coerce.number().int().min(1000).max(120_000).default(30_000),
+
+  // ── Outbound e-mail (invitations / password reset) ───────────────────────
+  SMTP_URL: z.preprocess(blankToUndefined, z.string().url().optional()),
+  MAIL_FROM: optionalString(),
+
+  LOG_LEVEL: z.enum(["debug", "info", "warn", "error"]).default("info"),
+});
 
 export type Env = z.infer<typeof schema>;
+
+const parsed = schema.safeParse(process.env);
+
+if (isProduction) {
+  if (!parsed.success) {
+    const fields = Object.keys(parsed.error.flatten().fieldErrors).join(", ");
+    throw new Error(`Invalid environment configuration (${fields}). Refusing to start.`);
+  }
+  if (
+    parsed.data.AUTH_SECRET === DEV_AUTH_SECRET ||
+    parsed.data.EMBED_SIGNING_SECRET === DEV_EMBED_SECRET ||
+    /dev-insecure|change-me|replace-me/i.test(parsed.data.AUTH_SECRET + parsed.data.EMBED_SIGNING_SECRET)
+  ) {
+    throw new Error("AUTH_SECRET / EMBED_SIGNING_SECRET are development values. Refusing to start.");
+  }
+} else if (!parsed.success && process.env.NODE_ENV !== "test" && !isBuildPhase) {
+  console.warn(
+    "[env] using development defaults for:",
+    Object.keys(parsed.error.flatten().fieldErrors).join(", "),
+  );
+}
+
+export const env: Env = parsed.success
+  ? parsed.data
+  : schema.parse({
+      ...process.env,
+      DATABASE_URL: process.env.DATABASE_URL ?? "postgresql://clinicmind:clinicmind@localhost:5432/clinicmind?schema=public",
+      AUTH_SECRET:
+        process.env.AUTH_SECRET && process.env.AUTH_SECRET.length >= 32 ? process.env.AUTH_SECRET : DEV_AUTH_SECRET,
+      EMBED_SIGNING_SECRET:
+        process.env.EMBED_SIGNING_SECRET && process.env.EMBED_SIGNING_SECRET.length >= 32
+          ? process.env.EMBED_SIGNING_SECRET
+          : DEV_EMBED_SECRET,
+      APP_URL: process.env.APP_URL && /^https?:\/\//.test(process.env.APP_URL) ? process.env.APP_URL : undefined,
+    });
+
+/** True when the process runs with the dev-only fallback secrets. */
+export const usingDevSecrets = env.AUTH_SECRET === DEV_AUTH_SECRET || env.EMBED_SIGNING_SECRET === DEV_EMBED_SECRET;

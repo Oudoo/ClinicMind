@@ -69,9 +69,7 @@ docker compose up -d db redis minio
 
 # 2) install + schema
 npm install
-npx prisma db push
-# Apply pgvector index + RLS. Strip Prisma's ?schema= suffix, which psql rejects:
-psql "${DATABASE_URL%%\?*}" -f prisma/sql/01_pgvector_and_rls.sql
+npm run db:migrate              # applies prisma/migrations (schema, pgvector index, RLS, audit trigger)
 npm run db:seed                 # seeds the "demo" tenant; prints the demo password and the embed secret once
 
 # 3) run
@@ -107,16 +105,14 @@ retrieval guardrail.
 npm test                        # unit tests + route tests against TEST_DATABASE_URL
 ```
 
-The route tests (`src/__tests__/`) need a Postgres database with the schema
-pushed (same steps as above, against `TEST_DATABASE_URL`; they fall back to
+The route tests (`src/__tests__/`) need a Postgres database with the migrations
+applied (`npm run db:migrate` against `TEST_DATABASE_URL`; they fall back to
 `DATABASE_URL`). They create and delete their own tenants. They are skipped when
 neither variable is set; CI provides one.
 
-**Upgrading a database that already holds data:** `tenantId` was added to the
-clinical child tables and the plaintext embed key was replaced by a hashed
-secret. Run `prisma/sql/02_tenant_scope_upgrade.sql` *before* `prisma db push`
-to back-fill the new columns (it is a no-op on fresh databases), then generate a
-new embed secret from **Settings → Embed**.
+Schema changes are Prisma migrations under `prisma/migrations/`; the second
+migration adds what the schema cannot express (pgvector index, trigram index,
+Row-Level Security policies, the append-only trigger on `audit_logs`).
 
 ### Full stack in Docker
 

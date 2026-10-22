@@ -119,19 +119,19 @@ enum EmbeddingSource {
 /// A Tenant is one client's fully isolated ClinicMind instance. Resolved at
 /// request time by custom domain or subdomain (see lib/tenant.ts).
 model Tenant {
-  id        String       @id @default(cuid())
-  slug      String       @unique // subdomain, e.g. "acme" -> acme.clinics.host
-  name      String
-  status    TenantStatus @default(PROVISIONING)
+  id     String       @id @default(cuid())
+  slug   String       @unique // subdomain, e.g. "acme" -> acme.clinics.host
+  name   String
+  status TenantStatus @default(PROVISIONING)
 
   // White-label / custom-domain integration so each client can run it on their
   // own website. customDomain is verified before traffic is served.
-  customDomain         String?  @unique
-  customDomainVerified Boolean  @default(false)
+  customDomain         String? @unique
+  customDomainVerified Boolean @default(false)
 
-  branding  Json?    // { accent, logoUrl, productName, ... } overrides brand.ts defaults
-  settings  Json?    // tenant feature flags & locale (ar / en / arz)
-  embed     TenantEmbedConfig?
+  branding Json? // { accent, logoUrl, productName, ... } overrides brand.ts defaults
+  settings Json? // tenant feature flags & locale (ar / en / arz)
+  embed    TenantEmbedConfig?
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -160,9 +160,9 @@ model Tenant {
 /// Configuration governing how a tenant may embed ClinicMind into their own site
 /// or into another portal of theirs.
 model TenantEmbedConfig {
-  id             String   @id @default(cuid())
-  tenantId       String   @unique
-  tenant         Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  id       String @id @default(cuid())
+  tenantId String @unique
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   // Exact origins (scheme + host [+ port]) allowed to frame the /embed surface
   // and to mint embed tokens. An empty list refuses every token request.
@@ -177,9 +177,9 @@ model TenantEmbedConfig {
   secretPrefix    String?
   secretRotatedAt DateTime?
 
-  enabled        Boolean  @default(false)
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  enabled   Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@map("tenant_embed_configs")
 }
@@ -221,17 +221,17 @@ model User {
   passwordHash String?
   status       UserStatus @default(INVITED)
 
-  mfaEnabled   Boolean    @default(false)
-  mfaSecret    String?
+  mfaEnabled Boolean @default(false)
+  mfaSecret  String?
 
-  createdAt    DateTime   @default(now())
-  updatedAt    DateTime   @updatedAt
-  deletedAt    DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
 
   sessions       Session[]
   loginHistory   LoginEvent[]
   authTokens     AuthToken[]
-  doctorVisits   Visit[]        @relation("DoctorVisits")
+  doctorVisits   Visit[]      @relation("DoctorVisits")
   authoredAiRuns AiRun[]
 
   @@unique([tenantId, email])
@@ -242,17 +242,17 @@ model User {
 /// Server-side login session. The browser holds a random token in an httpOnly
 /// cookie; only its keyed hash is stored here (lib/auth/session.ts).
 model Session {
-  id         String   @id @default(cuid())
+  id         String    @id @default(cuid())
   userId     String
-  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  tokenHash  String   @unique
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash  String    @unique
   device     String?
   ip         String?
   userAgent  String?
   expiresAt  DateTime
   revokedAt  DateTime?
-  createdAt  DateTime @default(now())
-  lastSeenAt DateTime @default(now())
+  createdAt  DateTime  @default(now())
+  lastSeenAt DateTime  @default(now())
 
   @@index([userId])
   @@map("sessions")
@@ -304,10 +304,15 @@ model Patient {
   whatsapp         String?
   email            String?
   emergencyContact String?
+  address          String?
+  /// Preferred language for communication: "ar" | "en".
+  language         String    @default("ar")
+  tags             String[]  @default([])
+  notes            String?
 
-  createdAt        DateTime  @default(now())
-  updatedAt        DateTime  @updatedAt
-  deletedAt        DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
 
   medicalHistory MedicalHistory?
   medications    Medication[]
@@ -320,6 +325,7 @@ model Patient {
 
   @@index([tenantId])
   @@index([tenantId, phone])
+  @@index([tenantId, createdAt])
   @@map("patients")
 }
 
@@ -353,7 +359,13 @@ model Medication {
   startDate  DateTime?
   endDate    DateTime?
   active     Boolean   @default(true)
+  /// Set when a clinician stops the medication (reconciliation on sign).
+  stoppedAt  DateTime?
+  stopReason String?
+  /// Visit in which the medication was prescribed, when known.
+  visitId    String?
   createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
 
   @@index([patientId, active])
   @@index([tenantId])
@@ -363,20 +375,25 @@ model Medication {
 // ── Appointments ─────────────────────────────────────────────────────────────
 
 model Appointment {
-  id        String            @id @default(cuid())
-  tenantId  String
-  tenant    Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  clinicId  String?
-  clinic    Clinic?           @relation(fields: [clinicId], references: [id])
-  patientId String
-  patient   Patient           @relation(fields: [patientId], references: [id], onDelete: Cascade)
-  doctorId  String?
-  room      String?
-  startsAt  DateTime
-  endsAt    DateTime
-  status    AppointmentStatus @default(SCHEDULED)
-  reason    String?
-  source    ChannelType       @default(IN_PERSON)
+  id              String            @id @default(cuid())
+  tenantId        String
+  tenant          Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  clinicId        String?
+  clinic          Clinic?           @relation(fields: [clinicId], references: [id])
+  patientId       String
+  patient         Patient           @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  doctorId        String?
+  room            String?
+  startsAt        DateTime
+  endsAt          DateTime
+  status          AppointmentStatus @default(SCHEDULED)
+  reason          String?
+  notes           String?
+  source          ChannelType       @default(IN_PERSON)
+  /// Why the appointment was cancelled or marked a no-show.
+  cancelReason    String?
+  statusChangedAt DateTime?
+  createdById     String?
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -386,6 +403,7 @@ model Appointment {
 
   @@index([tenantId, startsAt])
   @@index([tenantId, status])
+  @@index([tenantId, patientId, startsAt])
   @@index([doctorId, startsAt])
   @@map("appointments")
 }
@@ -429,13 +447,13 @@ model Consultation {
   doctorId  String?
   status    ConsultationStatus @default(RECORDING)
 
-  audioKey       String? // S3 object key
-  transcript     String?
+  audioKey     String? // S3 object key
+  transcript   String?
   // Structured extraction stored separately from free text.
-  extraction     Json?   // { symptoms[], diagnoses[], medications[], tests[], followUps[] }
-  summary        String?
-  reviewedById   String?
-  reviewedAt     DateTime?
+  extraction   Json? // { symptoms[], diagnoses[], medications[], tests[], followUps[] }
+  summary      String?
+  reviewedById String?
+  reviewedAt   DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -473,19 +491,19 @@ model AiRun {
 // ── Conversations (AI receptionist & voice agent) ────────────────────────────
 
 model Conversation {
-  id        String      @id @default(cuid())
-  tenantId  String
-  tenant    Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  patientId String?
-  patient   Patient?    @relation(fields: [patientId], references: [id])
-  channel   ChannelType
-  externalId String?    // WhatsApp wa_id / call sid
-  locale    String      @default("ar")
+  id           String      @id @default(cuid())
+  tenantId     String
+  tenant       Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  patientId    String?
+  patient      Patient?    @relation(fields: [patientId], references: [id])
+  channel      ChannelType
+  externalId   String? // WhatsApp wa_id / call sid
+  locale       String      @default("ar")
   recordingKey String?
   transcript   String?
   summary      String?
-  createdAt DateTime    @default(now())
-  updatedAt DateTime    @updatedAt
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
 
   messages Message[]
 
@@ -519,7 +537,7 @@ model Document {
   patientId String
   patient   Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
   name      String
-  kind      String   // pdf | image | lab | attachment
+  kind      String // pdf | image | lab | attachment
   s3Key     String
   mimeType  String?
   sizeBytes Int?
@@ -553,18 +571,30 @@ model TimelineEvent {
 // ── RAG embeddings (pgvector) ────────────────────────────────────────────────
 
 model KnowledgeEmbedding {
-  id         String          @id @default(cuid())
-  tenantId   String
-  tenant     Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  source     EmbeddingSource
-  refId      String
-  content    String
-  // 1536-dim OpenAI text-embedding-3-small vector. Indexed with ivfflat/hnsw in
-  // a migration (Prisma can't express vector indexes yet — see migration SQL).
-  embedding  Unsupported("vector(1536)")?
-  createdAt  DateTime        @default(now())
+  id          String                       @id @default(cuid())
+  tenantId    String
+  tenant      Tenant                       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  source      EmbeddingSource
+  /// Id of the source record (patient, visit, consultation, conversation…).
+  refId       String
+  /// Patient the chunk is about, when applicable — lets answers cite a patient.
+  patientId   String?
+  /// Position of this chunk within the source document (0-based).
+  chunkIndex  Int                          @default(0)
+  content     String
+  /// SHA-256 of `content`; unchanged chunks are not re-embedded on re-index.
+  contentHash String?
+  /// Free-form provenance (title, occurredAt, model used, …).
+  metadata    Json?
+  // 1536-dim vector (OpenAI text-embedding-3-small, or Gemini with
+  // outputDimensionality 1536). Indexed with ivfflat in the migration SQL.
+  embedding   Unsupported("vector(1536)")?
+  createdAt   DateTime                     @default(now())
+  updatedAt   DateTime                     @updatedAt
 
+  @@unique([tenantId, source, refId, chunkIndex])
   @@index([tenantId, source])
+  @@index([tenantId, patientId])
   @@map("knowledge_embeddings")
 }
 

@@ -3,10 +3,10 @@ services:
     image: pgvector/pgvector:pg16
     environment:
       POSTGRES_USER: clinicmind
-      POSTGRES_PASSWORD: clinicmind
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-clinicmind}
       POSTGRES_DB: clinicmind
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
       - ./.docker-data/pg:/var/lib/postgresql/data
     healthcheck:
@@ -18,7 +18,7 @@ services:
   redis:
     image: redis:7-alpine
     ports:
-      - "6379:6379"
+      - "127.0.0.1:6379:6379"
     volumes:
       - ./.docker-data/redis:/data
 
@@ -30,8 +30,8 @@ services:
       MINIO_ROOT_USER: clinicmind
       MINIO_ROOT_PASSWORD: clinicmind-secret
     ports:
-      - "9000:9000"
-      - "9001:9001"
+      - "127.0.0.1:9000:9000"
+      - "127.0.0.1:9001:9001"
     volumes:
       - ./.docker-data/minio:/data
 
@@ -46,13 +46,18 @@ services:
       NODE_ENV: production
       APP_URL: http://localhost:3000
       ROOT_DOMAIN: lvh.me:3000
-      DATABASE_URL: postgresql://clinicmind:clinicmind@db:5432/clinicmind?schema=public
+      DATABASE_URL: postgresql://clinicmind:${POSTGRES_PASSWORD:-clinicmind}@db:5432/clinicmind?schema=public
       REDIS_URL: redis://redis:6379
-      AUTH_SECRET: ${AUTH_SECRET:-dev-insecure-auth-secret-change-me}
-      EMBED_SIGNING_SECRET: ${EMBED_SIGNING_SECRET:-dev-insecure-embed-secret-change-me}
-      AI_DEFAULT_PROVIDER: ${AI_DEFAULT_PROVIDER:-echo}
+      # Required: the app refuses to start with missing or placeholder secrets.
+      AUTH_SECRET: ${AUTH_SECRET:?set AUTH_SECRET in .env (openssl rand -base64 48)}
+      EMBED_SIGNING_SECRET: ${EMBED_SIGNING_SECRET:?set EMBED_SIGNING_SECRET in .env (openssl rand -base64 48)}
+      AI_DEFAULT_PROVIDER: ${AI_DEFAULT_PROVIDER:-auto}
+      AI_EMBEDDING_PROVIDER: ${AI_EMBEDDING_PROVIDER:-auto}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      SMTP_URL: ${SMTP_URL:-}
+      MAIL_FROM: ${MAIL_FROM:-}
       SMTP_URL: ${SMTP_URL:-}
       MAIL_FROM: ${MAIL_FROM:-}
       S3_ENDPOINT: http://minio:9000

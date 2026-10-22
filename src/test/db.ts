@@ -56,8 +56,16 @@ export async function sessionCookieFor(userId: string): Promise<string> {
   return `${SESSION_COOKIE}=${session.token}`;
 }
 
+/**
+ * Remove tenants and everything beneath them. The audit log is append-only at
+ * the database level; cascading its rows requires the explicit opt-in flag
+ * inside the same transaction (see the RLS/audit migration).
+ */
 export async function deleteTenants(ids: string[]): Promise<void> {
-  await db.tenant.deleteMany({ where: { id: { in: ids } } });
+  await db.$transaction([
+    db.$executeRawUnsafe(`SET LOCAL app.allow_audit_delete = 'on'`),
+    db.tenant.deleteMany({ where: { id: { in: ids } } }),
+  ]);
 }
 
 /** Build a Request against a route handler. */
