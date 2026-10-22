@@ -82,7 +82,26 @@ The seed creates two demo staff accounts, `owner@demo.clinic` (clinic owner) and
 Sign in at `/login`; there is no development bypass — every request to
 `/dashboard` and `/api/*` needs a session (or an embed token). Without AI keys
 the app uses the deterministic `echo` provider, which still enforces the
-retrieval guardrail.
+retrieval guardrail and summarises the retrieved records verbatim.
+
+### AI assistant data (RAG)
+
+The assistant answers only from `knowledge_embeddings`, which is populated by
+`src/modules/knowledge/ingest.ts`: one plain-text document per patient
+(profile + history, medications), visit, signed consultation and conversation,
+chunked (~800 chars, 100 overlap), content-hashed and embedded at 1536
+dimensions (Gemini `gemini-embedding-001` or OpenAI `text-embedding-3-small`;
+offline `echo` without keys). Writes are idempotent — unchanged chunks are not
+re-embedded. Build or rebuild the store for a tenant with:
+
+```bash
+npm run ai:reindex -- demo            # one tenant by slug
+npm run ai:reindex -- --all           # every active tenant
+```
+
+Retrieval is hybrid (pgvector cosine + `pg_trgm` lexical match for names and
+drug names), optionally scoped to one patient, and every answer reports whether
+it is grounded with citations that link to the patient's record.
 
 ### Accounts, invitations and password reset
 
