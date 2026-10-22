@@ -1,3 +1,10 @@
+# Local / demo stack: Postgres + pgvector, one-shot migrations, the app.
+#
+#   cp .env.example .env            # set AUTH_SECRET, EMBED_SIGNING_SECRET (+ an AI key)
+#   docker compose up --build       # http://localhost:3000
+#   docker compose --profile seed run --rm seed   # demo clinic + printed password
+#
+# Production: see docker-compose.prod.yml and docs/RUNBOOK.md.
 services:
   db:
     image: pgvector/pgvector:pg16
@@ -10,44 +17,48 @@ services:
     volumes:
       - ./.docker-data/pg:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U clinicmind"]
+      test: ["CMD-SHELL", "pg_isready -U clinicmind -d clinicmind"]
       interval: 5s
       timeout: 5s
       retries: 10
 
-  redis:
-    image: redis:7-alpine
-    ports:
-      - "127.0.0.1:6379:6379"
-    volumes:
-      - ./.docker-data/redis:/data
-
-  # S3-compatible object storage for audio / documents / images.
-  minio:
-    image: minio/minio:latest
-    command: server /data --console-address ":9001"
+  migrate:
+    build:
+      context: .
+      target: tools
+    depends_on:
+      db:
+        condition: service_healthy
     environment:
-      MINIO_ROOT_USER: clinicmind
-      MINIO_ROOT_PASSWORD: clinicmind-secret
-    ports:
-      - "127.0.0.1:9000:9000"
-      - "127.0.0.1:9001:9001"
-    volumes:
-      - ./.docker-data/minio:/data
+      DATABASE_URL: postgresql://clinicmind:${POSTGRES_PASSWORD:-clinicmind}@db:5432/clinicmind?schema=public
+    command: ["npx", "prisma", "migrate", "deploy"]
+
+  seed:
+    profiles: ["seed"]
+    build:
+      context: .
+      target: tools
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    environment:
+      DATABASE_URL: postgresql://clinicmind:${POSTGRES_PASSWORD:-clinicmind}@db:5432/clinicmind?schema=public
+      AUTH_SECRET: ${AUTH_SECRET:?set AUTH_SECRET in .env (openssl rand -base64 48)}
+      EMBED_SIGNING_SECRET: ${EMBED_SIGNING_SECRET:?set EMBED_SIGNING_SECRET in .env (openssl rand -base64 48)}
+      APP_URL: ${APP_URL:-http://localhost:3000}
+      SEED_DEMO_PASSWORD: ${SEED_DEMO_PASSWORD:-}
+    command: ["npx", "tsx", "prisma/seed.ts"]
 
   web:
     build: .
     depends_on:
-      db:
-        condition: service_healthy
-      redis:
-        condition: service_started
+      migrate:
+        condition: service_completed_successfully
     environment:
       NODE_ENV: production
-      APP_URL: http://localhost:3000
-      ROOT_DOMAIN: lvh.me:3000
+      APP_URL: ${APP_URL:-http://localhost:3000}
+      ROOT_DOMAIN: ${ROOT_DOMAIN:-localhost:3000}
       DATABASE_URL: postgresql://clinicmind:${POSTGRES_PASSWORD:-clinicmind}@db:5432/clinicmind?schema=public
-      REDIS_URL: redis://redis:6379
       # Required: the app refuses to start with missing or placeholder secrets.
       AUTH_SECRET: ${AUTH_SECRET:?set AUTH_SECRET in .env (openssl rand -base64 48)}
       EMBED_SIGNING_SECRET: ${EMBED_SIGNING_SECRET:?set EMBED_SIGNING_SECRET in .env (openssl rand -base64 48)}
@@ -56,13 +67,11 @@ services:
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.5-flash}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4.1-mini}
+      ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-claude-opus-5-5}
       SMTP_URL: ${SMTP_URL:-}
       MAIL_FROM: ${MAIL_FROM:-}
-      SMTP_URL: ${SMTP_URL:-}
-      MAIL_FROM: ${MAIL_FROM:-}
-      S3_ENDPOINT: http://minio:9000
-      S3_BUCKET: clinicmind
-      S3_ACCESS_KEY_ID: clinicmind
-      S3_SECRET_ACCESS_KEY: clinicmind-secret
     ports:
       - "3000:3000"
+    restart: unless-stopped

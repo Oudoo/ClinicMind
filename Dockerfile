@@ -11,6 +11,14 @@ COPY prisma ./prisma
 RUN npm ci
 RUN npx prisma generate
 
+# ── tools: migrations and seeding (prisma CLI + tsx, no Next build) ──────────
+FROM deps AS tools
+COPY tsconfig.json ./
+COPY src ./src
+COPY scripts ./scripts
+ENV NODE_ENV=production
+CMD ["npx", "prisma", "migrate", "deploy"]
+
 # ── build ────────────────────────────────────────────────────────────────────
 FROM base AS build
 COPY --from=deps /app/node_modules ./node_modules

@@ -1,0 +1,96 @@
+# Production stack: Caddy (automatic HTTPS) → app, Postgres with a named volume,
+# one-shot migrations, nightly backups. See docs/RUNBOOK.md.
+#
+#   docker compose -f docker-compose.prod.yml --env-file .env up -d --build
+services:
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      DOMAIN: ${DOMAIN:?set DOMAIN (e.g. app.clinic.example)}
+      ACME_EMAIL: ${ACME_EMAIL:?set ACME_EMAIL for certificate notices}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - web
+
+  db:
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: clinicmind
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+      POSTGRES_DB: clinicmind
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U clinicmind -d clinicmind"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    # Not published: only reachable from the other services on this network.
+
+  migrate:
+    build:
+      context: .
+      target: tools
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://clinicmind:${POSTGRES_PASSWORD}@db:5432/clinicmind?schema=public
+    command: ["npx", "prisma", "migrate", "deploy"]
+
+  web:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    environment:
+      NODE_ENV: production
+      APP_URL: https://${DOMAIN}
+      ROOT_DOMAIN: ${ROOT_DOMAIN:-${DOMAIN}}
+      DATABASE_URL: postgresql://clinicmind:${POSTGRES_PASSWORD}@db:5432/clinicmind?schema=public
+      AUTH_SECRET: ${AUTH_SECRET:?set AUTH_SECRET (openssl rand -base64 48)}
+      EMBED_SIGNING_SECRET: ${EMBED_SIGNING_SECRET:?set EMBED_SIGNING_SECRET (openssl rand -base64 48)}
+      AI_DEFAULT_PROVIDER: ${AI_DEFAULT_PROVIDER:-auto}
+      AI_EMBEDDING_PROVIDER: ${AI_EMBEDDING_PROVIDER:-auto}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.5-flash}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4.1-mini}
+      ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-claude-opus-5-5}
+      AI_TIMEOUT_MS: ${AI_TIMEOUT_MS:-30000}
+      SMTP_URL: ${SMTP_URL:-}
+      MAIL_FROM: ${MAIL_FROM:-}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    # Not published: Caddy is the only entry point.
+
+  backup:
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+      BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-30}
+    volumes:
+      - ./backups:/backups
+      - ./scripts/backup.sh:/usr/local/bin/clinicmind-backup:ro
+    entrypoint: ["/bin/sh", "-c"]
+    # Nightly at 02:00 (container clock, UTC). Dumps are gzip-compressed custom-format archives.
+    command: ["while true; do sleep $$((($$(date -d 'tomorrow 02:00' +%s) - $$(date +%s)))); clinicmind-backup; done"]
+
+volumes:
+  pg_data:
+  caddy_data:
+  caddy_config:
