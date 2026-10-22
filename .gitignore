@@ -39,3 +39,6 @@ prisma/migrations/dev.db*
 
 # docker volumes
 /.docker-data
+
+# Claude Code session data (agent worktrees, local settings)
+.claude/
