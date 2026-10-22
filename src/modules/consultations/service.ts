@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import type { AppointmentStatus, Prisma } from "@prisma/client";
 import { db, notDeleted } from "@/lib/db";
 import { audit } from "@/lib/audit";
+import { ingestInBackground } from "@/modules/knowledge/ingest";
 import { handleApiError } from "@/lib/api";
 import { requireTenantPatient } from "@/lib/tenant-scope";
 import {
@@ -292,6 +293,11 @@ export async function signConsultation(
     },
   });
 
+  // Make the signed record retrievable by the assistant (fire-and-forget).
+  ingestInBackground({ kind: "consultation", tenantId, id: consultation.id });
+  ingestInBackground({ kind: "visit", tenantId, id: result.visitId });
+  ingestInBackground({ kind: "patient", tenantId, id: consultation.patientId });
+
   return {
     ok: true,
     visitId: result.visitId,
@@ -341,6 +347,9 @@ export async function discardConsultation(
     before: { status: consultation.status },
     after: { status: "DISCARDED" },
   });
+
+  // A discarded draft must not stay retrievable.
+  ingestInBackground({ kind: "consultation", tenantId, id: consultation.id });
 
   return { ok: true, id: consultation.id, status: "DISCARDED" };
 }

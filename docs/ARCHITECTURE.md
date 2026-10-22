@@ -148,7 +148,7 @@ deployments.
 ## 6. Data model highlights
 
 - **History is never overwritten** — `AiRun`, `Visit`, `Consultation`,
-  `TimelineEvent` are append-only; diagnoses/medications are reconciled on sign
+  `TimelineEvent` are append-only; diagnoses/medications are appended or reconciled on sign
   (new diagnoses appended, existing active medications updated or stopped).
 - **Soft delete** via `deletedAt` + `notDeleted` filter.
 - **Unified timeline** (`TimelineEvent`) denormalizes appointments, calls,
