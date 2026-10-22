@@ -88,6 +88,49 @@ the app starts, a nightly `pg_dump` lands in `./backups`.
 | Health | `https://cm.growcdx.com/api/health` |
 | Later deploys | GitHub → Actions → *Deploy* → *Run workflow* (tag `latest` or a commit sha), after adding the `DEPLOY_HOST`, `DEPLOY_USER` and `DEPLOY_SSH_KEY` repository secrets; or `git pull` and `up -d` on the server |
 
+### Hostinger in one workflow
+
+ClinicMind runs on a Hostinger **KVM VPS** (any size; shared hosting cannot run
+Docker or PostgreSQL). Buy the plan in hPanel and leave it un-set-up; the
+*Provision Hostinger* workflow does the rest through the Hostinger API: it
+installs Ubuntu 24.04 with a post-install script that clones this repository
+and runs `scripts/server-setup.sh`, points `cm.growcdx.com` and
+`*.cm.growcdx.com` at the server in the Hostinger DNS zone, and waits for
+`/api/health`.
+
+1. Create an API token in hPanel (Account → API,
+   <https://hpanel.hostinger.com/profile/api>) and store it as the repository
+   secret `HOSTINGER_API_TOKEN`. Optional secrets: `GEMINI_API_KEY` (live AI;
+   it travels inside the post-install script, which the workflow deletes from
+   Hostinger once the server runs) and `SEED_DEMO_PASSWORD` (the demo
+   accounts' password; otherwise one is generated on the server and kept in
+   `/opt/clinicmind/.env`). An optional repository *variable* `SSH_PUBLIC_KEY`
+   is installed for `root`.
+   ```bash
+   gh secret set HOSTINGER_API_TOKEN --repo Oudoo/ClinicMind
+   gh secret set GEMINI_API_KEY --repo Oudoo/ClinicMind        # optional
+   gh secret set SEED_DEMO_PASSWORD --repo Oudoo/ClinicMind    # optional
+   ```
+2. The repository's default branch must be `main`
+   (`gh repo edit Oudoo/ClinicMind --default-branch main`): GitHub registers
+   `workflow_dispatch` and `workflow_run` workflows only from the default
+   branch, so *Provision Hostinger*, *Release image* and *Deploy* do not exist
+   until then.
+3. Actions → *Provision Hostinger* → *Run workflow*: the contact e-mail for
+   the certificates, the domain (`cm.growcdx.com`), mode `setup`. Leave the
+   VM id empty to use the VPS awaiting setup. Mode `recreate` reinstalls an
+   existing VPS and destroys its data; it needs the VM id.
+4. The run prints the server IP and ends when `https://cm.growcdx.com/api/health`
+   answers: 10–20 minutes on first boot, less once *Release image* has
+   published images the server can pull (packages must be public, or the
+   server builds locally). Setup logs on the server: `/post_install.log`
+   (hPanel → VPS → Browser terminal).
+
+The same script runs anywhere with curl, jq and openssl:
+`HOSTINGER_API_TOKEN=… ACME_EMAIL=you@example.com bash scripts/hostinger-publish.sh`.
+If the DNS zone is not managed at Hostinger, pass `SKIP_DNS=true` and create
+the two A records yourself.
+
 ### Upgrading
 
 Run the *Deploy* workflow, or on the server:

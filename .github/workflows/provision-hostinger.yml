@@ -1,0 +1,64 @@
+name: Provision Hostinger
+
+# Sets up a Hostinger KVM VPS for ClinicMind through the Hostinger API and points
+# the domain at it: see scripts/hostinger-publish.sh and docs/RUNBOOK.md §5.
+# Repository secrets: HOSTINGER_API_TOKEN (required), GEMINI_API_KEY and
+# SEED_DEMO_PASSWORD (optional). Repository variable SSH_PUBLIC_KEY (optional).
+on:
+  workflow_dispatch:
+    inputs:
+      acme_email:
+        description: "Contact e-mail for the TLS certificates (Let's Encrypt)"
+        required: true
+      domain:
+        description: "App domain; tenants live under *.<domain>"
+        required: true
+        default: cm.growcdx.com
+      mode:
+        description: "setup = a purchased VPS that is not set up yet (safe). recreate = reinstall an existing VPS (destroys its data; needs vm_id)"
+        type: choice
+        options: [setup, recreate]
+        default: setup
+      vm_id:
+        description: "Hostinger virtual machine id (empty = the first VPS awaiting setup)"
+        required: false
+        default: ""
+      data_center_id:
+        description: "Data center id (empty = the VPS's own, else a European one)"
+        required: false
+        default: ""
+      skip_dns:
+        description: "Leave DNS alone (create the A records yourself)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: provision-hostinger
+  cancel-in-progress: false
+
+jobs:
+  provision:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Provision the VPS and DNS
+        env:
+          HOSTINGER_API_TOKEN: ${{ secrets.HOSTINGER_API_TOKEN }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          SEED_DEMO_PASSWORD: ${{ secrets.SEED_DEMO_PASSWORD }}
+          SSH_PUBLIC_KEY: ${{ vars.SSH_PUBLIC_KEY }}
+          ACME_EMAIL: ${{ inputs.acme_email }}
+          DOMAIN: ${{ inputs.domain }}
+          MODE: ${{ inputs.mode }}
+          VM_ID: ${{ inputs.vm_id }}
+          DATA_CENTER_ID: ${{ inputs.data_center_id }}
+          SKIP_DNS: ${{ inputs.skip_dns }}
+          REPO_URL: ${{ github.server_url }}/${{ github.repository }}
+          REPO_REF: ${{ github.ref_name }}
+        run: |
+          test -n "$HOSTINGER_API_TOKEN" || { echo "The HOSTINGER_API_TOKEN repository secret is not set (hPanel → Account → API)."; exit 1; }
+          bash scripts/hostinger-publish.sh

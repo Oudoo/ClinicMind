@@ -220,7 +220,8 @@ pgvector, a one-shot migration service, the standalone web server, an optional
 demo seed and a nightly `pg_dump` with retention. The *Release image* workflow
 publishes the images to GitHub Container Registry once CI is green; the
 *Deploy* workflow updates a server over SSH; `scripts/server-setup.sh` prepares
-a fresh Ubuntu server in one command. Configuration, the cm.growcdx.com
+a fresh Ubuntu server in one command; the *Provision Hostinger* workflow sets
+up a Hostinger KVM VPS and its DNS records in one run. Configuration, the cm.growcdx.com
 checklist, upgrades, backups, secret rotation, monitoring and troubleshooting
 are in [`docs/RUNBOOK.md`](docs/RUNBOOK.md).
 

@@ -6,8 +6,10 @@
 #   bash scripts/server-setup.sh cm.growcdx.com you@example.com
 #
 # Installs Docker, opens ports 22/80/443, writes .env with fresh secrets (when
-# none exists), starts the production stack, seeds the demo clinic and prints
-# the demo password. Re-running it is safe: it keeps an existing .env.
+# none exists), starts the production stack (pulling the published images, or
+# building when they cannot be pulled), seeds the demo clinic and prints the
+# demo password. Re-running it is safe: it keeps an existing .env. Optional
+# environment: GEMINI_API_KEY (live AI), SEED_DEMO_PASSWORD (demo password).
 set -euo pipefail
 
 DOMAIN=${1:?usage: server-setup.sh <domain> <acme e-mail> [root domain]}
@@ -30,7 +32,7 @@ ufw --force enable >/dev/null
 
 if [ ! -f .env ]; then
   echo "▶ Writing .env with fresh secrets"
-  SEED_PASSWORD="Demo-$(openssl rand -base64 12 | tr -dc 'A-Za-z0-9' | head -c 12)!"
+  SEED_PASSWORD=${SEED_DEMO_PASSWORD:-"Demo-$(openssl rand -base64 12 | tr -dc 'A-Za-z0-9' | head -c 12)!"}
   cat > .env <<EOF
 DOMAIN=$DOMAIN
 ROOT_DOMAIN=$ROOT_DOMAIN
@@ -54,9 +56,14 @@ else
   echo "▶ Keeping the existing .env"
 fi
 
-echo "▶ Starting the stack (first start builds the images; a few minutes)"
+echo "▶ Starting the stack"
 compose="docker compose -f docker-compose.prod.yml --env-file .env"
-$compose up -d --build --remove-orphans
+if $compose pull --quiet web migrate 2>/dev/null; then
+  $compose up -d --remove-orphans
+else
+  echo "  (published images not reachable; building locally, a few minutes)"
+  $compose up -d --build --remove-orphans
+fi
 
 echo "▶ Seeding the demo clinic"
 $compose --profile seed run --rm seed
