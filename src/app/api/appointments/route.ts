@@ -1,42 +1,46 @@
 import { getActingContext } from "@/lib/auth/session";
 import { assertCan } from "@/lib/auth/rbac";
+import { clientIp, crossOriginRejected, isSameOrigin } from "@/lib/auth/request";
+import { handleApiError, ok, unauthorized } from "@/lib/api";
 import {
+  AppointmentListQuery,
   createAppointment,
   listAppointments,
-  AppointmentInput,
 } from "@/modules/appointments/service";
-import { handleApiError, ok, unauthorized } from "@/lib/api";
+import { appointmentErrorResponse } from "./_lib/errors";
 
 export const dynamic = "force-dynamic";
 
+/** `GET /api/appointments?from&to&doctorId&status&patientId` → `{ appointments }`. */
 export async function GET(req: Request) {
   try {
     const ctx = await getActingContext(req);
     if (!ctx) return unauthorized();
     assertCan(ctx.role, "appointments:read");
-    const params = new URL(req.url).searchParams;
-    const from = params.get("from") ? new Date(params.get("from")!) : new Date();
-    const to = params.get("to")
-      ? new Date(params.get("to")!)
-      : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
-    return ok({ appointments: await listAppointments(ctx.tenantId, { from, to }) });
+    const filter = AppointmentListQuery.parse(Object.fromEntries(new URL(req.url).searchParams));
+    return ok({ appointments: await listAppointments(ctx.tenantId, filter) });
   } catch (err) {
     return handleApiError(err);
   }
 }
 
+/**
+ * Book an appointment. 201 `{ appointment, conflicts }`; 409 `{ error: "conflict",
+ * conflicts }` when the slot is taken unless the body sets `allowWaitlist`.
+ */
 export async function POST(req: Request) {
   try {
+    if (!isSameOrigin(req)) return crossOriginRejected();
     const ctx = await getActingContext(req);
     if (!ctx) return unauthorized();
     assertCan(ctx.role, "appointments:write");
-    const input = AppointmentInput.parse(await req.json());
-    const result = await createAppointment(ctx.tenantId, input, {
-      id: ctx.userId ?? undefined,
-      email: ctx.email ?? undefined,
+    const result = await createAppointment(ctx.tenantId, await req.json(), {
+      id: ctx.userId,
+      email: ctx.email,
+      ip: clientIp(req),
     });
     return ok(result, { status: 201 });
   } catch (err) {
-    return handleApiError(err);
+    return appointmentErrorResponse(err) ?? handleApiError(err);
   }
 }
