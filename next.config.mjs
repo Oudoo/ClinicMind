@@ -5,11 +5,9 @@ const nextConfig = {
   // Emit a self-contained server in .next/standalone so the Docker image ships
   // only the traced production modules instead of the full node_modules tree.
   output: "standalone",
-  // ClinicMind can be embedded on a clinic's own website or inside another
-  // portal of theirs. We therefore do NOT globally
-  // deny framing. Per-route framing policy is enforced in src/proxy.ts where the
-  // embed surface (/embed/*) is allowed to be framed by the tenant's allowed origins
-  // and everything else stays same-origin only.
+  // Static security headers. The Content-Security-Policy (including the
+  // per-tenant frame-ancestors for /embed/*) is emitted per request by
+  // src/proxy.ts.
   async headers() {
     return [
       {
@@ -18,7 +16,14 @@ const nextConfig = {
           { key: "X-Content-Type-Options", value: "nosniff" },
           { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
           { key: "X-DNS-Prefetch-Control", value: "off" },
+          { key: "Strict-Transport-Security", value: "max-age=63072000; includeSubDomains" },
+          { key: "Permissions-Policy", value: "camera=(), microphone=(self), geolocation=(), payment=(), usb=()" },
+          { key: "Cross-Origin-Opener-Policy", value: "same-origin-allow-popups" },
         ],
+      },
+      {
+        source: "/api/:path*",
+        headers: [{ key: "Cache-Control", value: "no-store" }],
       },
     ];
   },

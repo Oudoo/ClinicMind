@@ -1,5 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { EMBED_COOKIE, SESSION_COOKIE } from "@/lib/auth/constants";
+import { rateLimit } from "@/lib/auth/rate-limit";
+import { getEmbedOrigins } from "@/lib/embed-origins";
 
 /**
  * Request proxy (the Next.js 16 successor of `middleware.ts`; runs on the Node.js runtime).
@@ -10,38 +12,131 @@ import { EMBED_COOKIE, SESSION_COOKIE } from "@/lib/auth/constants";
  *  - Sends dashboard visitors who carry no credential cookie at all to /login,
  *    preserving the requested path. This is a cheap short-circuit without a DB
  *    round trip; the dashboard layout performs the authoritative session check.
- *  - Applies the framing policy: /embed/* may be framed (frame-ancestors is
- *    finalised per tenant in the route layer); everything else is same-origin.
+ *  - Rate-limits the API per client address, with tighter budgets on the AI and
+ *    token-minting endpoints (SEC-8). State is per process; the per-account
+ *    lockouts in lib/auth are database-backed.
+ *  - Emits the Content-Security-Policy. `/embed/<slug>` may be framed only by
+ *    that tenant's allow-listed origins (SEC-7); every other page refuses to be
+ *    framed at all.
  */
-export function proxy(req: NextRequest) {
+export async function proxy(req: NextRequest) {
   const { pathname, search } = req.nextUrl;
+
+  if (pathname.startsWith("/api/")) {
+    const limited = apiRateLimit(req, pathname);
+    if (limited) return limited;
+  }
 
   if (isDashboardPath(pathname) && !req.cookies.has(SESSION_COOKIE) && !req.cookies.has(EMBED_COOKIE)) {
     const login = new URL("/login", req.url);
     login.searchParams.set("next", `${pathname}${search}`);
-    return withFramingPolicy(NextResponse.redirect(login), pathname);
+    return withSecurityHeaders(NextResponse.redirect(login), pathname, null);
   }
 
   const requestHeaders = new Headers(req.headers);
   requestHeaders.delete("x-clinicmind-tenant");
   requestHeaders.delete("x-clinicmind-domain");
 
-  return withFramingPolicy(NextResponse.next({ request: { headers: requestHeaders } }), pathname);
+  const embedSlug = embedSlugOf(pathname);
+  const frameAncestors = embedSlug ? await embedFrameAncestors(embedSlug) : null;
+
+  return withSecurityHeaders(
+    NextResponse.next({ request: { headers: requestHeaders } }),
+    pathname,
+    frameAncestors,
+  );
 }
 
 function isDashboardPath(pathname: string): boolean {
   return pathname === "/dashboard" || pathname.startsWith("/dashboard/");
 }
 
-function withFramingPolicy(res: NextResponse, pathname: string): NextResponse {
-  if (!pathname.startsWith("/embed")) {
-    // Hard deny framing for the admin surface; embed routes set their own CSP.
+function embedSlugOf(pathname: string): string | null {
+  const m = /^\/embed\/([a-z0-9-]+)\/?$/.exec(pathname);
+  return m ? m[1]! : null;
+}
+
+async function embedFrameAncestors(slug: string): Promise<string> {
+  const cfg = await getEmbedOrigins(slug);
+  if (!cfg || !cfg.enabled || cfg.origins.length === 0) return "'self'";
+  return `'self' ${cfg.origins.join(" ")}`;
+}
+
+// ── Rate limiting ────────────────────────────────────────────────────────────
+
+const WINDOW_MS = 5 * 60 * 1000;
+const LIMITS: { test: (p: string) => boolean; limit: number; name: string }[] = [
+  { test: (p) => p === "/api/assistant" || p === "/api/consultations/extract", limit: 40, name: "ai" },
+  { test: (p) => p === "/api/embed/token", limit: 60, name: "embed-token" },
+  { test: () => true, limit: 600, name: "api" },
+];
+
+function apiRateLimit(req: NextRequest, pathname: string): NextResponse | null {
+  // Authentication endpoints have their own per-e-mail and per-IP budgets.
+  if (pathname.startsWith("/api/auth/") || pathname === "/api/health") return null;
+  const ip = clientAddress(req);
+  for (const rule of LIMITS) {
+    if (!rule.test(pathname)) continue;
+    const result = rateLimit(`${rule.name}:${ip}`, rule.limit, WINDOW_MS);
+    if (!result.ok) {
+      return NextResponse.json(
+        { error: "rate_limited", retryAfterSeconds: result.retryAfterSeconds },
+        { status: 429, headers: { "Retry-After": String(result.retryAfterSeconds), "Cache-Control": "no-store" } },
+      );
+    }
+    if (rule.name !== "api") {
+      // Specific budgets also count against the general one.
+      const general = rateLimit(`api:${ip}`, 600, WINDOW_MS);
+      if (!general.ok) {
+        return NextResponse.json(
+          { error: "rate_limited", retryAfterSeconds: general.retryAfterSeconds },
+          { status: 429, headers: { "Retry-After": String(general.retryAfterSeconds) } },
+        );
+      }
+    }
+    return null;
+  }
+  return null;
+}
+
+function clientAddress(req: NextRequest): string {
+  const forwarded = req.headers.get("x-forwarded-for");
+  const first = forwarded?.split(",")[0]?.trim();
+  return (first || req.headers.get("x-real-ip") || "unknown").slice(0, 64);
+}
+
+// ── Security headers ─────────────────────────────────────────────────────────
+
+const isDev = process.env.NODE_ENV !== "production";
+
+function contentSecurityPolicy(frameAncestors: string): string {
+  return [
+    "default-src 'self'",
+    // Next.js injects inline bootstrap scripts; dev needs eval for fast refresh.
+    `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ""}`,
+    "style-src 'self' 'unsafe-inline'",
+    "img-src 'self' data: blob: https:",
+    "font-src 'self' data:",
+    `connect-src 'self'${isDev ? " ws: wss:" : ""}`,
+    "media-src 'self' blob:",
+    "object-src 'none'",
+    "base-uri 'self'",
+    "form-action 'self'",
+    `frame-ancestors ${frameAncestors}`,
+  ].join("; ");
+}
+
+function withSecurityHeaders(res: NextResponse, pathname: string, embedFrameAncestors: string | null): NextResponse {
+  const isEmbed = pathname.startsWith("/embed");
+  if (isEmbed) {
+    res.headers.set("Content-Security-Policy", contentSecurityPolicy(embedFrameAncestors ?? "'self'"));
+  } else {
     res.headers.set("X-Frame-Options", "DENY");
-    res.headers.set("Content-Security-Policy", "frame-ancestors 'self'");
+    res.headers.set("Content-Security-Policy", contentSecurityPolicy("'none'"));
   }
   return res;
 }
 
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|embed.js).*)"],
+  matcher: ["/((?!_next/static|_next/image|favicon.ico|embed.js|logo.svg|icon.svg).*)"],
 };

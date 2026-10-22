@@ -21,7 +21,9 @@ export async function POST(req: Request) {
     const cookieStore = await cookies();
     cookieStore.set("cm_embed", token, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
+      // SameSite=None cookies are only accepted with Secure; browsers treat
+      // http://localhost as a secure context, so this also works for local embeds.
+      secure: true,
       sameSite: "none", // allow the cookie inside a cross-site iframe
       path: "/",
       maxAge: 600,

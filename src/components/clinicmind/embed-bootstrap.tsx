@@ -13,9 +13,23 @@ type Phase = "checking" | "awaiting-token" | "ready" | "denied";
  * 2. Otherwise ask the host page for a token via postMessage and exchange it for
  *    an httpOnly cookie at /api/embed/session.
  * 3. Render the tenant-scoped surface once authenticated.
+ *
+ * Only the tenant's allow-listed origins are spoken to: the token request is
+ * posted to each allowed origin (the browser delivers it only to the matching
+ * parent) and token messages are accepted only from an allowed origin and from
+ * the parent window (SEC-7).
  */
-export function EmbedBootstrap({ tenantSlug, productName }: { tenantSlug: string; productName: string }) {
+export function EmbedBootstrap({
+  tenantSlug,
+  productName,
+  allowedOrigins,
+}: {
+  tenantSlug: string;
+  productName: string;
+  allowedOrigins: string[];
+}) {
   const [phase, setPhase] = useState<Phase>("checking");
+  const [reason, setReason] = useState<string | null>(null);
   const [tenantName, setTenantName] = useState<string>(tenantSlug);
 
   useEffect(() => {
@@ -45,14 +59,21 @@ export function EmbedBootstrap({ tenantSlug, productName }: { tenantSlug: string
         if (await probe()) {
           if (!cancelled) setPhase("ready");
         } else if (!cancelled) {
-          setPhase("denied");
+          deny("The token could not be verified.");
         }
       } catch {
-        if (!cancelled) setPhase("denied");
+        if (!cancelled) deny("The token could not be verified.");
       }
     }
 
+    function deny(why: string) {
+      setReason(why);
+      setPhase("denied");
+    }
+
     function onMessage(e: MessageEvent) {
+      if (e.source !== window.parent) return;
+      if (!allowedOrigins.includes(e.origin)) return;
       if (e.data?.type === "clinicmind:token" && typeof e.data.token === "string") {
         void exchange(e.data.token);
       }
@@ -63,13 +84,27 @@ export function EmbedBootstrap({ tenantSlug, productName }: { tenantSlug: string
         if (!cancelled) setPhase("ready");
         return;
       }
-      // Ask the host page for a token.
+      if (window.parent === window) {
+        if (!cancelled) deny("This surface must be embedded by the clinic's website.");
+        return;
+      }
+      if (allowedOrigins.length === 0) {
+        if (!cancelled) deny("No embedding origins are configured for this clinic.");
+        return;
+      }
       window.addEventListener("message", onMessage);
-      window.parent?.postMessage({ type: "clinicmind:request-token", tenant: tenantSlug }, "*");
+      for (const origin of allowedOrigins) {
+        window.parent.postMessage({ type: "clinicmind:request-token", tenant: tenantSlug }, origin);
+      }
       if (!cancelled) setPhase("awaiting-token");
       // Give the host a moment, then mark denied if nothing arrives.
       setTimeout(() => {
-        if (!cancelled) setPhase((p) => (p === "awaiting-token" ? "denied" : p));
+        if (!cancelled) {
+          setPhase((p) => {
+            if (p === "awaiting-token") setReason("The host page did not provide an embed token.");
+            return p === "awaiting-token" ? "denied" : p;
+          });
+        }
       }, 8000);
     })();
 
@@ -77,7 +112,7 @@ export function EmbedBootstrap({ tenantSlug, productName }: { tenantSlug: string
       cancelled = true;
       window.removeEventListener("message", onMessage);
     };
-  }, [tenantSlug]);
+  }, [tenantSlug, allowedOrigins]);
 
   if (phase === "ready") {
     return (
@@ -102,12 +137,12 @@ export function EmbedBootstrap({ tenantSlug, productName }: { tenantSlug: string
         <Activity className="h-5 w-5" />
       </div>
       <p className="text-sm font-medium">
-        {phase === "denied" ? "Session could not be established" : "Connecting to ClinicMind…"}
+        {phase === "denied" ? "Session could not be established" : "Connecting…"}
       </p>
       <p className="max-w-xs text-xs text-muted-foreground">
         {phase === "denied"
-          ? "The host did not provide a valid embed token. Verify the embed secret, the user id being minted for, and the allowed origins."
-          : "Authenticating your tenant session."}
+          ? (reason ?? "Verify the embed secret, the user id being minted for, and the allowed origins.")
+          : "Authenticating your clinic session."}
       </p>
     </div>
   );
