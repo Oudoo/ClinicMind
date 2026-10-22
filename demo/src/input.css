@@ -1,0 +1,134 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Institutional Tech tokens, identical to src/app/globals.css. The accent is
+   overridden per tenant at runtime (white-label). */
+@layer base {
+  :root {
+    --background: 210 17% 98%;
+    --foreground: 218 27% 14%;
+    --card: 0 0% 100%;
+    --card-foreground: 218 27% 14%;
+    --muted: 210 17% 96%;
+    --muted-foreground: 218 12% 42%;
+    --border: 218 15% 90%;
+    --input: 218 15% 88%;
+    --accent: 243 75% 59%;
+    --accent-foreground: 0 0% 100%;
+    --accent-muted: 243 75% 96%;
+    --ring: 243 75% 59%;
+    --success: 152 60% 40%;
+    --warning: 38 92% 50%;
+    --danger: 0 72% 51%;
+  }
+  .dark {
+    --background: 218 27% 11%;
+    --foreground: 210 17% 96%;
+    --card: 218 24% 14%;
+    --card-foreground: 210 17% 96%;
+    --muted: 218 20% 18%;
+    --muted-foreground: 218 12% 64%;
+    --border: 218 18% 22%;
+    --input: 218 18% 24%;
+    --accent: 243 75% 64%;
+    --accent-foreground: 0 0% 100%;
+    --accent-muted: 243 40% 22%;
+    --ring: 243 75% 64%;
+    --success: 152 50% 50%;
+    --warning: 38 92% 58%;
+    --danger: 0 72% 60%;
+  }
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-feature-settings: "cv11", "ss01";
+  }
+}
+
+@layer components {
+  .bento {
+    @apply rounded-lg border border-border bg-card p-6 shadow-[0_1px_2px_rgba(26,32,44,0.04)];
+  }
+  .data-label {
+    @apply font-mono text-[11px] uppercase tracking-[0.08em] text-muted-foreground;
+  }
+  .metric-value {
+    @apply font-display text-3xl font-semibold tracking-tightest tabular-nums;
+  }
+  .mesh {
+    background-image: theme("backgroundImage.mesh-grid");
+    background-size: theme("backgroundSize.mesh");
+  }
+  .input {
+    @apply h-10 w-full rounded-lg border border-input bg-background px-3 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring disabled:cursor-not-allowed disabled:opacity-50;
+  }
+  .btn {
+    @apply inline-flex h-10 items-center justify-center gap-2 whitespace-nowrap rounded-lg px-4 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 [&_svg]:size-4 [&_svg]:shrink-0;
+  }
+  .btn-primary {
+    @apply bg-accent text-accent-foreground hover:bg-accent/90;
+  }
+  .btn-outline {
+    @apply border border-border bg-card hover:bg-muted;
+  }
+  .btn-ghost {
+    @apply hover:bg-muted;
+  }
+  .btn-danger {
+    @apply bg-danger text-white hover:bg-danger/90;
+  }
+  .btn-sm {
+    @apply h-9 px-3;
+  }
+  .btn-icon {
+    @apply h-9 w-9 px-0;
+  }
+  .badge {
+    @apply inline-flex items-center gap-1 whitespace-nowrap rounded-md px-2 py-0.5 font-mono text-[10px] uppercase tracking-wide;
+  }
+  .badge-default {
+    @apply bg-muted text-muted-foreground;
+  }
+  .badge-accent {
+    @apply bg-accent-muted text-accent;
+  }
+  .badge-success {
+    @apply bg-success/10 text-success;
+  }
+  .badge-warning {
+    @apply bg-warning/10 text-warning;
+  }
+  .badge-danger {
+    @apply bg-danger/10 text-danger;
+  }
+  .nav-link {
+    @apply flex items-center justify-between rounded-md px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground;
+  }
+  .nav-link[aria-current="page"] {
+    @apply bg-accent-muted font-medium text-accent;
+  }
+  .th {
+    @apply px-4 py-3 text-left data-label font-normal sm:px-5;
+  }
+  .td {
+    @apply px-4 py-3 align-middle sm:px-5;
+  }
+  .tr {
+    @apply border-b border-border last:border-0 hover:bg-muted/50;
+  }
+  .chip {
+    @apply inline-flex items-center gap-1 rounded-md bg-accent-muted px-2 py-1 text-xs text-accent;
+  }
+  .dialog-overlay {
+    @apply fixed inset-0 z-50 bg-charcoal-slate/40 backdrop-blur-[2px] animate-fade-in;
+  }
+  .dialog {
+    @apply fixed left-1/2 top-1/2 z-50 max-h-[calc(100vh-2rem)] w-[calc(100%-2rem)] max-w-lg -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-lg border border-border bg-card p-6 shadow-xl focus:outline-none animate-dialog-in;
+  }
+  .toast {
+    @apply pointer-events-auto flex w-80 items-start gap-3 rounded-lg border border-border bg-card p-3 shadow-lg animate-fade-in;
+  }
+}

@@ -8,7 +8,14 @@ shows what runs today for each, and names what comes next and when. The
 platform console and the rest of the product come at the end.
 
 **Where:** the real application, seeded with the demo clinic
-(**Aura Derma & Hair Clinic**, Cairo). Not the static mock-up.
+(**Aura Derma & Hair Clinic**, Cairo).
+
+**Phase 1 (software testing before hosting):** the same script runs against the
+click-through prototype at <https://oudoo.github.io/ClinicMind/> — a
+browser-only build with the same seeded clinic, the same accounts and the same
+screens, where every action responds but nothing leaves the browser. Use it to
+validate flows and copy before the full stack is deployed; then run Phase 2
+(front end and back end) on the hosted application.
 
 ---
 

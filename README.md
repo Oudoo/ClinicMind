@@ -189,6 +189,29 @@ end-to-end suite.
 
 ---
 
+## Click-through prototype (Phase 1 testing)
+
+`demo/` is a self-contained, browser-only build of the product for software
+testers and sales demos: no server, no database, no AI key. It is published by
+`.github/workflows/pages.yml` on every push to `main` that touches `demo/`:
+
+**https://oudoo.github.io/ClinicMind/**
+
+Every button, form and menu responds; the seeded clinic (Aura Derma & Hair
+Clinic, Cairo), the platform console and the tenant white-label flow are all
+there. Data lives in the browser's `localStorage` (account menu → *Reset demo
+data* rebuilds it). Sign in with any seeded account and the password
+`Demo-Clinic-2026!`; `platform@demo.clinic` opens the platform console.
+
+Transcript extraction in the prototype is heuristic (it recognises common
+dermatology drugs and conditions); the application runs an LLM with a strict
+schema. To rebuild the stylesheet after editing `demo/src/input.css` or the
+scripts:
+
+```bash
+npx tailwindcss -c demo/tailwind.config.cjs -i demo/src/input.css -o demo/assets/styles.css --minify
+```
+
 ## Deployment
 
 `docker-compose.prod.yml` runs Caddy (automatic HTTPS, with on-demand

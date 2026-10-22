@@ -4,8 +4,10 @@ name: Deploy demo to GitHub Pages
 # One-time setup: repo Settings → Pages → Source = "GitHub Actions".
 
 # GitHub Pages is enabled with Source = "GitHub Actions". This deploys the
-# static concept demo in /demo (a mock-up with hard-coded data, not the
-# application). It runs only from main; use "Run workflow" to redeploy.
+# click-through prototype in /demo (a static, browser-only build with seeded
+# data: every button and form responds, nothing leaves the browser). It is the
+# Phase 1 tester build, not the application. Runs only from main; use
+# "Run workflow" to redeploy.
 on:
   push:
     branches: [main]

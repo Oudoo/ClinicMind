@@ -3,23 +3,32 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>ClinicMind — Medical AI OS (Demo)</title>
-    <meta name="description" content="ClinicMind — AI-first, multi-tenant Medical Operating System. Interactive demo with seeded data." />
+    <title>ClinicMind — click-through prototype</title>
+    <meta name="description" content="ClinicMind clinic operating system: an interactive click-through prototype with seeded data. Everything runs in your browser." />
+    <meta name="robots" content="noindex" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
-      rel="stylesheet"
-    />
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
     <link rel="icon" type="image/svg+xml" href="favicon.svg" />
     <link rel="stylesheet" href="assets/styles.css" />
+    <script>
+      // Apply the stored theme before first paint.
+      try { if (localStorage.getItem("cm-proto-theme") === "dark") document.documentElement.classList.add("dark"); } catch (e) {}
+    </script>
   </head>
   <body>
-    <noscript>ClinicMind demo requires JavaScript.</noscript>
-    <!-- order matters: data + helpers before the app -->
+    <noscript>The ClinicMind prototype needs JavaScript.</noscript>
+    <div id="app"></div>
+    <div id="toasts" class="pointer-events-none fixed bottom-4 right-4 z-[60] flex flex-col gap-2"></div>
     <script src="assets/data.js"></script>
-    <script src="assets/charts.js"></script>
-    <script src="assets/report.js"></script>
     <script src="assets/app.js"></script>
+    <script src="assets/views-core.js"></script>
+    <script src="assets/views-clinical.js"></script>
+    <script src="assets/views-admin.js"></script>
+    <script>
+      window.CM.load();
+      if (!location.hash) location.hash = "/";
+      window.CM.render();
+    </script>
   </body>
 </html>
