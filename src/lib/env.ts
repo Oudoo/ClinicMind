@@ -66,7 +66,7 @@ if (isProduction) {
   if (
     parsed.data.AUTH_SECRET === DEV_AUTH_SECRET ||
     parsed.data.EMBED_SIGNING_SECRET === DEV_EMBED_SECRET ||
-    /dev-insecure|change-me|replace-me/i.test(parsed.data.AUTH_SECRET + parsed.data.EMBED_SIGNING_SECRET)
+    /dev-insecure|dev-only|not-for-production|change-me|replace-me|vitest/i.test(parsed.data.AUTH_SECRET + parsed.data.EMBED_SIGNING_SECRET)
   ) {
     throw new Error("AUTH_SECRET / EMBED_SIGNING_SECRET are development values. Refusing to start.");
   }

@@ -42,3 +42,9 @@ prisma/migrations/dev.db*
 
 # Claude Code session data (agent worktrees, local settings)
 .claude/
+
+# playwright
+/playwright-report
+/test-results
+/e2e/artifacts
+/e2e/.auth
