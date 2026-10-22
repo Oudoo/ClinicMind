@@ -2,6 +2,7 @@ import type { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { db, notDeleted } from "@/lib/db";
 import { audit } from "@/lib/audit";
+import { ingestInBackground } from "@/modules/knowledge/ingest";
 import { isValidTimeZone } from "@/lib/time";
 import { requireTenantClinic, requireTenantPatient, requireTenantUser } from "@/lib/tenant-scope";
 import { zDateTime, zOptionalText, zText } from "@/lib/validation";
@@ -442,6 +443,8 @@ export async function createAppointment(tenantId: string, rawInput: unknown, act
     entityId: appointment.id,
     after: slotSnapshot(appointment),
   });
+  // The patient profile document lists upcoming appointments; refresh it.
+  ingestInBackground({ kind: "patient", tenantId, id: input.patientId });
 
   return { appointment: await attachDoctor(tenantId, appointment), conflicts };
 }
@@ -529,6 +532,8 @@ export async function rescheduleAppointment(
     before: slotSnapshot(before),
     after: slotSnapshot(after),
   });
+  // The patient profile document lists upcoming appointments; refresh it.
+  ingestInBackground({ kind: "patient", tenantId, id: before.patientId });
 
   return { appointment: await attachDoctor(tenantId, after), conflicts };
 }
@@ -609,6 +614,8 @@ export async function transitionAppointment(
     before: { status: before.status, cancelReason: before.cancelReason },
     after: { status: after.status, cancelReason: after.cancelReason, reason: input.reason ?? null },
   });
+  // The patient profile document lists upcoming appointments; refresh it.
+  ingestInBackground({ kind: "patient", tenantId, id: before.patientId });
 
   return attachDoctor(tenantId, after);
 }
