@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowRight, ShieldCheck, Sparkles, Boxes } from "lucide-react";
+import { ArrowRight, ShieldCheck, Sparkles, CalendarDays, Users, Stethoscope, LockKeyhole } from "lucide-react";
 import { BRAND } from "@/lib/brand";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/primitives";
@@ -10,10 +10,8 @@ export default function LandingPage() {
       <header className="mx-auto flex max-w-6xl items-center justify-between px-6 py-5">
         <div className="flex items-center gap-2">
           {/* Swap the logo by replacing /public/logo.svg */}
-          <img src="/logo.svg" alt={BRAND.productName} width={28} height={28} className="h-7 w-7 rounded-md" />
-          <span className="font-display text-base font-semibold tracking-tight">
-            {BRAND.productName}
-          </span>
+          <img src="/logo.svg" alt="" width={28} height={28} className="h-7 w-7 rounded-md" />
+          <span className="font-display text-base font-semibold tracking-tight">{BRAND.productName}</span>
         </div>
         <Button asChild variant="outline" size="sm">
           <Link href="/login">
@@ -23,21 +21,21 @@ export default function LandingPage() {
       </header>
 
       <main className="mx-auto max-w-6xl px-6">
-        <section className="mesh rounded-lg border border-border py-20 text-center">
+        <section className="mesh rounded-lg border border-border px-6 py-16 text-center sm:py-20">
           <Badge tone="accent" className="mx-auto mb-6">
-            Medical AI OS · Multi-tenant
+            Clinic operating system · AI-first
           </Badge>
-          <h1 className="mx-auto max-w-3xl font-display text-5xl font-semibold leading-[1.05] tracking-tightest">
-            The AI-first operating system for clinics.
+          <h1 className="mx-auto max-w-3xl font-display text-4xl font-semibold leading-[1.05] tracking-tightest sm:text-5xl">
+            One record of truth for the clinic, with AI that only speaks from it.
           </h1>
           <p className="mx-auto mt-5 max-w-xl text-base text-muted-foreground">
-            {BRAND.tagline} ClinicMind runs on the clinic's own domain and embeds on any
-            client's own domain — each clinic gets its own isolated, white-labeled instance.
+            Patients, appointments and consultations in one place. Every AI answer is grounded in your
+            own records and cited; every clinical decision is reviewed and signed by a clinician.
           </p>
-          <div className="mt-8 flex items-center justify-center gap-3">
+          <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
             <Button asChild size="lg">
-              <Link href="/dashboard">
-                Launch dashboard <ArrowRight className="h-4 w-4" />
+              <Link href="/login">
+                Sign in to your clinic <ArrowRight className="h-4 w-4" />
               </Link>
             </Button>
           </div>
@@ -45,41 +43,46 @@ export default function LandingPage() {
 
         <section className="my-8 grid grid-cols-1 gap-4 md:grid-cols-3">
           <Feature
-            icon={Sparkles}
-            title="AI, grounded"
-            body="Doctor chat, consultation intelligence and receptionist agents — every answer retrieval-grounded with citations."
+            icon={Users}
+            title="Patients and timeline"
+            body="A complete patient record: history, allergies, medications, visits and every interaction on one chronological timeline."
           />
           <Feature
-            icon={Boxes}
-            title="Truly multi-tenant"
-            body="Custom domains, per-tenant branding and an isolated data boundary. One platform, many clinics."
+            icon={CalendarDays}
+            title="Scheduling that holds"
+            body="Booking with conflict detection, waitlists and a full lifecycle from confirmation to check-in, completion or no-show."
+          />
+          <Feature
+            icon={Stethoscope}
+            title="Consultation intelligence"
+            body="Transcripts become structured notes. The clinician edits, reconciles medications and signs; nothing is saved by the AI alone."
+          />
+          <Feature
+            icon={Sparkles}
+            title="Grounded assistant"
+            body="Ask about your patients in plain language and get answers with citations into the record, or a clear “no records found”."
           />
           <Feature
             icon={ShieldCheck}
-            title="Built for trust"
-            body="RBAC, immutable audit, soft delete and review-before-sign on every clinical decision."
+            title="Built for accountability"
+            body="Roles for every staff member, an append-only audit log enforced in the database, and review-before-sign everywhere."
+          />
+          <Feature
+            icon={LockKeyhole}
+            title="Isolated per clinic"
+            body="Each clinic runs its own white-labeled instance on its own domain, with data scoped and checked at every query."
           />
         </section>
       </main>
 
       <footer className="mx-auto max-w-6xl px-6 py-10 text-center">
-        <p className="font-mono text-xs text-muted-foreground">
-          {BRAND.productName} · Institutional Tech
-        </p>
+        <p className="font-mono text-xs text-muted-foreground">{BRAND.productName}</p>
       </footer>
     </div>
   );
 }
 
-function Feature({
-  icon: Icon,
-  title,
-  body,
-}: {
-  icon: typeof Sparkles;
-  title: string;
-  body: string;
-}) {
+function Feature({ icon: Icon, title, body }: { icon: typeof Sparkles; title: string; body: string }) {
   return (
     <div className="bento">
       <div className="mb-3 flex h-9 w-9 items-center justify-center rounded-md bg-accent-muted text-accent">
