@@ -270,6 +270,23 @@ export async function answerWithRag(
     .slice(0, 6);
   const names = await patientNames(tenantId, retrieved);
 
+  // Gate before generation: when even a fully cited answer could not reach the
+  // grounded threshold, the records do not answer the question. Say so instead
+  // of asking a model to summarise near-misses, which reads like an answer.
+  const ceiling = computeConfidence({ chunks: retrieved, answer: "[1]" });
+  if (!retrieved.length || ceiling < GROUNDED_THRESHOLD) {
+    return {
+      answer: noMatchingRecordsAnswer(query),
+      citations: [],
+      chunks: retrieved,
+      provider: "clinicmind",
+      model: "retrieval-gate",
+      confidence: computeConfidence({ chunks: retrieved, answer: "" }),
+      grounded: false,
+      latencyMs: Date.now() - started,
+    };
+  }
+
   const contextBlock = retrieved.length
     ? retrieved.map((c, i) => `[${i + 1}] ${headingFor(c, names)}\n${c.content}`).join("\n\n")
     : "(none)";
@@ -307,6 +324,12 @@ export async function answerWithRag(
     grounded: retrieved.length > 0 && confidence >= GROUNDED_THRESHOLD,
     latencyMs: Date.now() - started,
   };
+}
+
+/** The answer given when retrieval found nothing that answers the question. */
+export function noMatchingRecordsAnswer(query: string): string {
+  const q = query.length > 120 ? `${query.slice(0, 119)}…` : query;
+  return `No matching records were found for "${q}". The clinic's indexed records do not contain information that answers this question, and ClinicMind does not answer clinical questions without matching records.`;
 }
 
 /**
