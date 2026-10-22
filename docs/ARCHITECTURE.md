@@ -110,18 +110,35 @@ deployments.
 ## 5. AI layer
 
 ```
-                ┌─────────────────────────────────────────┐
-  call sites ──►│ provider.ts (registry + routing policy)  │
-                └───┬───────────────┬───────────────┬──────┘
-                    ▼               ▼               ▼
-                OpenAiProvider  AnthropicProvider  EchoProvider
-                    └───── implement AiProvider (types.ts) ──────┘
+                ┌─────────────────────────────────────────────────┐
+  call sites ──►│ provider.ts (registry + routing policy + status) │
+                └───┬────────────┬───────────────┬──────────┬──────┘
+                    ▼            ▼               ▼          ▼
+              GeminiProvider OpenAiProvider AnthropicProvider EchoProvider
+                    └──────── implement AiProvider (types.ts) ────────┘
 ```
 
-- **RAG** (`lib/ai/rag.ts`): embed → pgvector retrieve (tenant-scoped) → rank →
-  lexical re-rank → grounded generate **with citations**. The system prompt
-  forbids answering outside retrieved context; confidence collapses to ~0 when
-  retrieval is empty.
+- **Routing** (`lib/ai/provider.ts`): `AI_DEFAULT_PROVIDER=auto` picks
+  gemini → openai → anthropic → echo; `AI_EMBEDDING_PROVIDER=auto` picks
+  gemini → openai → echo. An explicit name is honoured when configured and
+  otherwise falls back to the auto order (never silently to `echo` while a real
+  key exists). Every upstream call is bounded by `AI_TIMEOUT_MS`, non-2xx
+  answers become a typed `AiProviderError`, and request bodies are never
+  logged. `aiStatus()` exposes the active chat/embedding provider and model.
+- **Ingestion** (`modules/knowledge/ingest.ts`): `ingestPatient`, `ingestVisit`,
+  `ingestConsultation` (signed only), `ingestConversation`, `reindexTenant`,
+  `removePatientKnowledge` and the fire-and-forget `ingestInBackground`. One
+  plain-text document per entity → ~800-char chunks with 100 overlap →
+  SHA-256 content hash → idempotent upsert keyed by
+  `(tenantId, source, refId, chunkIndex)`; only changed chunks (or chunks
+  embedded with another model) are re-embedded. `npm run ai:reindex` rebuilds
+  a tenant from the CLI.
+- **RAG** (`lib/ai/rag.ts`): embed query → pgvector cosine search + `pg_trgm`
+  lexical search (hybrid, tenant-scoped, optionally per patient) → merge →
+  lexical re-rank → grounded generate **with `[n]` citations**. Confidence is
+  computed from retrieval (best match, number of strong matches, citation
+  markers in the answer); an answer is `grounded` only above a threshold, and
+  chunks below a score floor never reach the prompt.
 - **Extraction** (`lib/ai/extraction.ts`): transcript → strict JSON
   (symptoms/diagnoses/medications/tests/follow-ups), stored separately and
   surfaced for clinician review.
