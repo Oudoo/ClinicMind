@@ -103,9 +103,10 @@ export function AppointmentCard({
       aria-label={`${time} ${appointment.patient.fullName}`}
       className={cn("rounded-md border border-border bg-card p-2.5", pending && "opacity-60")}
     >
-      <div className="flex items-center justify-between gap-1">
-        <span className="font-mono text-xs tabular-nums">{time}</span>
-        <div className="flex items-center gap-1">
+      {/* Wraps in narrow week columns: the badge and menu drop to a second line instead of overflowing the card. */}
+      <div className="flex flex-wrap items-center justify-between gap-x-1 gap-y-1">
+        <span className="whitespace-nowrap font-mono text-xs tabular-nums">{time}</span>
+        <div className="ml-auto flex shrink-0 items-center gap-1">
           <AppointmentStatusBadge status={appointment.status} />
           {menu}
         </div>

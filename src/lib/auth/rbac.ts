@@ -51,6 +51,9 @@ const ALL: Permission[] = [
 
 const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
   SUPER_ADMIN: ALL,
+  // The clinic owner is the physician-owner: full administrative rights plus the
+  // clinical rights of a doctor (bookable, may sign). Non-clinical administrators
+  // get ASSISTANT; a per-user clinician flag is the planned refinement.
   CLINIC_OWNER: [
     "tenant:manage",
     "tenant:billing",
@@ -60,6 +63,7 @@ const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
     "appointments:read",
     "appointments:write",
     "consultations:read",
+    "consultations:sign",
     "ai:assistant",
     "conversations:read",
     "reports:read",

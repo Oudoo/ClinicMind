@@ -325,13 +325,18 @@ describe.skipIf(!dbTestsEnabled)("consultations", () => {
       expect((await db.consultation.findUnique({ where: { id: consultation.id } }))?.status).toBe("PENDING_REVIEW");
     });
 
-    it("is for clinicians only: a nurse and a clinic owner get 403", async () => {
-      const consultation = await seedConsultation(a.id, patientA, doctorA.id);
-      for (const cookie of [nurseCookie, ownerCookie]) {
-        const res = await sign(request(`/api/consultations/${consultation.id}/sign`, { cookie, body: {} }), idParams(consultation.id));
-        expect(res.status).toBe(403);
-      }
+    it("is for clinicians only: a nurse gets 403, the physician-owner may sign", async () => {
+      // Own patient so the visit counts asserted by other tests stay untouched.
+      const patient = (await db.patient.create({ data: { tenantId: a.id, fullName: "Owner Signs" } })).id;
+      const consultation = await seedConsultation(a.id, patient, doctorA.id);
+      const nurse = await sign(request(`/api/consultations/${consultation.id}/sign`, { cookie: nurseCookie, body: {} }), idParams(consultation.id));
+      expect(nurse.status).toBe(403);
       expect((await db.consultation.findUnique({ where: { id: consultation.id } }))?.status).toBe("PENDING_REVIEW");
+
+      const owner = await sign(request(`/api/consultations/${consultation.id}/sign`, { cookie: ownerCookie, body: {} }), idParams(consultation.id));
+      expect(owner.status).toBe(200);
+      expect((await db.consultation.findUnique({ where: { id: consultation.id } }))?.status).toBe("SIGNED");
+      expect(await db.visit.count({ where: { patientId: patient } })).toBe(1);
     });
 
     it("is a 404 for another tenant's doctor", async () => {

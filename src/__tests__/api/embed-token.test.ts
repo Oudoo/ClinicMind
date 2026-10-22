@@ -100,8 +100,13 @@ describe("SEC-2 · POST /api/embed/token", () => {
     expect(res.status).toBe(403);
     await expect(res.json()).resolves.toEqual({ error: "role_not_permitted" });
 
-    const owner = await mint({ ...base, userId: "owner-a", role: "DOCTOR" }); // owners cannot sign
-    expect(owner.status).toBe(403);
+    // The physician-owner holds every DOCTOR permission, so narrowing to DOCTOR is allowed;
+    // a doctor can never be minted as CLINIC_OWNER.
+    const owner = await mint({ ...base, userId: "owner-a", role: "DOCTOR" });
+    expect(owner.status).toBe(200);
+    await expect(owner.json()).resolves.toMatchObject({ role: "DOCTOR" });
+    const widened = await mint({ ...base, userId: "doctor-a", role: "CLINIC_OWNER" });
+    expect(widened.status).toBe(403);
   });
 
   it("mints a token for the user's own role by default, or a narrower one on request", async () => {

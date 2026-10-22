@@ -309,7 +309,7 @@ function ConsultationReadOnly({
 
       {status === "PENDING_REVIEW" ? (
         <Alert tone="info">
-          Awaiting clinician review. Only a doctor can sign this draft into the patient's record.
+          Awaiting clinician review. Only a doctor or the clinic owner can sign this draft into the patient's record.
         </Alert>
       ) : null}
       {status === "SIGNED" && consultation.reviewedAt ? (

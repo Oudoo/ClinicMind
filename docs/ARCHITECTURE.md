@@ -99,7 +99,10 @@ another `SUPER_ADMIN` (`lib/auth/rbac.ts#grantableRoles`).
 
 **RBAC** (`lib/auth/rbac.ts`): 6 roles → capability sets, enforced at every API
 edge via `assertCan` on the role carried by the acting context. Clinical
-sign-off is gated to clinicians; `platform:manage` (provisioning / listing
+sign-off is gated to clinicians: `DOCTOR` and `CLINIC_OWNER` (the physician-owner,
+who is also bookable); nurses, receptionists and assistants cannot sign. A
+per-user clinician flag is the planned refinement for non-clinical owners.
+`platform:manage` (provisioning / listing
 tenants) is SUPER_ADMIN-only while `tenant:manage` is scoped to the owner's own
 tenant.
 

@@ -97,6 +97,7 @@ export default async function SettingsPage() {
             description="Staff accounts of this clinic. Invited members choose their password through a single-use link."
             action={<Badge tone="accent">{team.length} members</Badge>}
           />
+          <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-border text-left">
@@ -132,6 +133,7 @@ export default async function SettingsPage() {
               ))}
             </tbody>
           </table>
+          </div>
           <div className="border-t border-border pt-4">
             <p className="data-label mb-3">Invite a member</p>
             <InviteMemberForm roles={grantableRoles(ctx.role)} />

@@ -5,7 +5,7 @@ import { cn } from "@/lib/utils";
 export function Bento({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
   return (
     <div
-      className={cn("grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4", className)}
+      className={cn("grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4", className)}
       {...props}
     />
   );
@@ -32,7 +32,7 @@ export function Badge({
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-1 rounded-md px-2 py-0.5 font-mono text-[10px] uppercase tracking-wide",
+        "inline-flex items-center gap-1 whitespace-nowrap rounded-md px-2 py-0.5 font-mono text-[10px] uppercase tracking-wide",
         tones[tone],
         className,
       )}

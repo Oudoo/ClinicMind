@@ -14,7 +14,9 @@ const ALL_ROLES: UserRole[] = ["SUPER_ADMIN", "CLINIC_OWNER", "DOCTOR", "NURSE",
 describe("RBAC", () => {
   it("only clinicians may sign clinical decisions", () => {
     expect(can("DOCTOR", "consultations:sign")).toBe(true);
+    expect(can("CLINIC_OWNER", "consultations:sign")).toBe(true); // the physician-owner
     expect(can("SUPER_ADMIN", "consultations:sign")).toBe(true);
+    expect(can("NURSE", "consultations:sign")).toBe(false);
     expect(can("RECEPTIONIST", "consultations:sign")).toBe(false);
     expect(can("ASSISTANT", "consultations:sign")).toBe(false);
   });
@@ -70,8 +72,9 @@ describe("RBAC", () => {
       expect(roleWithinCeiling("RECEPTIONIST", "NURSE")).toBe(true);
       expect(roleWithinCeiling("DOCTOR", "DOCTOR")).toBe(true);
       expect(roleWithinCeiling("DOCTOR", "RECEPTIONIST")).toBe(false);
-      // Owners cannot sign, so DOCTOR exceeds CLINIC_OWNER.
-      expect(roleWithinCeiling("DOCTOR", "CLINIC_OWNER")).toBe(false);
+      // The physician-owner holds every DOCTOR permission, so an owner may be
+      // narrowed to DOCTOR; a doctor can never be widened to owner.
+      expect(roleWithinCeiling("DOCTOR", "CLINIC_OWNER")).toBe(true);
       expect(roleWithinCeiling("CLINIC_OWNER", "DOCTOR")).toBe(false);
       expect(roleWithinCeiling("SUPER_ADMIN", "CLINIC_OWNER")).toBe(false);
       for (const role of ALL_ROLES) expect(roleWithinCeiling(role, "SUPER_ADMIN"), role).toBe(true);
@@ -82,7 +85,8 @@ describe("RBAC", () => {
       expect(resolveEmbedRole("DOCTOR", null)).toBe("DOCTOR");
       expect(resolveEmbedRole("DOCTOR", "ASSISTANT")).toBe("ASSISTANT");
       expect(resolveEmbedRole("RECEPTIONIST", "DOCTOR")).toBeNull();
-      expect(resolveEmbedRole("CLINIC_OWNER", "DOCTOR")).toBeNull();
+      expect(resolveEmbedRole("CLINIC_OWNER", "DOCTOR")).toBe("DOCTOR");
+      expect(resolveEmbedRole("DOCTOR", "CLINIC_OWNER")).toBeNull();
       expect(resolveEmbedRole("DOCTOR", "SUPER_ADMIN")).toBeNull();
       expect(resolveEmbedRole("SUPER_ADMIN", "SUPER_ADMIN")).toBeNull();
       expect(resolveEmbedRole("DOCTOR", "not-a-role")).toBeNull();
