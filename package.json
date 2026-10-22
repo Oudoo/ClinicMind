@@ -2,7 +2,7 @@
   "name": "clinicmind",
   "version": "0.1.0",
   "private": true,
-  "description": "ClinicMind \u2014 AI-first, multi-tenant clinic operating system.",
+  "description": "ClinicMind — AI-first, multi-tenant clinic operating system.",
   "license": "UNLICENSED",
   "scripts": {
     "dev": "next dev",
@@ -38,7 +38,7 @@
     "jose": "^5.9.6",
     "lucide-react": "^0.460.0",
     "next": "^16.4.2",
-    "nodemailer": "^7.0.13",
+    "nodemailer": "^10.2.0",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
     "tailwind-merge": "^2.5.4",

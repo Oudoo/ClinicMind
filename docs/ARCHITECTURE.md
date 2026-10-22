@@ -131,28 +131,52 @@ deployments.
 ## 6. Data model highlights
 
 - **History is never overwritten** — `AiRun`, `Visit`, `Consultation`,
-  `TimelineEvent` are append-only; diagnoses/medications are appended on sign.
+  `TimelineEvent` are append-only; diagnoses/medications are reconciled on sign
+  (new diagnoses appended, existing active medications updated or stopped).
 - **Soft delete** via `deletedAt` + `notDeleted` filter.
 - **Unified timeline** (`TimelineEvent`) denormalizes appointments, calls,
   messages, diagnoses, prescriptions, audio, documents and AI notes chronologically.
-- **pgvector** `KnowledgeEmbedding` powers RAG; ivfflat cosine index in SQL.
+- **pgvector** `KnowledgeEmbedding` powers RAG: one row per chunk, keyed by
+  `(tenantId, source, refId, chunkIndex)` with a content hash so re-indexing is
+  idempotent; ivfflat cosine index in the migration SQL.
 
-## 7. Queues & storage (interfaces in place)
+## 7. Schema changes, RLS and the audit log
 
-Redis-backed background jobs (notifications, WhatsApp, voice, AI summaries,
-reports) and S3-compatible storage (audio, documents, images) are provisioned in
-Compose and represented in the schema (`audioKey`, `s3Key`, `Conversation`,
-`Document`). Channel workers are the next implementation slice.
+- Schema changes are **Prisma migrations** (`prisma/migrations/`), applied with
+  `prisma migrate deploy` in CI, Docker (`migrate` service) and production. The
+  second migration holds what Prisma cannot express: the pgvector and trigram
+  indexes, Row-Level Security policies on every tenant-scoped table, and the
+  append-only trigger on `audit_logs`.
+- **Audit immutability** is enforced by a trigger that refuses `UPDATE` and
+  `DELETE` for every role; a tenant removal (offboarding, erasure request) opts
+  in with `SET LOCAL app.allow_audit_delete = 'on'` inside its transaction.
+- **RLS policies** compare `tenantId` with `app_current_tenant()`. They are
+  present and tested by migration, but the application still connects as the
+  table owner, which PostgreSQL exempts from RLS; activating them means a
+  dedicated non-owner application role, `FORCE ROW LEVEL SECURITY`, and a
+  per-transaction `SET LOCAL app.current_tenant` wrapper. Until then, isolation
+  rests on the query-level scoping and `lib/tenant-scope.ts` checks, which every
+  route test exercises.
 
 ## 8. Security
 
-Encryption in transit (TLS at the edge) and at rest (Postgres/S3) · argon2id
-passwords and server-side sessions with login history and lockout (§4) · RBAC ·
-Zod input validation · per-route framing/CSP · signed short-lived embed tokens ·
-append-only audit (app + RLS) · secure upload + malware-scan flags on `Document`.
+- **Transport and headers**: HSTS, `X-Content-Type-Options`, `Referrer-Policy`,
+  `Permissions-Policy` and `Cache-Control: no-store` on the API (next.config);
+  a per-request Content-Security-Policy from `src/proxy.ts` — admin pages
+  refuse framing, `/embed/<slug>` may be framed only by that tenant's
+  allow-listed origins, which the iframe bootstrap also verifies on the
+  `postMessage` channel.
+- **Rate limits** (per client address, in the proxy): 600 API requests per
+  5 minutes, 40 for the AI endpoints, 60 for embed-token minting; sign-in has
+  its own per-IP/per-e-mail budgets and a database-backed account lockout.
+- **Secrets**: production refuses to start on an invalid configuration or on
+  development-looking secrets; embed secrets are stored hashed and shown once.
+- **RBAC** at every API edge, tenant scoping on every query, ownership checks on
+  every client-supplied foreign key, Zod validation with bounded lengths on all
+  input, append-only audit of every mutation.
 
 ## 9. Performance targets
 
 Dashboard < 2s (RSC + indexed aggregates), search < 1s (trigram indexes), chat <
-5s (top-k retrieval + streaming-ready adapters), summary < 15s, transcription
-near-real-time (Whisper-class via adapter).
+5s (top-k retrieval + hybrid re-rank), extraction < 15s, with provider calls
+bounded by `AI_TIMEOUT_MS`.
