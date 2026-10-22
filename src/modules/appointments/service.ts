@@ -496,8 +496,9 @@ export async function rescheduleAppointment(
         endsAt,
         doctorId,
         room,
-        reason: input.reason === undefined ? undefined : input.reason,
-        notes: input.notes === undefined ? undefined : input.notes,
+        // undefined keeps the stored value, null clears it (blank input).
+        reason: input.reason,
+        notes: input.notes,
         status,
         statusChangedAt: status === before.status ? undefined : now,
       },
