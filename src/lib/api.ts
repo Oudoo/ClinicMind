@@ -31,6 +31,11 @@ export function unauthorized() {
   return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 }
 
+/** 404 for an id that is missing — or belongs to another tenant, which must look identical. */
+export function notFound(entity?: string) {
+  return NextResponse.json(entity ? { error: "not_found", entity } : { error: "not_found" }, { status: 404 });
+}
+
 /** 429 with a `Retry-After` header; `error` distinguishes IP throttling from an account lockout. */
 export function tooManyRequests(retryAfterSeconds: number, error = "rate_limited") {
   return NextResponse.json(
