@@ -13,12 +13,16 @@ vi.mock("@/lib/auth/auth-tokens", () => ({
     expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
   })),
 }));
-vi.mock("@/lib/ai/extraction", () => ({
+vi.mock("@/lib/ai/extraction", async (importOriginal) => ({
+  // Keep the schema and normalisers (the sign service uses them); stub only the model call.
+  ...(await importOriginal<typeof import("@/lib/ai/extraction")>()),
   extractClinicalData: vi.fn(async () => ({
     data: { symptoms: [], diagnoses: ["Tension headache"], medications: [{ name: "Paracetamol" }], tests: [], followUps: [] },
     raw: "{}",
     provider: "echo",
     model: "echo-1",
+    latencyMs: 1,
+    empty: false,
   })),
 }));
 vi.mock("@/lib/ai/provider", () => ({
@@ -39,6 +43,8 @@ const mockedContext = vi.mocked(getActingContext);
 const mockedExtract = vi.mocked(extractClinicalData);
 
 const slot = { startsAt: "2026-11-02T09:00:00.000Z", endsAt: "2026-11-02T09:30:00.000Z" };
+// Extraction requires at least 20 characters of transcript.
+const TRANSCRIPT = "Patient reports a mild headache since yesterday.";
 
 beforeEach(() => {
   seedTwoTenants(fake);
@@ -49,21 +55,21 @@ beforeEach(() => {
 
 describe("SEC-4 · consultations/extract", () => {
   it("refuses a patient of another tenant with 404 and writes nothing", async () => {
-    const res = await extract(jsonRequest("/api/consultations/extract", { patientId: "patient-b", transcript: "hi" }));
+    const res = await extract(jsonRequest("/api/consultations/extract", { patientId: "patient-b", transcript: TRANSCRIPT }));
     expect(res.status).toBe(404);
     await expect(res.json()).resolves.toEqual({ error: "not_found", entity: "patient" });
     expect(fake.rows("consultation")).toHaveLength(3); // fixtures only, nothing new
-    expect(fake.rows("consultation").filter((c) => c.transcript === "hi")).toHaveLength(0);
+    expect(fake.rows("consultation").filter((c) => c.transcript === TRANSCRIPT)).toHaveLength(0);
     expect(mockedExtract).not.toHaveBeenCalled(); // no model spend on a foreign id
   });
 
   it("refuses an archived patient of the same tenant", async () => {
-    const res = await extract(jsonRequest("/api/consultations/extract", { patientId: "patient-a-deleted", transcript: "hi" }));
+    const res = await extract(jsonRequest("/api/consultations/extract", { patientId: "patient-a-deleted", transcript: TRANSCRIPT }));
     expect(res.status).toBe(404);
   });
 
   it("creates a consultation for the tenant's own patient", async () => {
-    const res = await extract(jsonRequest("/api/consultations/extract", { patientId: "patient-a", transcript: "Headache." }));
+    const res = await extract(jsonRequest("/api/consultations/extract", { patientId: "patient-a", transcript: TRANSCRIPT }));
     expect(res.status).toBe(200);
     const body = await res.json();
     const created = fake.rows("consultation").find((c) => c.id === body.consultationId);
@@ -109,9 +115,10 @@ describe("SEC-4 · consultations/[id]/sign", () => {
     expect(fake.rows("medicalHistory")).toEqual([
       expect.objectContaining({ tenantId: TENANT_A.id, patientId: "patient-a", diagnoses: ["Tension headache"] }),
     ]);
-    expect(fake.rows("timelineEvent")).toEqual([
-      expect.objectContaining({ tenantId: TENANT_A.id, patientId: "patient-a", kind: "VISIT" }),
-    ]);
+    // The visit, the new diagnosis and the new prescription — each stamped with the tenant.
+    const timeline = fake.rows("timelineEvent");
+    expect(timeline.map((e) => e.kind).sort()).toEqual(["DIAGNOSIS", "PRESCRIPTION", "VISIT"]);
+    for (const event of timeline) expect(event).toMatchObject({ tenantId: TENANT_A.id, patientId: "patient-a" });
     expect(fake.rows("consultation").find((c) => c.id === "consult-a")).toMatchObject({ status: "SIGNED", visitId });
   });
 
