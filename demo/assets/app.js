@@ -1,7 +1,7 @@
 /* ClinicMind click-through prototype — core: storage, auth, router, shell and
    UI primitives. Views live in views.js. Everything runs in the browser. */
 window.CM = (function () {
-  const STORAGE = "cm-proto-v3";
+  const STORAGE = "cm-proto-v4";
   const SESSION = "cm-proto-session";
   const THEME = "cm-proto-theme";
   const $ = (s, r = document) => r.querySelector(s);
@@ -23,7 +23,7 @@ window.CM = (function () {
   function load() {
     try {
       const raw = localStorage.getItem(STORAGE);
-      if (raw) { S = JSON.parse(raw); if (S && S.version === 1) return S; }
+      if (raw) { S = JSON.parse(raw); if (S && S.version === 2) return S; }
     } catch (e) { /* storage unavailable: regenerate every load */ }
     S = window.CM_SEED.generate(new Date());
     save();
@@ -243,16 +243,31 @@ window.CM = (function () {
     { href: "/dashboard/settings", label: "Settings", icon: "settings" },
   ];
   const PLATFORM_NAV = { href: "/platform", label: "Platform", icon: "building" };
-  const isActive = (path, href) => path === href || (href !== "/dashboard" && path.startsWith(href));
+  // The Clinic AI module: the Clinic AI Implementation Spec as a workspace, one entry per spec module.
+  const AI_NAV = [
+    { href: "/ai", label: "Clinic AI", icon: "sparkles" },
+    { href: "/ai/front-desk", label: "1 · AI front desk", icon: "messages" },
+    { href: "/ai/preparation", label: "2 · Consultation prep", icon: "file" },
+    { href: "/ai/copilot", label: "3 · Documentation copilot", icon: "mic" },
+    { href: "/ai/photos", label: "4 · Photography", icon: "eye" },
+    { href: "/ai/concierge", label: "5 · Concierge", icon: "shield" },
+    { href: "/ai/management", label: "6 · Management layer", icon: "layout" },
+    { href: "/ai/rules", label: "AI rules", icon: "key" },
+  ];
+  const AI_ENTRY = { href: "/ai", label: "Clinic AI", icon: "sparkles", badge: "module" };
+  const aiModuleOn = (t) => !!(t && t.modules && t.modules.clinicAi && t.modules.clinicAi.enabled);
+  const isActive = (path, href) => path === href || (href !== "/dashboard" && href !== "/ai" && path.startsWith(href));
 
   function shell(content, r) {
     const u = currentUser(), t = currentTenant();
-    const items = can(u.role, "platform:manage") ? [PLATFORM_NAV, ...NAV] : NAV;
+    const aiProfile = u.profile === "clinic-ai";
+    let items = aiProfile ? (aiModuleOn(t) ? AI_NAV : [AI_NAV[0]]) : aiModuleOn(t) ? [...NAV.slice(0, 6), AI_ENTRY, NAV[6]] : NAV.slice();
+    if (can(u.role, "platform:manage")) items = [PLATFORM_NAV, ...items];
     const current = items.find((i) => isActive(r.path, i.href));
     const productName = (t.branding && t.branding.productName) || "ClinicMind";
     const logo = t.branding && t.branding.logoUrl ? `<img src="${esc(t.branding.logoUrl)}" alt="" class="h-7 w-7 rounded-md object-contain">` : `<img src="assets/logo.svg" alt="" class="h-7 w-7 rounded-md">`;
     const nav = `<nav class="flex-1 space-y-0.5 p-3" aria-label="Main">${items.map((i) => `<a href="#${i.href}" class="nav-link" ${isActive(r.path, i.href) ? 'aria-current="page"' : ""} data-action="close-drawer"><span class="flex items-center gap-2.5">${icon(i.icon)}${esc(i.label)}</span>${i.badge ? badge(i.badge, "accent") : ""}</a>`).join("")}</nav>`;
-    const brand = `<div class="flex h-14 items-center gap-2 border-b border-border px-5">${logo}<div class="flex flex-col leading-none"><span class="font-display text-sm font-semibold tracking-tight">${esc(productName)}</span><span class="font-mono text-[10px] text-muted-foreground">clinic operating system</span></div></div>`;
+    const brand = `<div class="flex h-14 items-center gap-2 border-b border-border px-5">${logo}<div class="flex flex-col leading-none"><span class="font-display text-sm font-semibold tracking-tight">${esc(productName)}</span><span class="font-mono text-[10px] text-muted-foreground">${aiProfile ? "clinic ai module" : "clinic operating system"}</span></div></div>`;
     const tenantCard = `<div class="border-t border-border p-3"><div class="rounded-md bg-muted px-3 py-2"><p class="data-label">${t.id === "ten-platform" ? "platform" : "clinic"}</p><p class="truncate text-sm font-medium">${esc(t.name)}</p></div></div>`;
     const dark = document.documentElement.classList.contains("dark");
     return `<div class="flex min-h-screen bg-background">
@@ -263,7 +278,7 @@ window.CM = (function () {
           <div class="flex min-w-0 items-center gap-2"><button class="rounded-md p-2 text-muted-foreground hover:bg-muted lg:hidden" data-action="open-drawer" aria-label="Open navigation">${icon("menu", "h-5 w-5")}</button><span class="hidden truncate font-mono text-xs text-muted-foreground sm:inline">${esc(t.name)}</span><span class="hidden text-muted-foreground sm:inline">/</span><span class="truncate text-sm font-medium">${esc(current ? current.label : "Overview")}</span></div>
           <div class="flex items-center gap-1 sm:gap-2">
             <button class="btn btn-ghost btn-icon" data-action="toggle-theme" aria-label="Switch to ${dark ? "light" : "dark"} mode">${icon(dark ? "sun" : "moon")}</button>
-            <div class="relative"><button class="flex items-center gap-2 rounded-md px-2 py-1 hover:bg-muted" data-action="toggle-menu" aria-label="Account menu" aria-haspopup="menu">${avatar(u.fullName || u.email, "h-8 w-8 text-xs")}<span class="hidden text-left sm:block"><span class="block text-sm font-medium leading-tight">${esc(u.fullName || u.email)}</span><span class="block font-mono text-[10px] uppercase text-muted-foreground">${esc(ROLE_LABEL[u.role] || u.role)}</span></span>${icon("chevron-down", "h-4 w-4 text-muted-foreground")}</button>
+            <div class="relative"><button class="flex items-center gap-2 rounded-md px-2 py-1 hover:bg-muted" data-action="toggle-menu" aria-label="Account menu" aria-haspopup="menu">${avatar(u.fullName || u.email, "h-8 w-8 text-xs")}<span class="hidden text-left sm:block"><span class="block text-sm font-medium leading-tight">${esc(u.fullName || u.email)}</span><span class="block font-mono text-[10px] uppercase text-muted-foreground">${esc(u.title || ROLE_LABEL[u.role] || u.role)}</span></span>${icon("chevron-down", "h-4 w-4 text-muted-foreground")}</button>
               <div id="account-menu" class="hidden absolute right-0 top-full z-40 mt-1 w-64 rounded-lg border border-border bg-card p-1 shadow-xl" role="menu"><div class="px-3 py-2"><p class="text-sm font-medium">${esc(u.fullName || "")}</p><p class="font-mono text-xs text-muted-foreground">${esc(u.email)}</p></div><div class="my-1 h-px bg-border"></div><button class="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm hover:bg-muted" role="menuitem" data-action="reset-data">${icon("refresh")} Reset demo data</button><button class="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm hover:bg-muted" role="menuitem" data-action="sign-out">${icon("logout")} Sign out</button></div></div>
           </div>
         </header>
@@ -279,7 +294,7 @@ window.CM = (function () {
     const u = currentUser();
     // Theme + branding
     document.documentElement.classList.toggle("dark", theme() === "dark");
-    const protectedPath = r.path.startsWith("/dashboard") || r.path.startsWith("/platform");
+    const protectedPath = r.path.startsWith("/dashboard") || r.path.startsWith("/platform") || r.path === "/ai" || r.path.startsWith("/ai/");
     if (protectedPath && !u) { setSession(null); location.hash = `/login?next=${encodeURIComponent(r.path)}`; return; }
     if (r.path.startsWith("/platform") && u && !can(u.role, "platform:manage")) { location.hash = "/dashboard"; return; }
     if (protectedPath) applyBranding(currentTenant().branding);
@@ -293,6 +308,8 @@ window.CM = (function () {
       else if (r.path === "/forgot-password") html = views.forgot(r);
       else if (r.parts[0] === "invite") html = views.invite(r);
       else if (r.parts[0] === "embed") html = views.embed(r);
+      else if (r.parts[0] === "intake") html = views.intakeForm(r);
+      else if (r.parts[0] === "ai") html = shell(views.ai(r), r);
       else if (r.path === "/dashboard") html = shell(views.overview(r), r);
       else if (r.parts[1] === "patients" && r.parts[2]) html = shell(views.patient(r, r.parts[2]), r);
       else if (r.parts[1] === "patients") html = shell(views.patients(r), r);
@@ -348,6 +365,6 @@ window.CM = (function () {
     tid, scoped, patients, appointments, visits, consultations, conversations, medications, timeline, staff, doctors, patient, user,
     esc, fmtDate, fmtLongDate, fmtTime, dayKey, parseDay, addDays, age, initials, n, todayKey, pad, MONTHS, DAYS,
     icon, badge, card, sectionTitle, metric, emptyState, field, alert, avatar, toast, openDialog, closeDialog, confirmDialog,
-    route, go, render, views, actions, forms, applyBranding, hexToHsl, theme, setTheme, NAV,
+    route, go, render, views, actions, forms, applyBranding, hexToHsl, theme, setTheme, NAV, AI_NAV, aiModuleOn,
   };
 })();

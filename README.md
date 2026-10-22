@@ -66,6 +66,7 @@ all indexed for the assistant. It ends by printing the sign-in details:
 | Account | Who | Role |
 |---|---|---|
 | `owner@demo.clinic` | Dr. Layla Hassan | Clinic owner (physician-owner) |
+| `ai@demo.clinic` | Nadia Youssef | The Clinic AI module only: the spec's six modules and the AI rules |
 | `doctor@demo.clinic` | Dr. Omar Fahmy | Doctor |
 | `mariam@demo.clinic` | Dr. Mariam Tarek | Doctor |
 | `nurse@demo.clinic` | Heba Mostafa | Nurse |
@@ -199,7 +200,13 @@ testers and sales demos: no server, no database, no AI key. It is published by
 
 Every button, form and menu responds; the seeded clinic (Aura Derma & Hair
 Clinic, Cairo), the platform console and the tenant white-label flow are all
-there. Data lives in the browser's `localStorage` (account menu → *Reset demo
+there. The prototype also carries the **Clinic AI Implementation Spec as a
+module**: sign in as `ai@demo.clinic` (the Clinic AI lead) and the workspace is
+the spec itself, one entry per module (AI front desk, consultation preparation,
+documentation copilot, photography, concierge, management layer, AI rules),
+with seeded leads, intakes, briefs, documents, photo timelines, protocols,
+metrics, prompts and evaluation gates. The owner reaches the same module from
+the navigation; the platform console switches it on or off per tenant. Data lives in the browser's `localStorage` (account menu → *Reset demo
 data* rebuilds it). Sign in with any seeded account and the password
 `Demo-Clinic-2026!`; `platform@demo.clinic` opens the platform console.
 

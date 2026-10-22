@@ -17,6 +17,15 @@ screens, where every action responds but nothing leaves the browser. Use it to
 validate flows and copy before the full stack is deployed; then run Phase 2
 (front end and back end) on the hosted application.
 
+**The spec as a module (prototype):** sign in as `ai@demo.clinic` (Clinic AI
+lead). The navigation is the spec, module by module; every screen responds with
+seeded data: the cross-channel front desk with drafts and real slots, intake
+links and doctor briefs, ambient recording and signed documents with evidence
+spans, photo timelines, concierge protocols with an escalation ladder, the
+management dashboards with a weekly brief, and the AI rules (modes, red lines,
+prompt registry, evaluation gates, kill switch). Demo this first when the
+audience wants to see the spec rather than the foundation.
+
 ---
 
 ## Before the meeting (15 minutes, once)

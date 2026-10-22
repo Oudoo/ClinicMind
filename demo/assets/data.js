@@ -41,8 +41,12 @@ window.CM_SEED = (function () {
     { id: "u-mariam", email: "mariam@demo.clinic", fullName: "Dr. Mariam Tarek", role: "DOCTOR", kind: "derm" },
     { id: "u-nurse", email: "nurse@demo.clinic", fullName: "Heba Mostafa", role: "NURSE", kind: null },
     { id: "u-reception", email: "reception@demo.clinic", fullName: "Youssef Hany", role: "RECEPTIONIST", kind: null },
+    // The AI profile: an owner-level account whose workspace is the Clinic AI module (the spec, module by module).
+    { id: "u-ai", email: "ai@demo.clinic", fullName: "Nadia Youssef", role: "CLINIC_OWNER", kind: null, profile: "clinic-ai", title: "Clinic AI lead", demoOrder: 2 },
   ];
-  const PLATFORM_ADMIN = { id: "u-platform", email: "platform@demo.clinic", fullName: "Platform Admin", role: "SUPER_ADMIN", kind: null };
+  STAFF[0].demoOrder = 1;
+  const PLATFORM_ADMIN = { id: "u-platform", email: "platform@demo.clinic", fullName: "Platform Admin", role: "SUPER_ADMIN", kind: null, demoOrder: 3 };
+  const AI_MODULE_DEFAULT = () => ({ enabled: true, killSwitch: false, modes: { frontDesk: "assist", preparation: "auto", copilot: "assist", photos: "assist", concierge: "assist", management: "auto" } });
 
   const pad = (n) => String(n).padStart(2, "0");
   const dayKey = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
@@ -180,14 +184,16 @@ window.CM_SEED = (function () {
     }
 
     const tenants = [
-      { id: "ten-demo", slug: "demo", name: "Aura Derma & Hair Clinic", status: "ACTIVE", branding: { productName: "ClinicMind", accent: "#4F46E5", logoUrl: "" }, customDomain: null, customDomainVerified: false, embed: { enabled: true, allowedOrigins: ["https://www.auraclinic.example"], secretPrefix: "cmembed_mc4Gfi", rotatedAt: today.toISOString() }, timezone: TZ_LABEL, clinicName: "Aura Clinic — Zamalek", createdAt: at(-120, 9, 0).toISOString() },
+      { id: "ten-demo", slug: "demo", name: "Aura Derma & Hair Clinic", status: "ACTIVE", modules: { clinicAi: AI_MODULE_DEFAULT() }, branding: { productName: "ClinicMind", accent: "#4F46E5", logoUrl: "" }, customDomain: null, customDomainVerified: false, embed: { enabled: true, allowedOrigins: ["https://www.auraclinic.example"], secretPrefix: "cmembed_mc4Gfi", rotatedAt: today.toISOString() }, timezone: TZ_LABEL, clinicName: "Aura Clinic — Zamalek", createdAt: at(-120, 9, 0).toISOString() },
     ];
     const users = [...STAFF.map((s) => ({ ...s, tenantId: "ten-demo", status: "ACTIVE", createdAt: at(-120, 9, 0).toISOString() })), { ...PLATFORM_ADMIN, tenantId: "ten-platform", status: "ACTIVE", createdAt: at(-120, 9, 0).toISOString() }];
 
+    const ai = window.CM_SEED_AI ? window.CM_SEED_AI.generate({ rand, pick, chance, between, id, at, today, dayKey, patients, appointments, visits, consultations, conversations, STAFF }) : {};
     return {
-      version: 1, generatedAt: now.toISOString(), today: dayKey(today), password: PASSWORD,
+      version: 2, generatedAt: now.toISOString(), today: dayKey(today), password: PASSWORD,
       tenants, users, patients, appointments, visits, consultations, conversations, medications, timeline,
       aiRuns: between(18, 34), platformTenant: { id: "ten-platform", slug: "platform", name: "GrowCDX Platform" },
+      ...ai,
     };
   }
 
@@ -199,5 +205,5 @@ window.CM_SEED = (function () {
     return { symptoms: [...cond.symptoms], diagnoses: [cond.diagnosis], tests: [...cond.tests], followUps: [cond.followUps[0]], medications: cond.meds.map((m) => ({ ...m })) };
   }
 
-  return { generate, CONDITIONS, STAFF, PLATFORM_ADMIN, PASSWORD, ROOMS, CANCEL_REASONS };
+  return { generate, CONDITIONS, STAFF, PLATFORM_ADMIN, PASSWORD, ROOMS, CANCEL_REASONS, AI_MODULE_DEFAULT };
 })();
