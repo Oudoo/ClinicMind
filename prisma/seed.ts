@@ -1,6 +1,7 @@
 import { PrismaClient, type Gender, type AppointmentStatus, type ChannelType, type Prisma } from "@prisma/client";
 import { generateEmbedSecret } from "../src/lib/embed";
 import { generatePassword, hashPassword, PasswordSchema } from "../src/lib/auth/password";
+import { reindexTenant } from "../src/modules/knowledge/ingest";
 
 /**
  * Demo seed: "Aura Derma & Hair Clinic" (Cairo), a dermatology and hair-transplant
@@ -322,6 +323,11 @@ async function main() {
   await db.auditLog.create({ data: { tenantId: tenant.id, actorEmail: "seed@clinicmind", action: "tenant.seed", entity: "Tenant", entityId: tenant.id, after: { patients: patients.length, appointments: appointmentCount } } });
 
   console.log(`✅ Seeded "${tenant.name}": ${patients.length} patients, ${appointmentCount} appointments, ${visitCount} signed visits, ${pendingCount} consultations awaiting review, ${conversationCount} conversations.`);
+
+  // Build the assistant's knowledge base (uses the configured embedding provider,
+  // or the offline hash embeddings when no AI key is set).
+  const index = await reindexTenant(tenant.id);
+  console.log(`🧠 Indexed ${index.chunks.embedded} chunks for the assistant (${index.errors} errors).`);
   console.log(`🔑 Embed secret (shown once, stored hashed): ${embedSecret.secret}`);
   console.log("");
   console.log(`   Sign in at ${appUrl}/login — all five demo accounts share one password:`);

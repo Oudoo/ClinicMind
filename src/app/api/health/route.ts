@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { usingDevSecrets } from "@/lib/env";
+import { aiStatus } from "@/lib/ai/provider";
 import pkg from "../../../../package.json";
 
 export const dynamic = "force-dynamic";
@@ -31,6 +32,7 @@ export async function GET() {
       dbLatencyMs,
       uptimeSeconds: Math.round((Date.now() - startedAt) / 1000),
       devSecrets: usingDevSecrets,
+      ai: aiStatus(),
       ts: new Date().toISOString(),
     },
     { status: healthy ? 200 : 503, headers: { "Cache-Control": "no-store" } },
