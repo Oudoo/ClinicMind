@@ -12,4 +12,5 @@ if (process.env.TEST_DATABASE_URL) {
 process.env.AUTH_SECRET ??= "vitest-auth-secret-not-for-production";
 process.env.EMBED_SIGNING_SECRET ??= "vitest-embed-secret-not-for-production";
 process.env.AI_DEFAULT_PROVIDER ??= "echo";
+process.env.AI_EMBEDDING_PROVIDER ??= "echo";
 process.env.APP_URL ??= "http://localhost:3000";

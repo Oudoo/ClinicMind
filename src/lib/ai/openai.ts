@@ -1,67 +1,96 @@
 import { env } from "@/lib/env";
-import type { AiMessage, AiProvider, ChatOptions, ChatResult, EmbedResult } from "./types";
+import { aiFetchJson } from "./http";
+import type { AiMessage, AiProvider, ChatOptions, ChatResult, EmbedOptions, EmbedResult } from "./types";
+import { AiProviderError, EMBEDDING_DIMENSIONS } from "./types";
+import { batched, normalizeVector } from "./vectors";
 
 /**
- * OpenAI adapter (GPT-4o / GPT-4.1 / Whisper-class via embeddings + chat).
- * Implemented over the REST API directly to avoid a heavy SDK dependency and to
- * keep the adapter swappable.
+ * OpenAI adapter over the REST API (no SDK dependency, swappable).
+ * Chat on `OPENAI_MODEL`; embeddings on `OPENAI_EMBEDDING_MODEL` requested at
+ * 1536 dimensions to match the store.
  */
+const BASE = "https://api.openai.com/v1";
+/** Keep embedding requests comfortably inside the per-request token budget. */
+const EMBED_BATCH = 64;
+
+interface ChatCompletionResponse {
+  choices?: { message?: { content?: string | null }; finish_reason?: string }[];
+}
+
+interface EmbeddingsResponse {
+  data?: { embedding?: number[]; index?: number }[];
+}
+
 export class OpenAiProvider implements AiProvider {
   readonly name = "openai";
-  private readonly base = "https://api.openai.com/v1";
 
   isConfigured(): boolean {
     return Boolean(env.OPENAI_API_KEY);
   }
 
-  private headers() {
-    return {
-      Authorization: `Bearer ${env.OPENAI_API_KEY}`,
-      "Content-Type": "application/json",
-    };
+  supportsEmbeddings(): boolean {
+    return true;
+  }
+
+  chatModel(): string {
+    return env.OPENAI_MODEL;
+  }
+
+  embeddingModel(): string {
+    return env.OPENAI_EMBEDDING_MODEL;
+  }
+
+  private headers(): Record<string, string> {
+    return { Authorization: `Bearer ${env.OPENAI_API_KEY ?? ""}` };
   }
 
   async chat(messages: AiMessage[], opts: ChatOptions = {}): Promise<ChatResult> {
-    const model = opts.model ?? "gpt-4o";
+    const model = opts.model ?? this.chatModel();
     const started = Date.now();
-    const res = await fetch(`${this.base}/chat/completions`, {
-      method: "POST",
+
+    const json = await aiFetchJson<ChatCompletionResponse>(this.name, `${BASE}/chat/completions`, {
       headers: this.headers(),
-      body: JSON.stringify({
+      body: {
         model,
         messages,
         temperature: opts.temperature ?? 0.2,
-        max_tokens: opts.maxTokens ?? 1024,
+        max_completion_tokens: opts.maxTokens ?? 1024,
         ...(opts.jsonMode ? { response_format: { type: "json_object" } } : {}),
-      }),
+      },
     });
-    if (!res.ok) {
-      throw new Error(`OpenAI chat failed: ${res.status} ${await res.text()}`);
-    }
-    const json = (await res.json()) as {
-      choices: { message: { content: string }; finish_reason: string }[];
-    };
-    const choice = json.choices[0];
+
+    const choice = json.choices?.[0];
     return {
       provider: this.name,
       model,
-      content: choice?.message.content ?? "",
+      content: choice?.message?.content ?? "",
       latencyMs: Date.now() - started,
-      confidence: choice?.finish_reason === "stop" ? 0.9 : 0.6,
+      finishReason: choice?.finish_reason === "stop" ? "stop" : choice?.finish_reason === "length" ? "length" : "other",
     };
   }
 
-  async embed(texts: string[]): Promise<EmbedResult> {
-    const model = "text-embedding-3-small";
-    const res = await fetch(`${this.base}/embeddings`, {
-      method: "POST",
-      headers: this.headers(),
-      body: JSON.stringify({ model, input: texts }),
-    });
-    if (!res.ok) {
-      throw new Error(`OpenAI embed failed: ${res.status} ${await res.text()}`);
+  async embed(texts: string[], _opts: EmbedOptions = {}): Promise<EmbedResult> {
+    const model = this.embeddingModel();
+    const vectors: number[][] = [];
+
+    for (const batch of batched(texts, EMBED_BATCH)) {
+      const json = await aiFetchJson<EmbeddingsResponse>(this.name, `${BASE}/embeddings`, {
+        headers: this.headers(),
+        body: { model, input: batch, dimensions: EMBEDDING_DIMENSIONS },
+      });
+      const data = [...(json.data ?? [])].sort((a, b) => (a.index ?? 0) - (b.index ?? 0));
+      if (data.length !== batch.length) {
+        throw new AiProviderError(this.name, 200, `openai returned ${data.length} embeddings for ${batch.length} inputs`);
+      }
+      for (const d of data) {
+        const values = d.embedding ?? [];
+        if (values.length !== EMBEDDING_DIMENSIONS) {
+          throw new AiProviderError(this.name, 200, `openai embedding has ${values.length} dimensions, expected ${EMBEDDING_DIMENSIONS}`);
+        }
+        vectors.push(normalizeVector(values));
+      }
     }
-    const json = (await res.json()) as { data: { embedding: number[] }[] };
-    return { provider: this.name, model, vectors: json.data.map((d) => d.embedding) };
+
+    return { provider: this.name, model, vectors };
   }
 }
