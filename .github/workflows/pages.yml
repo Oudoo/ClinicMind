@@ -4,12 +4,11 @@ name: Deploy demo to GitHub Pages
 # One-time setup: repo Settings → Pages → Source = "GitHub Actions".
 
 # GitHub Pages is enabled with Source = "GitHub Actions". This deploys the
-# static demo in /demo. It runs on main and on the active feature branch so the
-# demo can go live for evaluation before the production merge. To deploy any
-# other branch manually: Actions tab → "Deploy demo to GitHub Pages" → Run workflow.
+# static concept demo in /demo (a mock-up with hard-coded data, not the
+# application). It runs only from main; use "Run workflow" to redeploy.
 on:
   push:
-    branches: [main, "claude/**"]
+    branches: [main]
     paths:
       - "demo/**"
       - ".github/workflows/pages.yml"
