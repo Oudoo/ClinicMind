@@ -20,7 +20,7 @@ of per-use fees** using the offline `echo` AI provider with channels disabled.
 
 | Service | Powers | Pricing shape | How to avoid cost |
 |---|---|---|---|
-| **Hostinger Next.js plan** | Production hosting | Your existing plan | Already chosen |
+| **Hosting** (any Node 22 host, or the Docker Compose stack in `docs/RUNBOOK.md`) | Production hosting | Monthly VPS / plan | One small VPS runs web + Postgres + backups |
 | **Managed Postgres** (with pgvector) | Production database | Monthly, by size | Self-host Postgres on a VPS/the same box |
 | **Managed Redis** | Background job queues | Monthly | Self-host Redis; or defer queues until you need WhatsApp/voice |
 | **S3-compatible storage** | Audio, documents, images | Per-GB + requests | Use cheap providers (Cloudflare R2 has no egress fees); or local disk early on |
@@ -34,7 +34,7 @@ of per-use fees** using the offline `echo` AI provider with channels disabled.
 
 1. **AI:** start with `AI_DEFAULT_PROVIDER=gemini` on the **free tier** (or `echo`
    for true $0). Only move to OpenAI/Anthropic when a client pays for premium AI.
-2. **DB/Redis/Storage:** co-locate Postgres + Redis on your Hostinger box or a
+2. **DB/Storage:** co-locate Postgres on the same box or a
    single small VPS instead of managed services; use Cloudflare R2 for files.
 3. **Channels off** until a client specifically buys WhatsApp/voice; those are
    the only genuinely per-use external costs and they're feature-flagged per tenant.
