@@ -137,3 +137,29 @@ What this means in practice: a ClinicMind tenant gets an "Omni Grow connection"
 "ClinicMind connection" per workspace. If a clinic wants the inbox inside the
 ClinicMind screen, it can be framed with the same embed-token pattern
 ClinicMind already uses for its own surface, without moving any code.
+
+## AI providers per tenant
+
+Each client can run on the AI vendor it prefers. On the tenant page the **AI
+providers** card sets which provider answers chat, extraction and the
+assistant (Gemini, OpenAI/ChatGPT or Anthropic/Claude), which one transcribes
+dictation (Gemini or OpenAI; Claude takes no audio), optional model overrides,
+and the client's own API keys. Anything left on *inherit* uses the
+environment's configuration.
+
+API: `PATCH /api/tenants/[id]` with
+
+```json
+{ "ai": { "chatProvider": "openai", "transcriptionProvider": "gemini",
+          "models": { "openaiChat": "gpt-4.1" },
+          "keys": { "openai": "sk-…" } } }
+```
+
+`inherit` or an empty string clears a field; an omitted field keeps its value.
+Keys are stored under `Tenant.settings.ai` encrypted with AES-256-GCM
+(`DATA_ENCRYPTION_KEY`, else a key derived from `AUTH_SECRET`), never returned
+by any endpoint (`GET /api/tenants/[id]` reports `set` and the last four
+characters), and used only for that tenant's calls. The audit log records the
+public shape of the change, never a key. Embeddings are not per tenant: the
+vector store has one dimension and one model.
+

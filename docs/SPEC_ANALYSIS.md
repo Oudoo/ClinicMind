@@ -40,7 +40,7 @@ Assumptions that drive it: one site, 3–6 doctors, Egypt, Arabic (Egyptian) + E
 | Staff authentication (argon2id, server sessions, invitations, reset, lockout, rate limits), RBAC 6 roles, platform vs tenant permissions | Done |
 | Patients: CRUD, detail page, medical history, medications, timeline, search, pagination, archive | Done (this sprint) |
 | Appointments: booking with conflict detection/waitlist, lifecycle (confirm → check-in → in progress → complete, cancel, no-show, reschedule), clinic-timezone day boundaries | Done (this sprint) |
-| Consultations: transcript → structured extraction → **editable** review → sign; de-duplicated diagnoses; medication reconciliation; discard; history | Done (this sprint); **no audio capture yet** |
+| Consultations: transcript → structured extraction → **editable** review → sign; de-duplicated diagnoses; medication reconciliation; discard; history; **dictation and ambient recording** through the provider layer (Gemini or OpenAI speech-to-text, consent logged, audio not stored); dictation into the medical history as reviewed suggestions | Done; speaker separation relies on the model (no dedicated diarization yet) |
 | AI assistant: ingestion of patient/visit/consultation/conversation documents into pgvector, hybrid retrieval, grounded answers with citations to patients, honest confidence; provider-agnostic (Gemini / OpenAI / Anthropic / offline), env-driven models, timeouts | Done (this sprint) |
 | Conversations: data model + read-only view (seeded) | Model only; **no gateway, no sending** |
 | Security: fail-fast env, CSP, per-tenant frame-ancestors on the embed surface, API rate limits, append-only audit (DB trigger), RLS policies in migrations (activation with a non-owner role pending), tenant-scope checks on every foreign key | Done |
@@ -127,7 +127,8 @@ You already have an inbox tool. The spec's Module 1 and the staff-inbox requirem
 
 ### Module 3 — Documentation copilot
 - **Have:** transcript → extraction → editable review → sign, medication reconciliation, audit of clinician edits versus the AI draft. This is the spec's "doctor edits and signs" core.
-- **Build:** audio capture (browser `MediaRecorder` on the doctor console) with consent logging, upload to object storage, transcription via the vendor chosen in the bake-off (ElevenLabs Scribe or Deepgram; keyterm glossary), speaker separation; document generators per encounter type (note with evidence spans, treatment plan from the price table, instructions from the library, consent draft with checklist, referral, procedure record); audio retention job; document delivery through the inbox.
+- **Have (new):** audio capture (browser `MediaRecorder`) with consent logging and transcription through Gemini or OpenAI with a clinical glossary; audio is discarded after transcription.
+- **Build:** object storage with 30-day audio retention, the vendor bake-off on Egyptian-Arabic samples (ElevenLabs Scribe, Deepgram, Azure, Google) if the multimodal models fall short on code-switching, dedicated speaker separation; document generators per encounter type (note with evidence spans, treatment plan from the price table, instructions from the library, consent draft with checklist, referral, procedure record); audio retention job; document delivery through the inbox.
 
 ### Module 4 — Photography
 - **Build from scratch:** `Photo` model and storage, guided capture page (overlay, lighting/blur checks), automatic stage assignment from procedure date, at-home photo classification/quality scoring (vision model), timeline and side-by-side comparison, missing-set flags → tasks, consent per use, watermarked exports with audit. The spec's "flags, not judgements" rule is the design constraint.

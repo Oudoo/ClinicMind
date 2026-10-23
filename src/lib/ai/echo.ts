@@ -1,4 +1,4 @@
-import type { AiMessage, AiProvider, ChatOptions, ChatResult, EmbedOptions, EmbedResult } from "./types";
+import type { AiMessage, AiProvider, ChatOptions, ChatResult, EmbedOptions, EmbedResult, TranscribeOptions, TranscribeResult } from "./types";
 import { EMBEDDING_DIMENSIONS } from "./types";
 
 /**
@@ -25,12 +25,27 @@ export class EchoProvider implements AiProvider {
     return true;
   }
 
+  /** Only when named explicitly (`AI_TRANSCRIPTION_PROVIDER=echo`, tests): it recognises no speech. */
+  supportsTranscription(): boolean {
+    return true;
+  }
+
   chatModel(): string {
     return "echo-1";
   }
 
   embeddingModel(): string {
     return "echo-embed-1";
+  }
+
+  transcriptionModel(): string {
+    return "echo-transcribe-1";
+  }
+
+  async transcribe(audio: Uint8Array, opts: TranscribeOptions): Promise<TranscribeResult> {
+    const kb = Math.max(1, Math.round(audio.byteLength / 1024));
+    const text = `${opts.speakers ? "Doctor: " : ""}[offline transcription] ${kb} KB of ${opts.mimeType} audio received. No speech-to-text provider is configured, so the words were not recognised; type or paste the transcript instead.`;
+    return { provider: this.name, model: this.transcriptionModel(), text, latencyMs: 0 };
   }
 
   async chat(messages: AiMessage[], _opts: ChatOptions = {}): Promise<ChatResult> {

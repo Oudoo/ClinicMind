@@ -249,7 +249,7 @@
     return `<div class="bento space-y-4"><div><h3 class="font-display text-lg font-semibold">New consultation</h3><p class="text-sm text-muted-foreground">Pick the patient, paste the transcript and extract a structured draft. Nothing reaches the record until a clinician signs.</p></div>
       <form data-form="extract" class="space-y-4" novalidate><div id="extract-error"></div>${field("Patient", C.patientPicker("nc", presetPatient, "Search patients…"), "Search by name, phone or e-mail.")}
       ${field("Transcript", `<textarea id="nc-transcript" name="transcript" class="input min-h-[16rem]" maxlength="40000" placeholder="Paste the consultation transcript…"></textarea>`, `<span class="flex justify-between"><span>At least 20 characters.</span><span id="nc-count" class="font-mono">0 / 40,000</span></span>`, "nc-transcript")}
-      <div class="flex flex-col gap-3 border-t border-border pt-4 sm:flex-row sm:items-center sm:justify-between"><button type="button" class="btn btn-outline" disabled title="Ambient audio capture arrives with Module 3">${icon("mic")} Audio capture — next release</button><button type="submit" class="btn btn-primary" id="nc-submit" disabled>${icon("sparkles")} Extract clinical data</button></div></form></div>`;
+      <div class="flex flex-col gap-3 border-t border-border pt-4 sm:flex-row sm:items-center sm:justify-between"><button type="button" class="btn btn-outline" data-action="rec-start" title="Record and transcribe (simulated in the prototype)">${icon("mic")} Dictate</button><button type="submit" class="btn btn-primary" id="nc-submit" disabled>${icon("sparkles")} Extract clinical data</button></div></form></div>`;
   }
   function wireCapture() {
     const ta = document.querySelector("#nc-transcript"); if (!ta) return;

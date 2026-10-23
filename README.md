@@ -121,6 +121,39 @@ providers, uptime and whether development secrets are in use.
 
 ---
 
+### Dictation and transcription
+
+Doctors can dictate instead of typing. The **Dictate** control in the
+consultation capture form and in the patient's *Edit history* dialog records in
+the browser (MediaRecorder), sends the audio to the clinic's speech-to-text
+provider and returns the transcript; the audio is not stored. Two modes:
+*dictation* (the doctor alone) and *ambient* (doctor and patient, turns
+labelled, consent confirmed and logged). The transcript then goes through the
+same extract → review → sign path as a typed one, or, in the history editor,
+becomes suggested entries the clinician reviews before saving.
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `AI_TRANSCRIPTION_PROVIDER` | `auto` | `auto` picks the first provider with a key that can transcribe (Gemini, then OpenAI). There is no silent fallback: without one, the API answers 503 and the control says so. `echo` is for tests only. |
+| `GEMINI_TRANSCRIPTION_MODEL` | `gemini-2.5-flash` | Audio goes inline to `generateContent` with verbatim-transcription instructions (Egyptian Arabic and English mixes stay as spoken). |
+| `OPENAI_TRANSCRIPTION_MODEL` | `gpt-4o-transcribe` | Used through the audio transcriptions endpoint with a clinical vocabulary prompt. |
+
+Claude (Anthropic) takes no audio input, so speech-to-text always runs on Gemini
+or OpenAI even when Claude answers the chat.
+
+### Providers per client
+
+Every AI capability is provider-agnostic: Gemini, OpenAI (ChatGPT) and
+Anthropic (Claude) adapters exist for chat, extraction and the assistant, and
+Gemini and OpenAI for transcription. The platform console sets them **per
+tenant** (tenant page → *AI providers*): which provider answers chat and which
+one transcribes, optional model overrides, and the client's own API keys. Keys
+are encrypted at rest (AES-256-GCM under `DATA_ENCRYPTION_KEY`, or a key derived
+from `AUTH_SECRET`), never returned by any endpoint, and used only for that
+tenant's calls; anything left on *inherit* uses the environment's
+configuration. Embeddings stay global because the vector store has one
+dimension and one model.
+
 ## Roles
 
 | Role | Can |

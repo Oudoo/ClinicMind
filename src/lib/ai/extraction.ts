@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { chatProvider } from "./provider";
+import { chatProvider, type TenantAiOverrides } from "./provider";
 import { zOptionalText } from "@/lib/validation";
 import { normaliseClinicalTerm } from "@/modules/consultations/normalise";
 
@@ -88,8 +88,13 @@ export interface ExtractionResult {
   empty: boolean;
 }
 
-export async function extractClinicalData(transcript: string): Promise<ExtractionResult> {
-  const provider = chatProvider();
+export interface ExtractionOptions {
+  /** The acting tenant's provider overrides (its own keys and models), when any. */
+  tenantAi?: TenantAiOverrides;
+}
+
+export async function extractClinicalData(transcript: string, opts: ExtractionOptions = {}): Promise<ExtractionResult> {
+  const provider = chatProvider(undefined, opts.tenantAi);
   const result = await provider.chat(
     [
       { role: "system", content: SYSTEM_PROMPT },
@@ -138,6 +143,18 @@ export function normaliseExtraction(value: unknown): ClinicalExtraction {
   if (!isRecord(value)) return emptyExtraction();
   const result = ClinicalExtractionSchema.safeParse(sanitise(value));
   return result.success ? result.data : emptyExtraction();
+}
+
+/** The first JSON object in a model response (fenced or bare), parsed; `null` when there is none. */
+export function parseModelJsonObject(raw: string): Record<string, unknown> | null {
+  const json = locateJsonObject(raw);
+  if (json === null) return null;
+  try {
+    const value: unknown = JSON.parse(json);
+    return isRecord(value) ? value : null;
+  } catch {
+    return null;
+  }
 }
 
 function locateJsonObject(raw: string): string | null {

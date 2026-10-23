@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { ChevronDown, Loader2, Mic, Sparkles } from "lucide-react";
+import { ChevronDown, Loader2, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Alert, Field } from "@/components/ui/field";
 import { Select, Textarea } from "@/components/ui/input";
@@ -20,6 +20,7 @@ import {
   type PatientOption,
 } from "@/modules/consultations/types";
 import { PatientPicker } from "./consultation-patient-picker";
+import { DictationControl } from "./dictation";
 import { ConsultationReview, DiscardButton, ExtractionChips } from "./consultation-review";
 import { STATUS_LABEL, STATUS_TONE } from "./consultation-list";
 
@@ -42,10 +43,10 @@ export interface ConsultationPanelProps {
 /**
  * Consultation Intelligence panel.
  *
- * Flow: paste transcript -> AI extracts a structured draft -> clinician
- * REVIEWS (every section editable) -> explicitly signs. Clinical decisions are
- * never auto-saved. Audio capture ships in a later release and is shown as
- * exactly that — never as a working button.
+ * Flow: dictate or paste the transcript -> AI extracts a structured draft ->
+ * clinician REVIEWS (every section editable) -> explicitly signs. Clinical
+ * decisions are never auto-saved. Dictation records in the browser and goes
+ * through the clinic's speech-to-text provider; the audio itself is not kept.
  */
 export function ConsultationPanel(props: ConsultationPanelProps) {
   const { consultation, canSign, userId, onChanged, onClosed, onNew } = props;
@@ -160,7 +161,7 @@ function CaptureForm({ presetPatient, canSign, onChanged, onClosed, onNew, onOpe
     <Card className="space-y-5">
       <SectionTitle
         title="New consultation"
-        description="Pick the patient, paste the transcript and extract a structured draft. Nothing reaches the record until a clinician signs."
+        description="Pick the patient, dictate or paste the transcript and extract a structured draft. Nothing reaches the record until a clinician signs."
       />
 
       <PatientPicker
@@ -194,7 +195,7 @@ function CaptureForm({ presetPatient, canSign, onChanged, onClosed, onNew, onOpe
           maxLength={TRANSCRIPT_MAX_LENGTH}
           value={transcript}
           onChange={(e) => setTranscript(e.target.value)}
-          placeholder="Paste the consultation transcript…"
+          placeholder="Dictate below, or paste the consultation transcript…"
           disabled={busy}
         />
       </Field>
@@ -202,12 +203,12 @@ function CaptureForm({ presetPatient, canSign, onChanged, onClosed, onNew, onOpe
       {error ? <Alert>{error}</Alert> : null}
 
       <div className="flex flex-col gap-3 border-t border-border pt-4 sm:flex-row sm:items-center sm:justify-between">
-        <span title="Audio capture ships in the next release" className="inline-flex">
-          <Button type="button" variant="outline" disabled aria-disabled="true">
-            <Mic />
-            Audio capture — next release
-          </Button>
-        </span>
+        <DictationControl
+          allowAmbient
+          patientId={patient?.id ?? null}
+          disabled={busy}
+          onTranscript={(text) => setTranscript((current) => (current.trim() ? `${current.trimEnd()}\n${text}` : text))}
+        />
         <Button type="button" onClick={extract} disabled={!canExtract}>
           {busy ? <Loader2 className="animate-spin" /> : <Sparkles />}
           {busy ? "Extracting…" : "Extract clinical data"}

@@ -2,6 +2,7 @@ import { z } from "zod";
 import { getActingContext } from "@/lib/auth/session";
 import { assertCan } from "@/lib/auth/rbac";
 import { answerWithRag } from "@/lib/ai/rag";
+import { resolveTenantAi } from "@/lib/ai/tenant-config";
 import { AiProviderError } from "@/lib/ai/provider";
 import { requireTenantPatient } from "@/lib/tenant-scope";
 import { db } from "@/lib/db";
@@ -37,7 +38,7 @@ export async function POST(req: Request) {
     const started = Date.now();
     let result;
     try {
-      result = await answerWithRag(ctx.tenantId, query, { patientId });
+      result = await answerWithRag(ctx.tenantId, query, { patientId, tenantAi: await resolveTenantAi(ctx.tenantId) });
     } catch (err) {
       if (err instanceof AiProviderError) {
         await db.aiRun

@@ -1,6 +1,6 @@
 import { env } from "@/lib/env";
 import { aiFetchJson } from "./http";
-import type { AiMessage, AiProvider, ChatOptions, ChatResult, EmbedResult } from "./types";
+import type { AiMessage, AiProvider, ChatOptions, ChatResult, EmbedResult, ProviderConfig, TranscribeResult } from "./types";
 import { AiProviderError } from "./types";
 
 /**
@@ -18,20 +18,39 @@ interface MessagesResponse {
 export class AnthropicProvider implements AiProvider {
   readonly name = "anthropic";
 
+  constructor(private readonly cfg: ProviderConfig = {}) {}
+
+  private apiKey(): string | undefined {
+    return this.cfg.apiKey ?? env.ANTHROPIC_API_KEY;
+  }
+
   isConfigured(): boolean {
-    return Boolean(env.ANTHROPIC_API_KEY);
+    return Boolean(this.apiKey());
   }
 
   supportsEmbeddings(): boolean {
     return false;
   }
 
+  /** Claude takes no audio input; speech-to-text routes to Gemini or OpenAI. */
+  supportsTranscription(): boolean {
+    return false;
+  }
+
   chatModel(): string {
-    return env.ANTHROPIC_MODEL;
+    return this.cfg.chatModel ?? env.ANTHROPIC_MODEL;
   }
 
   embeddingModel(): null {
     return null;
+  }
+
+  transcriptionModel(): null {
+    return null;
+  }
+
+  async transcribe(): Promise<TranscribeResult> {
+    throw new AiProviderError(this.name, 0, "anthropic does not transcribe audio");
   }
 
   async chat(messages: AiMessage[], opts: ChatOptions = {}): Promise<ChatResult> {
@@ -46,7 +65,7 @@ export class AnthropicProvider implements AiProvider {
 
     const json = await aiFetchJson<MessagesResponse>(this.name, `${BASE}/messages`, {
       headers: {
-        "x-api-key": env.ANTHROPIC_API_KEY ?? "",
+        "x-api-key": this.apiKey() ?? "",
         "anthropic-version": "2023-06-01",
       },
       body: {

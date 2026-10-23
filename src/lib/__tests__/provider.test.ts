@@ -12,6 +12,9 @@ vi.mock("@/lib/env", () => ({
     ANTHROPIC_MODEL: "claude-test",
     GEMINI_MODEL: "gemini-test",
     GEMINI_EMBEDDING_MODEL: "gemini-embedding-test",
+    AI_TRANSCRIPTION_PROVIDER: "auto",
+    GEMINI_TRANSCRIPTION_MODEL: "gemini-stt-test",
+    OPENAI_TRANSCRIPTION_MODEL: "openai-stt-test",
     AI_TIMEOUT_MS: 5000,
   },
 }));
@@ -44,6 +47,7 @@ describe("provider routing", () => {
     expect(aiStatus()).toEqual({
       chat: { provider: "echo", model: "echo-1", configured: false },
       embeddings: { provider: "echo", model: "echo-embed-1", configured: false },
+      transcription: { provider: "none", model: "", configured: false },
     });
   });
 
@@ -93,6 +97,7 @@ describe("provider routing", () => {
     expect(aiStatus()).toEqual({
       chat: { provider: "anthropic", model: "claude-test", configured: true },
       embeddings: { provider: "gemini", model: "gemini-embedding-test", configured: true },
+      transcription: { provider: "gemini", model: "gemini-stt-test", configured: true },
     });
   });
 });

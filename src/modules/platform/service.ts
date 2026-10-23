@@ -1,4 +1,5 @@
 import type { Prisma, TenantStatus, UserRole, UserStatus } from "@prisma/client";
+import { aiConfigOf, invalidateTenantAi, mergeAiConfig, publicAiConfig, type TenantAiPublic } from "@/lib/ai/tenant-config";
 import { db, notDeleted } from "@/lib/db";
 import { audit } from "@/lib/audit";
 import { generateEmbedSecret } from "@/lib/embed";
@@ -75,6 +76,8 @@ export interface TenantDetail extends TenantSummary {
   clinics: { id: string; name: string; timezone: string; address: string | null; phone: string | null }[];
   users: TenantUserSummary[];
   counts: { users: number; patients: number; appointments: number; consultations: number; visits: number };
+  /** The tenant's AI providers and models; keys are shown as set/unset with a four-character hint. */
+  ai: TenantAiPublic;
 }
 
 const embedSelect = { enabled: true, allowedOrigins: true, secretPrefix: true, secretRotatedAt: true } as const;
@@ -178,6 +181,7 @@ export async function getTenantDetail(id: string): Promise<TenantDetail | null> 
         orderBy: { createdAt: "asc" },
       },
       users: { where: { deletedAt: null }, select: userSelect, orderBy: { createdAt: "asc" } },
+      settings: true,
       _count: { select: { users: true, patients: true, appointments: true, consultations: true, visits: true } },
     },
   });
@@ -198,6 +202,7 @@ export async function getTenantDetail(id: string): Promise<TenantDetail | null> 
       consultations: row._count.consultations,
       visits: row._count.visits,
     },
+    ai: publicAiConfig(aiConfigOf(row.settings)),
   };
 }
 
@@ -287,7 +292,7 @@ export async function provisionTenant(input: ProvisionRequest, actor: PlatformAc
 export async function updateTenant(id: string, patch: TenantPatch, actor: PlatformActor): Promise<TenantDetail> {
   const current = await db.tenant.findFirst({
     where: { id, ...notDeleted },
-    select: { id: true, slug: true, name: true, status: true, branding: true, customDomain: true, customDomainVerified: true, embed: { select: embedSelect } },
+    select: { id: true, slug: true, name: true, status: true, branding: true, settings: true, customDomain: true, customDomainVerified: true, embed: { select: embedSelect } },
   });
   if (!current || current.slug === PLATFORM_TENANT_SLUG) throw new PlatformError("not_found", 404);
   if (patch.customDomain) {
@@ -325,6 +330,17 @@ export async function updateTenant(id: string, patch: TenantPatch, actor: Platfo
     data.customDomainVerified = current.customDomain ? patch.customDomainVerified : false;
     before.customDomainVerified = current.customDomainVerified;
     after.customDomainVerified = data.customDomainVerified;
+  }
+
+  if (patch.ai !== undefined) {
+    const currentAi = aiConfigOf(current.settings);
+    const merged = mergeAiConfig(currentAi, patch.ai);
+    const settings = current.settings && typeof current.settings === "object" && !Array.isArray(current.settings) ? (current.settings as Record<string, unknown>) : {};
+    data.settings = { ...settings, ai: merged } as unknown as Prisma.InputJsonObject;
+    // Audit the public shape only: providers, models and whether a key is set, never a key.
+    before.ai = publicAiConfig(currentAi);
+    after.ai = publicAiConfig(merged);
+    invalidateTenantAi(id);
   }
 
   const embedData: Prisma.TenantEmbedConfigUpdateInput = {};

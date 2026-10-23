@@ -1,6 +1,6 @@
 import { db, notDeleted } from "@/lib/db";
 import { Prisma } from "@prisma/client";
-import { chatProvider, embeddingProvider } from "./provider";
+import { chatProvider, embeddingProvider, type TenantAiOverrides } from "./provider";
 import type { AiMessage } from "./types";
 import { toVectorLiteral } from "./vectors";
 
@@ -262,7 +262,7 @@ export function computeConfidence(input: { chunks: { score: number }[]; answer: 
 export async function answerWithRag(
   tenantId: string,
   query: string,
-  opts: { topK?: number; patientId?: string | null; preferProvider?: string } = {},
+  opts: { topK?: number; patientId?: string | null; preferProvider?: string; tenantAi?: TenantAiOverrides } = {},
 ): Promise<RagAnswer> {
   const started = Date.now();
   const retrieved = (await retrieve(tenantId, query, { topK: opts.topK ?? 8, patientId: opts.patientId }))
@@ -308,7 +308,7 @@ export async function answerWithRag(
       .join("\n"),
   };
 
-  const provider = chatProvider(opts.preferProvider);
+  const provider = chatProvider(opts.preferProvider, opts.tenantAi);
   const result = await provider.chat([system, { role: "user", content: query }], { temperature: 0.1, maxTokens: 800 });
 
   const confidence = computeConfidence({ chunks: retrieved, answer: result.content });

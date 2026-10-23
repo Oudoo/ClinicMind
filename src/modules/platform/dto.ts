@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { TenantAiInput } from "@/lib/ai/tenant-config";
 
 /**
  * Platform console contracts: provisioning and administering tenants
@@ -98,6 +99,8 @@ export const TenantPatchInput = z
     customDomainVerified: z.boolean().optional(),
     allowedOrigins: z.array(zOrigin).max(20).optional(),
     embedEnabled: z.boolean().optional(),
+    /** Per-tenant AI providers, models and keys (keys are encrypted at rest and never returned). */
+    ai: TenantAiInput.optional(),
   })
   .strict();
 export type TenantPatch = z.infer<typeof TenantPatchInput>;

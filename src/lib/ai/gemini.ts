@@ -1,8 +1,19 @@
 import { env } from "@/lib/env";
 import { aiFetchJson } from "./http";
-import type { AiMessage, AiProvider, ChatOptions, ChatResult, EmbedOptions, EmbedResult } from "./types";
+import type {
+  AiMessage,
+  AiProvider,
+  ChatOptions,
+  ChatResult,
+  EmbedOptions,
+  EmbedResult,
+  ProviderConfig,
+  TranscribeOptions,
+  TranscribeResult,
+} from "./types";
 import { AiProviderError, EMBEDDING_DIMENSIONS } from "./types";
 import { batched, normalizeVector } from "./vectors";
+import { transcriptionInstructions } from "./transcription";
 
 /**
  * Google Gemini adapter over the Generative Language REST API.
@@ -10,6 +21,9 @@ import { batched, normalizeVector } from "./vectors";
  * - The API key travels in the `x-goog-api-key` header, never in the URL (URLs
  *   end up in proxy and access logs).
  * - Chat uses `generateContent` on `GEMINI_MODEL`.
+ * - Transcription sends the audio inline to `generateContent` on
+ *   `GEMINI_TRANSCRIPTION_MODEL` with verbatim-transcription instructions;
+ *   the model handles Arabic/English mixes without a language switch.
  * - Embeddings use `batchEmbedContents` on `GEMINI_EMBEDDING_MODEL` with
  *   `outputDimensionality: 1536` to fit the `vector(1536)` column and a task
  *   type of RETRIEVAL_DOCUMENT / RETRIEVAL_QUERY. Truncated Gemini embeddings
@@ -31,24 +45,68 @@ interface BatchEmbedResponse {
 export class GeminiProvider implements AiProvider {
   readonly name = "gemini";
 
+  constructor(private readonly cfg: ProviderConfig = {}) {}
+
+  private apiKey(): string | undefined {
+    return this.cfg.apiKey ?? env.GEMINI_API_KEY;
+  }
+
   isConfigured(): boolean {
-    return Boolean(env.GEMINI_API_KEY);
+    return Boolean(this.apiKey());
   }
 
   supportsEmbeddings(): boolean {
     return true;
   }
 
+  supportsTranscription(): boolean {
+    return true;
+  }
+
   chatModel(): string {
-    return env.GEMINI_MODEL;
+    return this.cfg.chatModel ?? env.GEMINI_MODEL;
   }
 
   embeddingModel(): string {
-    return env.GEMINI_EMBEDDING_MODEL;
+    return this.cfg.embeddingModel ?? env.GEMINI_EMBEDDING_MODEL;
+  }
+
+  transcriptionModel(): string {
+    return this.cfg.transcriptionModel ?? env.GEMINI_TRANSCRIPTION_MODEL;
   }
 
   private headers(): Record<string, string> {
-    return { "x-goog-api-key": env.GEMINI_API_KEY ?? "" };
+    return { "x-goog-api-key": this.apiKey() ?? "" };
+  }
+
+  async transcribe(audio: Uint8Array, opts: TranscribeOptions): Promise<TranscribeResult> {
+    const model = opts.model ?? this.transcriptionModel();
+    const started = Date.now();
+    const json = await aiFetchJson<GenerateContentResponse>(
+      this.name,
+      `${BASE}/models/${encodeURIComponent(model)}:generateContent`,
+      {
+        headers: this.headers(),
+        body: {
+          contents: [
+            {
+              role: "user",
+              parts: [
+                { inlineData: { mimeType: opts.mimeType, data: Buffer.from(audio).toString("base64") } },
+                { text: transcriptionInstructions(opts) },
+              ],
+            },
+          ],
+          generationConfig: { temperature: 0, maxOutputTokens: 8192 },
+        },
+      },
+    );
+    const candidate = json.candidates?.[0];
+    if (!candidate && json.promptFeedback?.blockReason) {
+      throw new AiProviderError(this.name, 200, `gemini blocked the audio (${json.promptFeedback.blockReason})`);
+    }
+    const text = (candidate?.content?.parts ?? []).map((p) => p.text ?? "").join("").trim();
+    return { provider: this.name, model, text, latencyMs: Date.now() - started };
   }
 
   async chat(messages: AiMessage[], opts: ChatOptions = {}): Promise<ChatResult> {

@@ -86,6 +86,16 @@ export interface ExtractResponse {
   model: string;
 }
 
+/** Result of POST /api/consultations/transcribe: the transcript only; audio is not kept. */
+export interface TranscribeResponse {
+  transcript: string;
+  provider: string;
+  model: string;
+  latencyMs: number;
+  /** No intelligible speech was recognised. */
+  empty: boolean;
+}
+
 export interface SignResponse {
   ok: true;
   visitId: string;

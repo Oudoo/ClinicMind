@@ -53,17 +53,55 @@ export interface EmbedResult {
 /** Dimension of the `knowledge_embeddings.embedding` column. */
 export const EMBEDDING_DIMENSIONS = 1536;
 
+/** Language hint for speech-to-text. `auto` lets the model follow the speech, including Arabic/English mixes. */
+export type TranscriptionLanguage = "auto" | "ar" | "en";
+
+export interface TranscribeOptions {
+  /** Container/codec of the audio bytes, e.g. `audio/webm`, `audio/mp4`, `audio/mpeg`, `audio/wav`. */
+  mimeType: string;
+  language?: TranscriptionLanguage;
+  /** Clinic vocabulary (drug names, procedures) the recogniser should prefer. */
+  glossary?: string[];
+  /** Label turns as Doctor / Patient when two people speak (ambient recording). */
+  speakers?: boolean;
+  /** Override the configured transcription model for this call only. */
+  model?: string;
+}
+
+export interface TranscribeResult {
+  provider: string;
+  model: string;
+  /** Verbatim transcript; empty when no intelligible speech was found. */
+  text: string;
+  latencyMs: number;
+}
+
+/**
+ * Per-instance overrides. A tenant may bring its own key and model for a
+ * provider; everything left undefined falls back to the environment.
+ */
+export interface ProviderConfig {
+  apiKey?: string;
+  chatModel?: string;
+  embeddingModel?: string;
+  transcriptionModel?: string;
+}
+
 export interface AiProvider {
   readonly name: string;
   /** True when the provider has credentials and can serve live traffic. */
   isConfigured(): boolean;
   /** Whether `embed()` is implemented (Anthropic has no embeddings endpoint). */
   supportsEmbeddings(): boolean;
-  /** Model ids this adapter will use, resolved from the environment. */
+  /** Whether `transcribe()` is implemented (Anthropic takes no audio). */
+  supportsTranscription(): boolean;
+  /** Model ids this adapter will use, resolved from the environment or the instance config. */
   chatModel(): string;
   embeddingModel(): string | null;
+  transcriptionModel(): string | null;
   chat(messages: AiMessage[], opts?: ChatOptions): Promise<ChatResult>;
   embed(texts: string[], opts?: EmbedOptions): Promise<EmbedResult>;
+  transcribe(audio: Uint8Array, opts: TranscribeOptions): Promise<TranscribeResult>;
 }
 
 /**
@@ -87,4 +125,6 @@ export class AiProviderError extends Error {
 export interface AiStatus {
   chat: { provider: string; model: string; configured: boolean };
   embeddings: { provider: string; model: string; configured: boolean };
+  /** `configured` is false when no provider can transcribe: the dictation control then says so. */
+  transcription: { provider: string; model: string; configured: boolean };
 }

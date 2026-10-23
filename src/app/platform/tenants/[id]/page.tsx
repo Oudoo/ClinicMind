@@ -4,6 +4,7 @@ import { ArrowLeft, ExternalLink } from "lucide-react";
 import { Badge, Bento, Card, Metric, SectionTitle } from "@/components/ui/primitives";
 import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/table";
 import { BrandingForm, DomainForm, OwnerInviteForm, TenantStatusActions } from "@/components/platform/tenant-admin";
+import { TenantAiForm } from "@/components/platform/tenant-ai-form";
 import { env } from "@/lib/env";
 import { formatDate } from "@/lib/utils";
 import { getTenantDetail } from "@/modules/platform/service";
@@ -90,6 +91,14 @@ export default async function TenantPage({ params }: { params: Promise<{ id: str
           </p>
         </Card>
       </div>
+
+      <Card className="space-y-4">
+        <SectionTitle
+          title="AI providers"
+          description="Which provider answers this clinic's assistant and extraction, and which one transcribes dictation. A clinic may bring its own keys and models; everything left on inherit uses the platform's configuration. Keys are encrypted at rest and never shown again."
+        />
+        <TenantAiForm tenantId={tenant.id} initial={tenant.ai} />
+      </Card>
 
       <Card className="space-y-4">
         <SectionTitle

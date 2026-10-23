@@ -84,6 +84,9 @@ the app starts, a nightly `pg_dump` lands in `./backups`.
 | Tenants (`ROOT_DOMAIN`) | `cm.growcdx.com` → `demo.cm.growcdx.com`, `nour-clinics.cm.growcdx.com`, … |
 | DNS records | `A cm.growcdx.com → <server IP>` and `A *.cm.growcdx.com → <server IP>` |
 | First run | `bash scripts/server-setup.sh cm.growcdx.com <your e-mail>` on the server, with `GEMINI_API_KEY=<key>` exported first for live AI |
+| `AI_TRANSCRIPTION_PROVIDER` | `auto` (Gemini → OpenAI); no silent fallback, `echo` for tests |
+| `GEMINI_TRANSCRIPTION_MODEL` / `OPENAI_TRANSCRIPTION_MODEL` | speech-to-text models (`gemini-2.5-flash`, `gpt-4o-transcribe`) |
+| `DATA_ENCRYPTION_KEY` | encrypts per-tenant provider keys at rest; derived from `AUTH_SECRET` when unset |
 | Demo accounts | printed by the seed; the password is `SEED_DEMO_PASSWORD` in `.env` |
 | Health | `https://cm.growcdx.com/api/health` |
 | Later deploys | GitHub → Actions → *Deploy* → *Run workflow* (tag `latest` or a commit sha), after adding the `DEPLOY_HOST`, `DEPLOY_USER` and `DEPLOY_SSH_KEY` repository secrets; or `git pull` and `up -d` on the server |

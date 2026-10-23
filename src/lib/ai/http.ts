@@ -44,6 +44,37 @@ export async function aiFetchJson<T>(
   }
 }
 
+/**
+ * Multipart variant for upload endpoints (speech-to-text). The caller builds
+ * the FormData; the browser-style `fetch` sets the boundary header itself.
+ */
+export async function aiFetchForm<T>(provider: string, url: string, init: { headers?: Record<string, string>; form: FormData }): Promise<T> {
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      method: "POST",
+      headers: init.headers ?? {},
+      body: init.form,
+      signal: AbortSignal.timeout(env.AI_TIMEOUT_MS),
+    });
+  } catch (err) {
+    const timedOut = err instanceof Error && (err.name === "TimeoutError" || err.name === "AbortError");
+    throw new AiProviderError(
+      provider,
+      0,
+      timedOut ? `${provider} request timed out after ${env.AI_TIMEOUT_MS}ms` : `${provider} request failed: ${describe(err)}`,
+    );
+  }
+  if (!res.ok) {
+    throw new AiProviderError(provider, res.status, `${provider} responded ${res.status}: ${await errorExcerpt(res)}`);
+  }
+  try {
+    return (await res.json()) as T;
+  } catch {
+    throw new AiProviderError(provider, res.status, `${provider} returned a non-JSON response`);
+  }
+}
+
 async function errorExcerpt(res: Response): Promise<string> {
   try {
     const text = await res.text();

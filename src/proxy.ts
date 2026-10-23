@@ -66,7 +66,15 @@ async function embedFrameAncestors(slug: string): Promise<string> {
 
 const WINDOW_MS = 5 * 60 * 1000;
 const LIMITS: { test: (p: string) => boolean; limit: number; name: string }[] = [
-  { test: (p) => p === "/api/assistant" || p === "/api/consultations/extract", limit: 40, name: "ai" },
+  {
+    test: (p) =>
+      p === "/api/assistant" ||
+      p === "/api/consultations/extract" ||
+      p === "/api/consultations/transcribe" ||
+      /^\/api\/patients\/[^/]+\/history\/extract$/.test(p),
+    limit: 40,
+    name: "ai",
+  },
   { test: (p) => p === "/api/embed/token", limit: 60, name: "embed-token" },
   { test: () => true, limit: 600, name: "api" },
 ];

@@ -4,7 +4,8 @@ import { getActingContext } from "@/lib/auth/session";
 import { assertCan } from "@/lib/auth/rbac";
 import { clientIp, crossOriginRejected, isSameOrigin } from "@/lib/auth/request";
 import { extractClinicalData } from "@/lib/ai/extraction";
-import { chatProvider } from "@/lib/ai/provider";
+import { chatProvider, type TenantAiOverrides } from "@/lib/ai/provider";
+import { resolveTenantAi } from "@/lib/ai/tenant-config";
 import { db } from "@/lib/db";
 import { audit } from "@/lib/audit";
 import { requireTenantPatient } from "@/lib/tenant-scope";
@@ -43,7 +44,8 @@ export async function POST(req: Request) {
     await requireTenantPatient(ctx.tenantId, patientId);
     if (appointmentId) await requireTenantAppointmentOfPatient(ctx.tenantId, patientId, appointmentId);
 
-    const [extraction, summary] = await Promise.all([extractClinicalData(transcript), summarize(transcript)]);
+    const tenantAi = await resolveTenantAi(ctx.tenantId);
+    const [extraction, summary] = await Promise.all([extractClinicalData(transcript, { tenantAi }), summarize(transcript, tenantAi)]);
     const empty = Boolean(extraction.empty);
 
     const consultation = await db.consultation.create({
@@ -110,9 +112,9 @@ export async function POST(req: Request) {
   }
 }
 
-async function summarize(transcript: string): Promise<string> {
+async function summarize(transcript: string, tenantAi?: TenantAiOverrides): Promise<string> {
   try {
-    const res = await chatProvider().chat(
+    const res = await chatProvider(undefined, tenantAi).chat(
       [
         {
           role: "system",

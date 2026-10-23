@@ -44,8 +44,14 @@ const schema = z.object({
   ANTHROPIC_MODEL: z.string().default("claude-opus-5-5"),
   GEMINI_MODEL: z.string().default("gemini-2.5-flash"),
   GEMINI_EMBEDDING_MODEL: z.string().default("gemini-embedding-001"),
+  /** Speech-to-text: `auto` picks the first provider with a key that can transcribe (gemini → openai); `echo` is for tests only. */
+  AI_TRANSCRIPTION_PROVIDER: z.enum(["auto", "gemini", "openai", "echo"]).default("auto"),
+  GEMINI_TRANSCRIPTION_MODEL: z.string().default("gemini-2.5-flash"),
+  OPENAI_TRANSCRIPTION_MODEL: z.string().default("gpt-4o-transcribe"),
   /** Upstream request timeout for every provider call. */
   AI_TIMEOUT_MS: z.coerce.number().int().min(1000).max(120_000).default(30_000),
+  /** Encrypts per-tenant provider keys at rest (32+ characters). Derived from AUTH_SECRET when unset. */
+  DATA_ENCRYPTION_KEY: optionalString(),
 
   // ── Outbound e-mail (invitations / password reset) ───────────────────────
   SMTP_URL: z.preprocess(blankToUndefined, z.string().url().optional()),

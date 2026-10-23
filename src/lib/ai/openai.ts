@@ -1,13 +1,25 @@
 import { env } from "@/lib/env";
-import { aiFetchJson } from "./http";
-import type { AiMessage, AiProvider, ChatOptions, ChatResult, EmbedOptions, EmbedResult } from "./types";
+import { aiFetchForm, aiFetchJson } from "./http";
+import type {
+  AiMessage,
+  AiProvider,
+  ChatOptions,
+  ChatResult,
+  EmbedOptions,
+  EmbedResult,
+  ProviderConfig,
+  TranscribeOptions,
+  TranscribeResult,
+} from "./types";
 import { AiProviderError, EMBEDDING_DIMENSIONS } from "./types";
 import { batched, normalizeVector } from "./vectors";
+import { audioExtension, transcriptionPrompt } from "./transcription";
 
 /**
  * OpenAI adapter over the REST API (no SDK dependency, swappable).
  * Chat on `OPENAI_MODEL`; embeddings on `OPENAI_EMBEDDING_MODEL` requested at
- * 1536 dimensions to match the store.
+ * 1536 dimensions to match the store; speech-to-text on
+ * `OPENAI_TRANSCRIPTION_MODEL` through the audio transcriptions endpoint.
  */
 const BASE = "https://api.openai.com/v1";
 /** Keep embedding requests comfortably inside the per-request token budget. */
@@ -21,27 +33,61 @@ interface EmbeddingsResponse {
   data?: { embedding?: number[]; index?: number }[];
 }
 
+interface TranscriptionResponse {
+  text?: string;
+}
+
 export class OpenAiProvider implements AiProvider {
   readonly name = "openai";
 
+  constructor(private readonly cfg: ProviderConfig = {}) {}
+
+  private apiKey(): string | undefined {
+    return this.cfg.apiKey ?? env.OPENAI_API_KEY;
+  }
+
   isConfigured(): boolean {
-    return Boolean(env.OPENAI_API_KEY);
+    return Boolean(this.apiKey());
   }
 
   supportsEmbeddings(): boolean {
     return true;
   }
 
+  supportsTranscription(): boolean {
+    return true;
+  }
+
   chatModel(): string {
-    return env.OPENAI_MODEL;
+    return this.cfg.chatModel ?? env.OPENAI_MODEL;
   }
 
   embeddingModel(): string {
-    return env.OPENAI_EMBEDDING_MODEL;
+    return this.cfg.embeddingModel ?? env.OPENAI_EMBEDDING_MODEL;
+  }
+
+  transcriptionModel(): string {
+    return this.cfg.transcriptionModel ?? env.OPENAI_TRANSCRIPTION_MODEL;
   }
 
   private headers(): Record<string, string> {
-    return { Authorization: `Bearer ${env.OPENAI_API_KEY ?? ""}` };
+    return { Authorization: `Bearer ${this.apiKey() ?? ""}` };
+  }
+
+  async transcribe(audio: Uint8Array, opts: TranscribeOptions): Promise<TranscribeResult> {
+    const model = opts.model ?? this.transcriptionModel();
+    const started = Date.now();
+    const form = new FormData();
+    form.append("file", new Blob([audio.slice()], { type: opts.mimeType }), `dictation.${audioExtension(opts.mimeType)}`);
+    form.append("model", model);
+    form.append("response_format", "json");
+    form.append("prompt", transcriptionPrompt(opts));
+    if (opts.language && opts.language !== "auto") form.append("language", opts.language);
+    const json = await aiFetchForm<TranscriptionResponse>(this.name, `${BASE}/audio/transcriptions`, {
+      headers: this.headers(),
+      form,
+    });
+    return { provider: this.name, model, text: (json.text ?? "").trim(), latencyMs: Date.now() - started };
   }
 
   async chat(messages: AiMessage[], opts: ChatOptions = {}): Promise<ChatResult> {

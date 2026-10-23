@@ -210,6 +210,17 @@ window.CM_SEED_AI = (function () {
       enrolments.push({ id: id("enr"), patientId: v.patientId, protocolId: proto.id, protocolVersion: proto.version, visitId: v.id, startedAt: v.at, status: escalated ? "ESCALATED" : steps.every((s) => s.status !== "SCHEDULED" && s.status !== "DUE") ? "COMPLETED" : "ACTIVE", ownerId: nurse.id, steps,
         escalation: escalated ? { level: 2, openedAt: new Date(new Date(escalated.dueAt).getTime() + 20 * 60000).toISOString(), assignedTo: proto.approvedBy, reason: `${escalated.title}: "${escalated.answer}"`, resolvedAt: null } : null });
     });
+    // The board always has one open escalation to show the ladder, whatever today's date is.
+    if (!enrolments.some((e) => e.status === "ESCALATED")) {
+      const target = enrolments.find((e) => e.steps.some((s) => s.kind === "checkin" && new Date(s.dueAt) < new Date()));
+      if (target) {
+        const s = target.steps.find((x) => x.kind === "checkin" && new Date(x.dueAt) < new Date());
+        const proto = protocols.find((p) => p.id === target.protocolId);
+        s.answer = s.escalate[0] || s.questions[0].options[s.questions[0].options.length - 1]; s.risk = "HIGH"; s.status = "ESCALATED";
+        target.status = "ESCALATED";
+        target.escalation = { level: 2, openedAt: new Date(new Date(s.dueAt).getTime() + 20 * 60000).toISOString(), assignedTo: proto.approvedBy, reason: `${s.title}: "${s.answer}"`, resolvedAt: null };
+      }
+    }
     const roster = { date: dayKey(today), level1: { name: nurse.fullName, role: "Nurse", hours: "08:00–20:00", minutes: 15 }, level2: { name: hair.fullName, role: "Doctor on call", hours: "08:00–22:00", minutes: 60 }, level3: { name: derm.fullName, role: "Clinic owner", hours: "any time", minutes: 120 }, emergency: "Bleeding that will not stop, fever above 38.5, swelling of the face or chest pain: the AI stops and the on-call doctor is called immediately." };
 
     // ── Module 6: metric definitions, campaigns, alerts ───────────────────
