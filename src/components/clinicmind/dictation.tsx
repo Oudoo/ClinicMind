@@ -27,9 +27,17 @@ function pickMimeType(): string {
   return MIME_CANDIDATES.find((t) => MediaRecorder.isTypeSupported(t)) ?? "";
 }
 
-/** Browser support, read once per render on the client; the server render assumes support so markup matches. */
-function detectSupport(): boolean {
-  return typeof MediaRecorder !== "undefined" && Boolean(navigator.mediaDevices?.getUserMedia) && pickMimeType() !== "";
+/**
+ * Why dictation is unavailable, or "" when it works. Read on the client; the
+ * server render assumes support so the markup matches. Browsers expose the
+ * microphone only on https (and localhost), so a plain-http deployment is the
+ * usual cause rather than the browser itself.
+ */
+function detectSupport(): string {
+  if (typeof window !== "undefined" && window.isSecureContext === false) return "Dictation needs a secure (https) connection; this page was opened over plain http.";
+  if (typeof MediaRecorder === "undefined" || !navigator.mediaDevices?.getUserMedia || pickMimeType() === "")
+    return "Dictation needs a browser that can record audio (current Chrome, Edge, Firefox or Safari). Type or paste the transcript instead.";
+  return "";
 }
 const subscribeNoop = () => () => {};
 
@@ -48,7 +56,7 @@ function extensionFor(mimeType: string): string {
  * the right choice unless the speech is clearly one language.
  */
 export function DictationControl({ onTranscript, patientId, allowAmbient = false, disabled = false }: DictationControlProps) {
-  const supported = useSyncExternalStore(subscribeNoop, detectSupport, () => true);
+  const unavailable = useSyncExternalStore(subscribeNoop, detectSupport, () => "");
   const [mode, setMode] = useState<DictationMode>("dictation");
   const [language, setLanguage] = useState<DictationLanguage>("auto");
   const [consent, setConsent] = useState(false);
@@ -149,12 +157,8 @@ export function DictationControl({ onTranscript, patientId, allowAmbient = false
     }
   }
 
-  if (!supported) {
-    return (
-      <p className="text-xs text-muted-foreground">
-        Dictation needs a browser that can record audio (current Chrome, Edge, Firefox or Safari). Type or paste the transcript instead.
-      </p>
-    );
+  if (unavailable) {
+    return <p className="text-xs text-muted-foreground">{unavailable}</p>;
   }
 
   const recording = status === "recording";
