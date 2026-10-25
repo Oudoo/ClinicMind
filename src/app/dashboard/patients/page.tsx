@@ -113,9 +113,9 @@ export default async function PatientsPage({ searchParams }: { searchParams: Pro
                   <TH>Patient</TH>
                   <TH>Age</TH>
                   <TH>Contact</TH>
-                  <TH>Tags</TH>
-                  <TH>Conditions</TH>
-                  <TH className="text-right">Activity</TH>
+                  <TH className="hidden md:table-cell">Tags</TH>
+                  <TH className="hidden md:table-cell">Conditions</TH>
+                  <TH className="hidden text-right lg:table-cell">Activity</TH>
                 </TR>
               </THead>
               <TBody>
@@ -151,7 +151,7 @@ export default async function PatientsPage({ searchParams }: { searchParams: Pro
                         <div>{p.phone ?? "—"}</div>
                         {p.email ? <div className="max-w-[14rem] truncate">{p.email}</div> : null}
                       </TD>
-                      <TD>
+                      <TD className="hidden md:table-cell">
                         <div className="flex flex-wrap gap-1">
                           {p.tags.map((t) => (
                             <Link key={t} href={listHref({ ...query, tag: t })} aria-label={`Filter by tag ${t}`}>
@@ -160,7 +160,7 @@ export default async function PatientsPage({ searchParams }: { searchParams: Pro
                           ))}
                         </div>
                       </TD>
-                      <TD>
+                      <TD className="hidden md:table-cell">
                         <div className="flex flex-wrap gap-1">
                           {conditions.slice(0, 2).map((c) => (
                             <Badge key={c} tone="warning">
@@ -170,7 +170,7 @@ export default async function PatientsPage({ searchParams }: { searchParams: Pro
                           {conditions.length > 2 ? <Badge>+{conditions.length - 2}</Badge> : null}
                         </div>
                       </TD>
-                      <TD className="whitespace-nowrap text-right font-mono text-xs text-muted-foreground">
+                      <TD className="hidden whitespace-nowrap text-right font-mono text-xs text-muted-foreground lg:table-cell">
                         {p._count.appointments} appts · {p._count.visits} visits
                       </TD>
                     </TR>

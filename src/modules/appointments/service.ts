@@ -145,7 +145,11 @@ const zClearableText = (max: number) =>
     zText(max).nullable().optional(),
   );
 
+const isDate = (v: unknown): v is Date => v instanceof Date && !Number.isNaN(v.getTime());
+
 function checkDuration(startsAt: Date, endsAt: Date, ctx: z.RefinementCtx): void {
+  // Refinements run even when a field already failed; those issues are reported on their own.
+  if (!isDate(startsAt) || !isDate(endsAt)) return;
   if (endsAt.getTime() <= startsAt.getTime()) {
     ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["endsAt"], message: "End must be after start" });
     return;
@@ -230,6 +234,7 @@ export const AppointmentListQuery = z
     return { ...q, from, to };
   })
   .superRefine((q, ctx) => {
+    if (!isDate(q.from) || !isDate(q.to)) return;
     if (q.to.getTime() < q.from.getTime()) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["to"], message: "to must not be before from" });
     } else if (q.to.getTime() - q.from.getTime() > MAX_LIST_RANGE_MS) {

@@ -48,10 +48,10 @@ export default async function PlatformPage() {
                 <TH>Tenant</TH>
                 <TH>Status</TH>
                 <TH>Owner</TH>
-                <TH>Address</TH>
-                <TH className="text-right">Users</TH>
-                <TH className="text-right">Patients</TH>
-                <TH>Created</TH>
+                <TH className="hidden lg:table-cell">Address</TH>
+                <TH className="hidden text-right md:table-cell">Users</TH>
+                <TH className="hidden text-right md:table-cell">Patients</TH>
+                <TH className="hidden lg:table-cell">Created</TH>
               </TR>
             </THead>
             <TBody>
@@ -82,7 +82,7 @@ export default async function PlatformPage() {
                       <span className="text-xs text-muted-foreground">no owner yet</span>
                     )}
                   </TD>
-                  <TD className="font-mono text-xs text-muted-foreground">
+                  <TD className="hidden font-mono text-xs text-muted-foreground lg:table-cell">
                     {t.customDomain ? (
                       <span>
                         {t.customDomain}
@@ -92,9 +92,9 @@ export default async function PlatformPage() {
                       `${t.slug}.${env.ROOT_DOMAIN}`
                     )}
                   </TD>
-                  <TD className="text-right font-mono text-xs tabular-nums">{t.counts.users}</TD>
-                  <TD className="text-right font-mono text-xs tabular-nums">{t.counts.patients}</TD>
-                  <TD className="font-mono text-xs text-muted-foreground">{t.createdAt ? formatDate(t.createdAt) : "—"}</TD>
+                  <TD className="hidden text-right font-mono text-xs tabular-nums md:table-cell">{t.counts.users}</TD>
+                  <TD className="hidden text-right font-mono text-xs tabular-nums md:table-cell">{t.counts.patients}</TD>
+                  <TD className="hidden font-mono text-xs text-muted-foreground lg:table-cell">{t.createdAt ? formatDate(t.createdAt) : "—"}</TD>
                 </TR>
               ))}
             </TBody>
