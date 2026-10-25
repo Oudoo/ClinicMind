@@ -48,3 +48,6 @@ prisma/migrations/dev.db*
 /test-results
 /e2e/artifacts
 /e2e/.auth
+
+# Marker written by scripts/demo-local.sh after the first seed
+.demo-seeded

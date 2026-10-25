@@ -133,6 +133,8 @@ async function main() {
 
   const staffSeed = [
     { email: "owner@demo.clinic", fullName: "Dr. Layla Hassan", role: "CLINIC_OWNER" as const, kind: "derm" as const },
+    // The Clinic AI lead: owner-level, no clinic list of their own; the account the spec demo signs in with.
+    { email: "ai@demo.clinic", fullName: "Nadia Youssef", role: "CLINIC_OWNER" as const, kind: null },
     { email: "doctor@demo.clinic", fullName: "Dr. Omar Fahmy", role: "DOCTOR" as const, kind: "hair" as const },
     { email: "mariam@demo.clinic", fullName: "Dr. Mariam Tarek", role: "DOCTOR" as const, kind: "derm" as const },
     { email: "nurse@demo.clinic", fullName: "Heba Mostafa", role: "NURSE" as const, kind: null },
@@ -348,7 +350,7 @@ async function main() {
   console.log(`🧠 Indexed ${index.chunks.embedded} chunks for the assistant (${index.errors} errors).`);
   console.log(`🔑 Embed secret (shown once, stored hashed): ${embedSecret.secret}`);
   console.log("");
-  console.log(`   Sign in at ${appUrl}/login — all six demo accounts share one password:`);
+  console.log(`   Sign in at ${appUrl}/login — all seven demo accounts share one password:`);
   for (const s of staffSeed) console.log(`     ${s.email.padEnd(24)} ${s.fullName} (${s.role.replace("_", " ").toLowerCase()})`);
   console.log(`     ${PLATFORM_ADMIN_EMAIL.padEnd(24)} Platform Admin (super admin · ${appUrl}/platform)`);
   console.log(`   Password: ${demoPassword}`);

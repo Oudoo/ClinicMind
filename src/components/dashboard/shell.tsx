@@ -13,6 +13,7 @@ import {
   MessagesSquare,
   Settings,
   Building2,
+  Workflow,
   Menu,
   X,
 } from "lucide-react";
@@ -31,6 +32,7 @@ const NAV = [
   { href: "/dashboard/consultations", label: "Consultations", icon: Stethoscope },
   { href: "/dashboard/assistant", label: "AI Assistant", icon: Sparkles, badge: "RAG" },
   { href: "/dashboard/conversations", label: "Conversations", icon: MessagesSquare },
+  { href: "/dashboard/clinic-ai", label: "Clinic AI", icon: Workflow, badge: "module" },
   { href: "/dashboard/settings", label: "Settings", icon: Settings },
 ] as const;
 

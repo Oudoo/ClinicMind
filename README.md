@@ -42,6 +42,16 @@ Arabic/RTL, reporting, background jobs.
 
 ## Quick start (local)
 
+**One command for a demo laptop:** `scripts/demo-local.sh` creates `.env` with
+fresh secrets, starts PostgreSQL in Docker when nothing answers at
+`DATABASE_URL`, applies the migrations, seeds the demo clinic once (password
+`Demo-Clinic-2026!`), builds and serves the application on
+http://localhost:3000 and the click-through prototype on http://localhost:8787,
+and prints the accounts. `--reseed` centres the schedule on today, `--rebuild`
+rebuilds after new code, `--dev` runs the development server. Put
+`GEMINI_API_KEY` in `.env` for live AI. The step-by-step runbook for a client
+demo is the *ClinicMind Client Demo Runbook* document.
+
 Prerequisites: Node 22, Docker (for Postgres with pgvector), `openssl`.
 
 ```bash
@@ -73,8 +83,10 @@ all indexed for the assistant. It ends by printing the sign-in details:
 | `reception@demo.clinic` | Youssef Hany | Receptionist |
 | `platform@demo.clinic` | Platform Admin | Platform administrator (system owner, `/platform`) |
 
-All six share one password: `SEED_DEMO_PASSWORD` if set, otherwise a random one
-printed by the seed. Re-running the seed rebuilds the demo clinic. There is no
+All seven share one password: `SEED_DEMO_PASSWORD` if set, otherwise a random one
+printed by the seed. In the application the Clinic AI lead lands on the
+**Clinic AI** page (the module map and the link to the walk-through); the
+module's own screens live in the prototype until their phase ships. Re-running the seed rebuilds the demo clinic. There is no
 development bypass: every `/dashboard` and `/api/*` request needs a session or
 an embed token.
 
