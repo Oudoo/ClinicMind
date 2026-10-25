@@ -165,21 +165,35 @@ engine will listen to; the outbound messages go through Omni Grow.
 > "Phase 4. The engine is a scheduler over this record; the WhatsApp side is
 > the inbox product we already have."
 
-### Module 6 — AI management layer (60 s)
-*Spec:* one dashboard with defined metrics, a weekly AI-written brief,
-natural-language questions over the data.
+### Module 6 — AI management layer: the CEO dashboard (90 s)
+*Spec:* one dashboard with thirteen defined metrics, six screens (Today,
+Funnel, Doctors, Marketing, Patients, AI operations), a weekly AI-written brief
+with metric citations, anomaly alerts, natural-language questions over the
+reporting schema, and the success-metrics table the project is judged on.
 
-**Show:** **Overview**: patients, today's appointments, upcoming, no-show rate,
-appointment volume, AI activity, diagnosis distribution. Then **AI Assistant**:
-ask "Which patients have a documented allergy to penicillin?" (named patients,
-grounded, numbered citations into their records); focus the patient context on
-Ali Adel and ask for a summary; then ask "Which patients had knee replacement
-surgery?" and show the plain "no matching records" answer.
+**Show (prototype, `ai@demo.clinic` → 6 · CEO dashboard):** the headline
+strip (revenue, enquiries, lead→consultation, consultation→procedure, first
+response, no-show) with the change against the previous period; switch the
+period to 90 days. **Today**: inbox load, first response now, escalations,
+follow-ups overdue by owner, the weekly brief (five largest changes, driver,
+action, every number cited) and the alerts; acknowledge one. **Funnel**: filter
+by treatment, read the drop-off per stage, the lost reasons and objections.
+**Doctors**: the per-doctor table and the no-show breakdown by weekday and
+deposit; the hidden revenue metric with its notice, then *Re-run the model* to
+reconcile it. **Marketing**: cost per procedure per campaign and the campaign
+that produces leads but no consultations. **Targets**: the success-metrics
+table with baseline, 90-day target and status; edit a baseline. Then
+**Ask the data**: "how many transplant consultations came from the Meta
+campaign" shows the answer and the read-only SQL.
 
-> "Two of the spec's AI rules are already enforced in code: answers only from
-> retrieved records with citations, and an honest refusal when the records do
-> not answer. The management dashboard in Phase 5 reuses this retrieval for
-> natural-language questions over the reporting schema."
+**Show (application):** **Overview** (today's appointments, upcoming, no-show
+rate, volume, diagnoses) and **AI Assistant**: "Which patients have a documented
+allergy to penicillin?" (grounded, numbered citations), then "Which patients had
+knee replacement surgery?" for the plain "no matching records" answer.
+
+> "Every number on the dashboard has one definition, owned by one table; a
+> metric that fails its reconciliation test is hidden with a notice rather than
+> shown wrong. The brief never states a number without its metric and period."
 
 ### Compliance and safety, across modules (30 s)
 Roles at every API edge, tenant isolation in the application and in the

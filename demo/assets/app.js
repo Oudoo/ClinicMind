@@ -1,7 +1,7 @@
 /* ClinicMind click-through prototype — core: storage, auth, router, shell and
    UI primitives. Views live in views.js. Everything runs in the browser. */
 window.CM = (function () {
-  const STORAGE = "cm-proto-v4";
+  const STORAGE = "cm-proto-v5";
   const SESSION = "cm-proto-session";
   const THEME = "cm-proto-theme";
   const $ = (s, r = document) => r.querySelector(s);
@@ -173,6 +173,14 @@ window.CM = (function () {
     "message-square": "M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z",
     globe: "M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20zM2 12h20M12 2a15 15 0 0 1 4 10 15 15 0 0 1-4 10 15 15 0 0 1-4-10 15 15 0 0 1 4-10z",
     eye: "M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12zM12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z",
+    chart: "M3 3v18h18M7 14l4-4 4 4 5-6",
+    "trend-up": "M3 17l6-6 4 4 8-8M14 7h7v7",
+    "trend-down": "M3 7l6 6 4-4 8 8M14 17h7v-7",
+    target: "M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20zM12 18a6 6 0 1 0 0-12 6 6 0 0 0 0 12zM12 14a2 2 0 1 0 0-4 2 2 0 0 0 0 4z",
+    star: "M12 2l3.1 6.3 6.9 1-5 4.9 1.2 6.8L12 17.8 5.8 21l1.2-6.8-5-4.9 6.9-1z",
+    filter: "M22 3H2l8 9.5V19l4 2v-8.5z",
+    info: "M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20zM12 16v-4M12 8h.01",
+    wallet: "M21 12V7H5a2 2 0 0 1 0-4h14v4M3 5v14a2 2 0 0 0 2 2h16v-5M18 12a2 2 0 0 0 0 4h4v-4z",
   };
   const icon = (name, cls = "h-4 w-4") => `<svg class="${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${ICONS[name] || ""}"/></svg>`;
 
@@ -180,6 +188,8 @@ window.CM = (function () {
   const badge = (text, tone = "default", extra = "") => `<span class="badge badge-${tone} ${extra}">${esc(text)}</span>`;
   const card = (inner, cls = "") => `<div class="bento ${cls}">${inner}</div>`;
   const sectionTitle = (title, description, action) => `<div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"><div><h2 class="font-display text-xl font-semibold tracking-tight">${esc(title)}</h2>${description ? `<p class="mt-1 text-sm text-muted-foreground">${description}</p>` : ""}</div>${action ? `<div class="flex shrink-0 items-center gap-2">${action}</div>` : ""}</div>`;
+  /** Tabs as one scrollable row (no wrapping on phones). items: [key, label]; base: href prefix the key is appended to. */
+  const tabStrip = (items, active, base) => `<div class="tab-strip" role="tablist">${items.map(([k, l]) => `<a role="tab" aria-selected="${k === active}" href="${base}${k}" class="tab ${k === active ? "tab-active" : ""}">${esc(l)}</a>`).join("")}</div>`;
   const metric = (label, value, hint, tone) => `<div class="bento flex flex-col gap-2"><span class="data-label">${esc(label)}</span><span class="metric-value ${tone === "accent" ? "text-accent" : tone === "warning" ? "text-warning" : ""}">${value}</span>${hint ? `<span class="text-xs text-muted-foreground">${esc(hint)}</span>` : ""}</div>`;
   const emptyState = (title, hint) => `<div class="flex flex-col items-center justify-center rounded-lg border border-dashed border-border px-6 py-10 text-center"><p class="text-sm font-medium">${esc(title)}</p>${hint ? `<p class="mt-1 text-xs text-muted-foreground">${esc(hint)}</p>` : ""}</div>`;
   const field = (label, control, hint, id) => `<div class="space-y-1.5"><label ${id ? `for="${id}"` : ""} class="data-label block">${esc(label)}</label>${control}${hint ? `<p class="text-xs text-muted-foreground">${hint}</p>` : ""}</div>`;
@@ -251,7 +261,7 @@ window.CM = (function () {
     { href: "/ai/copilot", label: "3 · Documentation copilot", icon: "mic" },
     { href: "/ai/photos", label: "4 · Photography", icon: "eye" },
     { href: "/ai/concierge", label: "5 · Concierge", icon: "shield" },
-    { href: "/ai/management", label: "6 · Management layer", icon: "layout" },
+    { href: "/ai/management", label: "6 · CEO dashboard", icon: "chart" },
     { href: "/ai/rules", label: "AI rules", icon: "key" },
   ];
   const AI_ENTRY = { href: "/ai", label: "Clinic AI", icon: "sparkles", badge: "module" };
@@ -364,7 +374,7 @@ window.CM = (function () {
     session, currentUser, currentTenant, tenantById, tenantBySlug, login, logout, can, ROLE_LABEL,
     tid, scoped, patients, appointments, visits, consultations, conversations, medications, timeline, staff, doctors, patient, user,
     esc, fmtDate, fmtLongDate, fmtTime, dayKey, parseDay, addDays, age, initials, n, todayKey, pad, MONTHS, DAYS,
-    icon, badge, card, sectionTitle, metric, emptyState, field, alert, avatar, toast, openDialog, closeDialog, confirmDialog,
+    icon, badge, card, sectionTitle, tabStrip, metric, emptyState, field, alert, avatar, toast, openDialog, closeDialog, confirmDialog,
     route, go, render, views, actions, forms, applyBranding, hexToHsl, theme, setTheme, NAV, AI_NAV, aiModuleOn,
   };
 })();

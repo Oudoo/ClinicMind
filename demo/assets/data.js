@@ -99,7 +99,7 @@ window.CM_SEED = (function () {
         phone: `+2010${between(10000000, 99999999)}`, whatsapp: true,
         email: chance(0.45) ? `${fullName.toLowerCase().replace(/[^a-z]+/g, ".").replace(/^\.|\.$/g, "")}@example.com` : null,
         language: chance(0.6) ? "Arabic" : "English", tags, notes: "", emergencyContact: null, address: null,
-        createdAt: at(-between(40, 400), 10, 0).toISOString(), archivedAt: null,
+        createdAt: at(-(i % 6 === 0 ? between(1, 27) : between(40, 400)), 10, 0).toISOString(), archivedAt: null, // a few new patients each month
         history: {
           chronicConditions: [...primary.chronic, ...(secondary ? secondary.chronic : []), ...comorbid],
           allergies: pick(ALLERGIES),
@@ -189,11 +189,13 @@ window.CM_SEED = (function () {
     const users = [...STAFF.map((s) => ({ ...s, tenantId: "ten-demo", status: "ACTIVE", createdAt: at(-120, 9, 0).toISOString() })), { ...PLATFORM_ADMIN, tenantId: "ten-platform", status: "ACTIVE", createdAt: at(-120, 9, 0).toISOString() }];
 
     const ai = window.CM_SEED_AI ? window.CM_SEED_AI.generate({ rand, pick, chance, between, id, at, today, dayKey, patients, appointments, visits, consultations, conversations, STAFF }) : {};
+    const reporting = window.CM_SEED_REPORTING ? window.CM_SEED_REPORTING.generate({ rand, pick, chance, between, id, at, today, dayKey, STAFF, ai }) : {};
     return {
       version: 2, generatedAt: now.toISOString(), today: dayKey(today), password: PASSWORD,
       tenants, users, patients, appointments, visits, consultations, conversations, medications, timeline,
       aiRuns: between(18, 34), platformTenant: { id: "ten-platform", slug: "platform", name: "GrowCDX Platform" },
       ...ai,
+      ...reporting,
     };
   }
 

@@ -122,6 +122,60 @@
   .chip {
     @apply inline-flex items-center gap-1 rounded-md bg-accent-muted px-2 py-1 text-xs text-accent;
   }
+  /* Tabs as one row that scrolls sideways on phones instead of wrapping. */
+  .tab-strip {
+    @apply -mx-4 flex gap-1 overflow-x-auto border-b border-border px-4 sm:mx-0 sm:px-0;
+    scrollbar-width: none;
+  }
+  .tab-strip::-webkit-scrollbar {
+    display: none;
+  }
+  .tab {
+    @apply -mb-px shrink-0 whitespace-nowrap border-b-2 border-transparent px-3 py-2 text-sm text-muted-foreground hover:text-foreground;
+  }
+  .tab-active {
+    @apply border-accent font-medium text-foreground;
+  }
+  /* Segmented control (period picker). */
+  .seg {
+    @apply inline-flex rounded-lg border border-border bg-card p-0.5;
+  }
+  .seg-item {
+    @apply rounded-md px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground;
+  }
+  .seg-item[aria-pressed="true"] {
+    @apply bg-accent-muted text-accent;
+  }
+  /* KPI tile: label, value, delta and a sparkline footer. */
+  .kpi {
+    @apply bento flex min-w-0 flex-col gap-1.5 p-4 sm:p-5;
+  }
+  .kpi-value {
+    @apply font-display text-2xl font-semibold tracking-tightest tabular-nums sm:text-3xl;
+  }
+  .delta {
+    @apply inline-flex items-center gap-0.5 rounded-md px-1.5 py-0.5 font-mono text-[11px] tabular-nums;
+  }
+  .delta-good {
+    @apply bg-success/10 text-success;
+  }
+  .delta-bad {
+    @apply bg-danger/10 text-danger;
+  }
+  .delta-flat {
+    @apply bg-muted text-muted-foreground;
+  }
+  /* Card header inside the dashboard. */
+  .card-title {
+    @apply font-display text-base font-semibold tracking-tight;
+  }
+  /* Tables: hide secondary columns on phones. */
+  .col-md {
+    @apply hidden md:table-cell;
+  }
+  .col-lg {
+    @apply hidden lg:table-cell;
+  }
   .dialog-overlay {
     @apply fixed inset-0 z-50 bg-charcoal-slate/40 backdrop-blur-[2px] animate-fade-in;
   }

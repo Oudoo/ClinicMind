@@ -223,31 +223,21 @@ window.CM_SEED_AI = (function () {
     }
     const roster = { date: dayKey(today), level1: { name: nurse.fullName, role: "Nurse", hours: "08:00–20:00", minutes: 15 }, level2: { name: hair.fullName, role: "Doctor on call", hours: "08:00–22:00", minutes: 60 }, level3: { name: derm.fullName, role: "Clinic owner", hours: "any time", minutes: 120 }, emergency: "Bleeding that will not stop, fever above 38.5, swelling of the face or chest pain: the AI stops and the on-call doctor is called immediately." };
 
-    // ── Module 6: metric definitions, campaigns, alerts ───────────────────
+    // ── Module 6: metric definitions (the spec's table; every number on the dashboard has one, owned by one table) ──
     const metricDefinitions = [
-      { id: "M1", name: "First response time", definition: "Median seconds from a patient's first inbound message to the first reply, per channel.", source: "conversation events", target: "< 60 s" },
-      { id: "M2", name: "Lead to consultation", definition: "Share of leads created in the period that booked a consultation within 14 days.", source: "leads, appointments", target: "> 35%" },
-      { id: "M3", name: "Consultation to procedure", definition: "Share of consultations followed by a procedure booking within 60 days.", source: "appointments", target: "> 30%" },
-      { id: "M4", name: "No-show rate", definition: "No-shows divided by appointments due in the period, excluding cancellations.", source: "appointments", target: "< 8%" },
-      { id: "M5", name: "Doctor utilisation", definition: "Booked minutes divided by available minutes per doctor per day.", source: "appointments, rota", target: "70–85%" },
-      { id: "M6", name: "Revenue by treatment", definition: "Sum of completed appointment prices from the price table, by treatment.", source: "appointments, price table", target: "" },
-      { id: "M7", name: "Cost per booked lead", definition: "Ad spend divided by leads from that campaign that booked.", source: "ads import, leads", target: "< EGP 900" },
-      { id: "M8", name: "Check-in completion", definition: "Protocol check-ins answered within 24 hours divided by check-ins sent.", source: "enrolments", target: "> 80%" },
-      { id: "M9", name: "Photo set completeness", definition: "Stages with a full view set divided by stages due.", source: "photos", target: "> 90%" },
-      { id: "M10", name: "AI handled share", definition: "Conversations resolved without a staff message divided by all conversations.", source: "conversation events", target: "" },
-      { id: "M11", name: "AI cost per conversation", definition: "Model spend in the period divided by conversations touched by the AI.", source: "LLM call log", target: "< USD 0.10" },
-      { id: "M12", name: "Escalations per 100 enrolments", definition: "Escalations opened divided by active enrolments, times 100.", source: "enrolments", target: "" },
-    ];
-    const campaigns = [
-      { id: "cmp-1", name: "Instagram · Hair transplant October", spend: 18500, leads: 42, booked: 9, procedures: 2 },
-      { id: "cmp-2", name: "Facebook · Acne", spend: 6200, leads: 31, booked: 11, procedures: 0 },
-      { id: "cmp-3", name: "Google search · brand", spend: 3100, leads: 22, booked: 12, procedures: 3 },
-      { id: "cmp-4", name: "Referrals", spend: 0, leads: 9, booked: 7, procedures: 2 },
-    ];
-    const alerts = [
-      { id: "al-1", severity: "warning", title: "No-show rate 14% on Thursday", detail: "Against a 4-week average of 8%. Seven of the nine no-shows had no reminder answer.", metric: "M4", at: at(-1, 7, 30).toISOString(), acknowledged: false },
-      { id: "al-2", severity: "danger", title: "Instagram first response above target", detail: "Median 3 min 40 s yesterday (target under 60 s): the Instagram channel ran in shadow mode after the token expired.", metric: "M1", at: at(0, 7, 30).toISOString(), acknowledged: false },
-      { id: "al-3", severity: "info", title: "Five transplant leads went quiet", detail: "Leads scoring above 60 with no reply for more than 3 days; the day-3 follow-up is due today.", metric: "M2", at: at(0, 7, 30).toISOString(), acknowledged: true },
+      { id: "M1", name: "Enquiries by treatment", definition: "New leads per period grouped by treatment interest; a lead with two interests counts once per interest with a note.", source: "Lead", breakdowns: "treatment, source, campaign, channel", target: "" },
+      { id: "M2", name: "Lead to consultation conversion", definition: "Leads created in the period that have an attended consultation within 30 days, divided by leads created.", source: "Lead, Appointment", breakdowns: "treatment, source, campaign", target: "> 35% (baseline 28%)" },
+      { id: "M3", name: "Consultation to procedure conversion", definition: "Attended consultations with a signed procedure within 60 days, divided by attended consultations; by doctor and treatment.", source: "Appointment, Procedure", breakdowns: "doctor, treatment", target: "" },
+      { id: "M4", name: "Revenue by doctor and treatment", definition: "Signed procedure revenue by procedure date; deposits and refunds shown separately; consultation fees as their own line.", source: "Procedure, Payments (manual entry or POS import)", breakdowns: "doctor, treatment", target: "" },
+      { id: "M5", name: "Average first-response time", definition: "Median and 90th percentile seconds from an inbound message to the first reply, split AI and human, by channel and hour of day.", source: "Message", breakdowns: "AI/human, channel, hour of day", target: "median < 60 s" },
+      { id: "M6", name: "No-show rate", definition: "Appointments with status no-show divided by booked, by doctor, type, weekday, lead source, and whether a deposit was paid.", source: "Appointment", breakdowns: "doctor, type, weekday, lead source, deposit", target: "< 8%" },
+      { id: "M7", name: "Lost leads and reasons", definition: "Leads marked lost with the reason (no response, price, distance, chose competitor, not a fit, timing, other) and the lost-at stage.", source: "Lead", breakdowns: "reason, stage", target: "" },
+      { id: "M8", name: "Most common objections", definition: "Objection tags set by the AI on each conversation (price, pain, downtime, results doubt, trust, timing) and confirmed by staff when they close a lead.", source: "Conversation", breakdowns: "objection, treatment", target: "" },
+      { id: "M9", name: "Hair-transplant enquiries by source", definition: "Leads with transplant interest by first-touch source and campaign (click-to-WhatsApp ad, Instagram organic, website, referral, walk-in, phone).", source: "Lead", breakdowns: "source, campaign", target: "" },
+      { id: "M10", name: "Repeat-patient rate", definition: "Patients with a second paid visit within 12 months of the first, by first treatment.", source: "Patient, Procedure", breakdowns: "first treatment", target: "" },
+      { id: "M11", name: "Patient satisfaction", definition: "Check-in satisfaction scores (1 to 5) at month 1 and month 12 for transplant and at day 14 for other treatments; public review count and rating pulled weekly.", source: "Check-in, Google Business Profile", breakdowns: "treatment, doctor, week", target: "≥ 4.5 of 5" },
+      { id: "M12", name: "Follow-ups overdue", definition: "Open lead follow-ups and concierge escalations past their target time, by owner.", source: "Lead, Check-in", breakdowns: "owner, kind", target: "0" },
+      { id: "M13", name: "Campaign to procedure", definition: "For each campaign id: leads, consultations, procedures, revenue, cost from the ads platform, cost per procedure.", source: "Lead, Procedure, Meta and Google Ads", breakdowns: "campaign, creative", target: "90% of spend attributed" },
     ];
 
     // ── AI rules: red lines, prompt registry, evaluation sets, call log ───
@@ -294,7 +284,7 @@ window.CM_SEED_AI = (function () {
     }
     const compliance = { retention: { audio: "30 days", conversations: "24 months", lostLeads: "12 months", photos: "until consent withdrawn" }, twoFactor: { enrolled: 6, total: 7 }, dpo: "To be appointed (PDPL)", breachPlaybook: "docs/RUNBOOK.md §9", pseudonymisation: true, zeroRetention: true };
 
-    return { leads, knowledgeBase, intakeTemplates, intakes, consents, documents, photos, protocols, enrolments, roster, metricDefinitions, campaigns, alerts, redLines, prompts, evalSets, callLog, compliance };
+    return { leads, knowledgeBase, intakeTemplates, intakes, consents, documents, photos, protocols, enrolments, roster, metricDefinitions, redLines, prompts, evalSets, callLog, compliance };
   }
   return { generate };
 })();

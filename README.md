@@ -236,9 +236,13 @@ Clinic, Cairo), the platform console and the tenant white-label flow are all
 there. The prototype also carries the **Clinic AI Implementation Spec as a
 module**: sign in as `ai@demo.clinic` (the Clinic AI lead) and the workspace is
 the spec itself, one entry per module (AI front desk, consultation preparation,
-documentation copilot, photography, concierge, management layer, AI rules),
+documentation copilot, photography, concierge, the CEO dashboard, AI rules),
 with seeded leads, intakes, briefs, documents, photo timelines, protocols,
-metrics, prompts and evaluation gates. The owner reaches the same module from
+prompts and evaluation gates. The CEO dashboard (Module 6) computes the spec's
+thirteen metric definitions from a 26-week reporting schema seeded in
+`demo/assets/data-reporting.js`: six screens, period and comparison selectors,
+the weekly brief, anomaly alerts, natural-language questions and the
+success-metrics targets table. The owner reaches the same module from
 the navigation; the platform console switches it on or off per tenant. Data lives in the browser's `localStorage` (account menu → *Reset demo
 data* rebuilds it). Sign in with any seeded account and the password
 `Demo-Clinic-2026!`; `platform@demo.clinic` opens the platform console.

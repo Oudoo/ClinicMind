@@ -138,7 +138,7 @@ You already have an inbox tool. The spec's Module 1 and the staff-inbox requirem
 - **Build:** protocol engine (versioned templates, enrolments, steps with offsets, quiet hours, language), structured questions as WhatsApp buttons/lists, keyword → AI triage with structured risk output, escalation ladder with timers and roster paging, concierge board, protocol editor with doctor approval, weekly report.
 
 ### Module 6 — Management layer
-- **Have:** overview metrics, `AiRun` logging.
+- **Have:** overview metrics, `AiRun` logging. **Prototype:** the CEO dashboard in `demo/` implements the full spec on seeded reporting data (M1–M13, six screens, brief, alerts, NL questions, targets table, hidden-metric notice) as the click-through reference for the build.
 - **Build:** reporting schema + nightly SQL models with tests, the metric definitions table, dashboards (Today, Funnel, Doctors, Marketing, Patients, AI operations), ads spend import (Meta/Google), revenue capture, weekly AI brief with metric citations, anomaly alerts via the inbox, NL-to-SQL over the reporting schema (read-only role).
 
 ---
