@@ -21,6 +21,12 @@ const KIND_TONE: Record<TimelineKind, BadgeTone> = {
   DOCUMENT: "default",
   AI_NOTE: "default",
   VISIT: "success",
+  PROCEDURE: "success",
+  PAYMENT: "accent",
+  CHECK_IN: "default",
+  ESCALATION: "danger",
+  INTAKE: "default",
+  LEAD: "default",
 };
 
 const KIND_LABEL: Record<TimelineKind, string> = {
@@ -33,6 +39,12 @@ const KIND_LABEL: Record<TimelineKind, string> = {
   DOCUMENT: "Document",
   AI_NOTE: "AI note",
   VISIT: "Visit",
+  PROCEDURE: "Procedure",
+  PAYMENT: "Payment",
+  CHECK_IN: "Check-in",
+  ESCALATION: "Escalation",
+  INTAKE: "Onboarding",
+  LEAD: "Lead",
 };
 
 /** Chronological feed of a patient's `TimelineEvent`s, newest first. Server component. */

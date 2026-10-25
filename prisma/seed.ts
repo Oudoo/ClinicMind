@@ -3,6 +3,7 @@ import { generateEmbedSecret } from "../src/lib/embed";
 import { generatePassword, hashPassword, PasswordSchema } from "../src/lib/auth/password";
 import { reindexTenant } from "../src/modules/knowledge/ingest";
 import { PLATFORM_TENANT_SLUG } from "../src/modules/platform/service";
+import { seedRound2 } from "./seed/index";
 
 /**
  * Demo seed: "Aura Derma & Hair Clinic" (Cairo), a dermatology and hair-transplant
@@ -168,7 +169,7 @@ async function main() {
   const doctorsFor = (kind: "derm" | "hair") => staff.filter((s) => s.kind === kind);
 
   // ── Patients ────────────────────────────────────────────────────────────
-  const patients: { id: string; fullName: string; cond: Condition; language: string }[] = [];
+  const patients: { id: string; fullName: string; cond: Condition; language: string; phone: string; gender: Gender }[] = [];
   const used = new Set<string>();
   for (let i = 0; i < 62; i++) {
     const gender: Gender = chance(0.52) ? "FEMALE" : "MALE";
@@ -216,7 +217,7 @@ async function main() {
       },
       select: { id: true, fullName: true },
     });
-    patients.push({ id: p.id, fullName: p.fullName, cond, language });
+    patients.push({ id: p.id, fullName: p.fullName, cond, language, phone, gender });
   }
 
   // ── Appointments, visits and consultations ───────────────────────────────
@@ -233,12 +234,21 @@ async function main() {
     const isToday = JSON.stringify(day) === todayKey;
     const n = day.weekday === 6 ? between(5, 8) : between(8, 13);
     const chosen = [...slots].sort(() => rand() - 0.5).slice(0, n).sort((a, b) => a - b);
+    // No double bookings in the seed either: a doctor or a room stays busy until
+    // its last live booking of the day ends (the database enforces the same).
+    const busyUntil = new Map<string, number>();
+    const free = (key: string, at: number) => (busyUntil.get(key) ?? 0) <= at;
     for (const slot of chosen) {
       const patient = pick(patients);
-      const doctor = pick(doctorsFor(patient.cond.doctor));
       const duration = pick([20, 30, 30, 45, 60]);
       const startsAt = zoned(day.y, day.m, day.d, Math.floor(slot), slot % 1 ? 30 : 0);
       const endsAt = new Date(startsAt.getTime() + duration * 60_000);
+      const freeDoctors = doctorsFor(patient.cond.doctor).filter((d) => free(d.id, startsAt.getTime()));
+      const freeRooms = ROOMS.filter((r) => free(r, startsAt.getTime()));
+      if (!freeDoctors.length || !freeRooms.length) continue;
+      const doctor = pick(freeDoctors);
+      const room = pick(freeRooms);
+      const kind = chance(0.55) ? ("CONSULTATION" as const) : chance(0.5) ? ("FOLLOW_UP" as const) : ("PROCEDURE" as const);
       const reason = pick(patient.cond.reasons);
       let status: AppointmentStatus = "SCHEDULED";
       let cancelReason: string | null = null;
@@ -255,8 +265,10 @@ async function main() {
       const source: ChannelType = pick(["WHATSAPP", "WHATSAPP", "WHATSAPP", "VOICE", "IN_PERSON", "WEB_CHAT"]);
       const appt = await db.appointment.create({
         data: {
-          tenantId: tenant.id, clinicId, patientId: patient.id, doctorId: doctor.id, room: pick(ROOMS),
+          tenantId: tenant.id, clinicId, patientId: patient.id, doctorId: doctor.id, room, kind,
           startsAt, endsAt, status, reason, source, cancelReason,
+          confirmedAt: status === "CONFIRMED" || status === "CHECKED_IN" || status === "IN_PROGRESS" || status === "COMPLETED" ? new Date(startsAt.getTime() - 86_400_000) : null,
+          checkedInAt: status === "CHECKED_IN" || status === "IN_PROGRESS" || status === "COMPLETED" ? new Date(startsAt.getTime() - 5 * 60_000) : null,
           statusChangedAt: status === "SCHEDULED" ? null : new Date(Math.min(Date.now(), startsAt.getTime())),
           createdById: pick(staff).id,
           createdAt: new Date(startsAt.getTime() - between(1, 14) * 86_400_000),
@@ -264,6 +276,10 @@ async function main() {
         select: { id: true },
       });
       appointmentCount++;
+      if (status !== "CANCELLED" && status !== "NO_SHOW" && status !== "WAITLISTED") {
+        busyUntil.set(doctor.id, endsAt.getTime());
+        busyUntil.set(room, endsAt.getTime());
+      }
       timeline.push({ tenantId: tenant.id, patientId: patient.id, kind: "APPOINTMENT", title: `Appointment — ${reason}`, refId: appt.id, occurredAt: startsAt });
       if (status === "NO_SHOW") timeline.push({ tenantId: tenant.id, patientId: patient.id, kind: "APPOINTMENT", title: "Missed appointment", body: reason, refId: appt.id, occurredAt: endsAt });
 
@@ -343,6 +359,18 @@ async function main() {
   await db.auditLog.create({ data: { tenantId: tenant.id, actorEmail: "seed@clinicmind", action: "tenant.seed", entity: "Tenant", entityId: tenant.id, after: { patients: patients.length, appointments: appointmentCount } } });
 
   console.log(`✅ Seeded "${tenant.name}": ${patients.length} patients, ${appointmentCount} appointments, ${visitCount} signed visits, ${pendingCount} consultations awaiting review, ${conversationCount} conversations.`);
+
+  // ── CRM, finance, concierge, intake, notifications and reporting ─────────
+  await seedRound2({
+    db,
+    tenantId: tenant.id,
+    clinicId,
+    users: staffSeed.map((s, i) => ({ id: staff[i]!.id, email: s.email, fullName: s.fullName, role: s.role, kind: s.kind })),
+    patients: patients.map((p) => ({ id: p.id, fullName: p.fullName, language: p.language, phone: p.phone, gender: p.gender, condKey: p.cond.key, tag: p.cond.tag, doctorKind: p.cond.doctor })),
+    zoned,
+    calendarDay,
+    today: new Date(),
+  });
 
   // Build the assistant's knowledge base (uses the configured embedding provider,
   // or the offline hash embeddings when no AI key is set).

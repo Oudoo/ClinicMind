@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
+import type { UserRole } from "@prisma/client";
 import {
   LayoutDashboard,
   Users,
@@ -14,10 +15,16 @@ import {
   Settings,
   Building2,
   Workflow,
+  UserPlus,
+  HeartPulse,
+  Banknote,
+  ChartColumn,
   Menu,
   X,
 } from "lucide-react";
 import { BRAND } from "@/lib/brand";
+import { can, type Permission } from "@/lib/auth/rbac";
+import { NotificationBell } from "@/components/dashboard/notification-bell";
 import { Badge } from "@/components/ui/primitives";
 import { cn } from "@/lib/utils";
 import { ThemeToggle } from "@/components/dashboard/theme-toggle";
@@ -25,19 +32,32 @@ import { UserMenu, type ShellUser } from "@/components/dashboard/user-menu";
 
 export type { ShellUser };
 
-const NAV = [
+interface NavItem {
+  href: string;
+  label: string;
+  icon: typeof LayoutDashboard;
+  badge?: string;
+  /** Shown only to roles holding this permission. */
+  permission?: Permission;
+}
+
+const NAV: NavItem[] = [
   { href: "/dashboard", label: "Overview", icon: LayoutDashboard },
   { href: "/dashboard/patients", label: "Patients", icon: Users },
   { href: "/dashboard/appointments", label: "Appointments", icon: CalendarDays },
-  { href: "/dashboard/consultations", label: "Consultations", icon: Stethoscope },
-  { href: "/dashboard/assistant", label: "AI Assistant", icon: Sparkles, badge: "RAG" },
+  { href: "/dashboard/leads", label: "Leads", icon: UserPlus, badge: "CRM", permission: "leads:read" },
   { href: "/dashboard/conversations", label: "Conversations", icon: MessagesSquare },
+  { href: "/dashboard/consultations", label: "Consultations", icon: Stethoscope },
+  { href: "/dashboard/concierge", label: "Concierge", icon: HeartPulse, permission: "concierge:read" },
+  { href: "/dashboard/finance", label: "Finance", icon: Banknote, permission: "finance:read" },
+  { href: "/dashboard/reports", label: "Reports", icon: ChartColumn, permission: "reports:read" },
+  { href: "/dashboard/assistant", label: "AI Assistant", icon: Sparkles, badge: "RAG", permission: "ai:assistant" },
   { href: "/dashboard/clinic-ai", label: "Clinic AI", icon: Workflow, badge: "module" },
   { href: "/dashboard/settings", label: "Settings", icon: Settings },
-] as const;
+];
 
 /** Shown to platform administrators (SUPER_ADMIN) above the clinic sections. */
-const PLATFORM_NAV = { href: "/platform", label: "Platform", icon: Building2 } as const;
+const PLATFORM_NAV: NavItem = { href: "/platform", label: "Platform", icon: Building2 };
 
 function isActive(pathname: string, href: string): boolean {
   return pathname === href || (href !== "/dashboard" && pathname.startsWith(href));
@@ -66,7 +86,8 @@ export function DashboardShell({
   user: ShellUser;
 }) {
   const pathname = usePathname() ?? "/dashboard";
-  const items = platform ? [PLATFORM_NAV, ...NAV] : NAV;
+  const visible = NAV.filter((n) => !n.permission || can(user.role as UserRole, n.permission));
+  const items = platform ? [PLATFORM_NAV, ...visible] : visible;
   const current = items.find((n) => isActive(pathname, n.href));
   const [open, setOpen] = useState(false);
 
@@ -90,7 +111,7 @@ export function DashboardShell({
               <Icon className="h-4 w-4" />
               {item.label}
             </span>
-            {"badge" in item && item.badge ? <Badge tone="accent">{item.badge}</Badge> : null}
+            {item.badge ? <Badge tone="accent">{item.badge}</Badge> : null}
           </Link>
         );
       })}
@@ -154,6 +175,7 @@ export function DashboardShell({
               <span className="truncate text-sm font-medium">{current?.label ?? "Overview"}</span>
             </div>
             <div className="flex items-center gap-1 sm:gap-2">
+              <NotificationBell />
               <ThemeToggle />
               <UserMenu user={user} />
             </div>

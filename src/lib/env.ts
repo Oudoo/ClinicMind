@@ -58,6 +58,14 @@ const schema = z.object({
   MAIL_FROM: optionalString(),
 
   LOG_LEVEL: z.enum(["debug", "info", "warn", "error"]).default("info"),
+
+  // ── Background jobs (concierge dispatch, alert rules, overdue follow-ups) ─
+  /** In-process scheduler (every minute). "off" when an external cron calls POST /api/cron/run instead. */
+  SCHEDULER: z.enum(["on", "off"]).default("on"),
+  /** Bearer token an external scheduler presents to POST /api/cron/run. Unset = endpoint disabled. */
+  CRON_SECRET: optionalString(),
+  /** Public base URL for patient-facing links (onboarding, check-ins); defaults to APP_URL. */
+  PUBLIC_URL: optionalString(),
 });
 
 export type Env = z.infer<typeof schema>;

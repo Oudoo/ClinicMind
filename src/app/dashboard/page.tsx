@@ -3,6 +3,8 @@ import { getOverview } from "@/modules/analytics/service";
 import { Card, SectionTitle, Badge, EmptyState } from "@/components/ui/primitives";
 import { Kpi, DeltaChip, Columns, HBars } from "@/components/ui/kpi";
 import { formatNumber } from "@/lib/utils";
+import { NextAppointmentHero } from "@/components/clinicmind/next-appointment-hero";
+import { AttentionCard } from "@/components/clinicmind/attention-card";
 
 export const dynamic = "force-dynamic";
 
@@ -26,6 +28,8 @@ export default async function OverviewPage() {
         description="Operating metrics across appointments, patients and AI activity, with the change against the previous period."
         action={<Badge tone="accent">live</Badge>}
       />
+
+      {ctx ? <NextAppointmentHero tenantId={ctx.tenantId} userId={ctx.userId} role={ctx.role} /> : null}
 
       <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
         <Kpi
@@ -78,6 +82,8 @@ export default async function OverviewPage() {
           delta={<DeltaChip current={m?.signedVisits14 ?? 0} previous={m?.signedVisitsPrev14} goodWhen="up" />}
         />
       </div>
+
+      {ctx ? <AttentionCard tenantId={ctx.tenantId} userId={ctx.userId} role={ctx.role} /> : null}
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         <Card className="lg:col-span-2">

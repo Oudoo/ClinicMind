@@ -1,5 +1,7 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // Several dev servers can share this checkout (one per engineer) when each sets its own dist dir.
+  distDir: process.env.NEXT_DIST_DIR || ".next",
   reactStrictMode: true,
   poweredByHeader: false,
   // Emit a self-contained server in .next/standalone so the Docker image ships

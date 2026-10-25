@@ -51,3 +51,6 @@ prisma/migrations/dev.db*
 
 # Marker written by scripts/demo-local.sh after the first seed
 .demo-seeded
+
+# Per-engineer dev build dirs (NEXT_DIST_DIR)
+.next-*/

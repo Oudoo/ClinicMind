@@ -10,6 +10,8 @@ import { brandingOf } from "@/modules/platform/service";
 import { can, grantableRoles } from "@/lib/auth/rbac";
 import { BRAND, type TenantBranding } from "@/lib/brand";
 import { formatDate } from "@/lib/utils";
+import { NotificationPreferences } from "@/components/clinicmind/notification-preferences";
+import { MessagingIntegrationCard } from "@/components/clinicmind/messaging-integration-card";
 
 const STATUS_TONE: Record<string, "default" | "success" | "warning" | "danger"> = {
   ACTIVE: "success",
@@ -94,6 +96,9 @@ export default async function SettingsPage() {
           <Row label="Subdomain" value={`${ctx.tenantSlug}.${env.ROOT_DOMAIN}`} />
         </Card>
       </div>
+
+      <NotificationPreferences tenantId={ctx.tenantId} userId={ctx.userId} role={ctx.role} />
+      <MessagingIntegrationCard tenantId={ctx.tenantId} userId={ctx.userId} role={ctx.role} />
 
       {canManageUsers ? (
         <Card className="space-y-4">

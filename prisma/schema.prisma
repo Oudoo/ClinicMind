@@ -104,6 +104,12 @@ enum TimelineKind {
   DOCUMENT
   AI_NOTE
   VISIT
+  PROCEDURE
+  PAYMENT
+  CHECK_IN
+  ESCALATION
+  INTAKE
+  LEAD
 }
 
 enum EmbeddingSource {
@@ -152,6 +158,31 @@ model Tenant {
   timeline         TimelineEvent[]
   documents        Document[]
   auditLogs        AuditLog[]
+
+  treatments              Treatment[]
+  campaigns               Campaign[]
+  campaignCosts           CampaignCost[]
+  leads                   Lead[]
+  leadFollowUps           LeadFollowUp[]
+  messageTemplates        MessageTemplate[]
+  channelIntegrations     ChannelIntegration[]
+  procedures              Procedure[]
+  payments                Payment[]
+  protocols               Protocol[]
+  enrolments              ConciergeEnrolment[]
+  conciergeTasks          ConciergeTask[]
+  checkIns                CheckIn[]
+  escalations             Escalation[]
+  notifications           Notification[]
+  notificationPreferences NotificationPreference[]
+  alertRules              AlertRule[]
+  metricTargets           MetricTarget[]
+  intakeLinks             IntakeLink[]
+  intakeSubmissions       IntakeSubmission[]
+  appointmentNotes        AppointmentNote[]
+  savedViews              SavedView[]
+  reviewSnapshots         ReviewSnapshot[]
+  fileBlobs               FileBlob[]
 
   @@index([status])
   @@map("tenants")
@@ -228,11 +259,14 @@ model User {
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
 
-  sessions       Session[]
-  loginHistory   LoginEvent[]
-  authTokens     AuthToken[]
-  doctorVisits   Visit[]      @relation("DoctorVisits")
-  authoredAiRuns AiRun[]
+  sessions               Session[]
+  loginHistory           LoginEvent[]
+  authTokens             AuthToken[]
+  doctorVisits           Visit[]                 @relation("DoctorVisits")
+  authoredAiRuns         AiRun[]
+  notifications          Notification[]
+  notificationPreference NotificationPreference?
+  savedViews             SavedView[]
 
   @@unique([tenantId, email])
   @@index([tenantId, role])
@@ -294,11 +328,11 @@ model AuthToken {
 // ── Patients & clinical records ──────────────────────────────────────────────
 
 model Patient {
-  id               String    @id @default(cuid())
+  id               String      @id @default(cuid())
   tenantId         String
-  tenant           Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant           Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   fullName         String
-  gender           Gender    @default(UNDISCLOSED)
+  gender           Gender      @default(UNDISCLOSED)
   dateOfBirth      DateTime?
   phone            String?
   whatsapp         String?
@@ -306,24 +340,38 @@ model Patient {
   emergencyContact String?
   address          String?
   /// Preferred language for communication: "ar" | "en".
-  language         String    @default("ar")
-  tags             String[]  @default([])
+  language         String      @default("ar")
+  tags             String[]    @default([])
   notes            String?
+  /// National ID or passport number, for the front desk's exact lookup.
+  nationalId       String?
+  city             String?
+  /// First-touch source when the patient came through the CRM.
+  source           LeadSource?
+  referredBy       String?
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
 
-  medicalHistory MedicalHistory?
-  medications    Medication[]
-  appointments   Appointment[]
-  visits         Visit[]
-  conversations  Conversation[]
-  consultations  Consultation[]
-  documents      Document[]
-  timeline       TimelineEvent[]
+  medicalHistory   MedicalHistory?
+  medications      Medication[]
+  appointments     Appointment[]
+  visits           Visit[]
+  conversations    Conversation[]
+  consultations    Consultation[]
+  documents        Document[]
+  timeline         TimelineEvent[]
+  leads            Lead[]
+  procedures       Procedure[]
+  payments         Payment[]
+  enrolments       ConciergeEnrolment[]
+  checkIns         CheckIn[]
+  appointmentNotes AppointmentNote[]
+  intakeLinks      IntakeLink[]
 
   @@index([tenantId])
+  @@index([tenantId, nationalId])
   @@index([tenantId, phone])
   @@index([tenantId, createdAt])
   @@map("patients")
@@ -394,17 +442,26 @@ model Appointment {
   cancelReason    String?
   statusChangedAt DateTime?
   createdById     String?
+  kind            AppointmentKind   @default(CONSULTATION)
+  treatmentId     String?
+  /// The CRM lead this booking came from, when it did.
+  leadId          String?
+  confirmedAt     DateTime?
+  checkedInAt     DateTime?
+  reminderSentAt  DateTime?
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
 
-  visit Visit?
+  visit         Visit?
+  dictatedNotes AppointmentNote[]
 
   @@index([tenantId, startsAt])
   @@index([tenantId, status])
   @@index([tenantId, patientId, startsAt])
   @@index([doctorId, startsAt])
+  @@index([tenantId, kind])
   @@map("appointments")
 }
 
@@ -491,23 +548,37 @@ model AiRun {
 // ── Conversations (AI receptionist & voice agent) ────────────────────────────
 
 model Conversation {
-  id           String      @id @default(cuid())
-  tenantId     String
-  tenant       Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  patientId    String?
-  patient      Patient?    @relation(fields: [patientId], references: [id])
-  channel      ChannelType
-  externalId   String? // WhatsApp wa_id / call sid
-  locale       String      @default("ar")
-  recordingKey String?
-  transcript   String?
-  summary      String?
-  createdAt    DateTime    @default(now())
-  updatedAt    DateTime    @updatedAt
+  id                    String             @id @default(cuid())
+  tenantId              String
+  tenant                Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  patientId             String?
+  patient               Patient?           @relation(fields: [patientId], references: [id])
+  channel               ChannelType
+  externalId            String? // WhatsApp wa_id / call sid
+  locale                String             @default("ar")
+  recordingKey          String?
+  transcript            String?
+  summary               String?
+  leadId                String?
+  lead                  Lead?              @relation(fields: [leadId], references: [id])
+  status                ConversationStatus @default(OPEN)
+  assignedToId          String?
+  /// Objection tags set by the AI while the thread runs; confirmed by staff when the lead closes.
+  objections            ObjectionTag[]     @default([])
+  objectionsConfirmedAt DateTime?
+  contactName           String?
+  contactPhone          String?
+  lastInboundAt         DateTime?
+  lastOutboundAt        DateTime?
+  closedAt              DateTime?
+  createdAt             DateTime           @default(now())
+  updatedAt             DateTime           @updatedAt
 
   messages Message[]
 
   @@index([tenantId, channel, createdAt])
+  @@index([tenantId, status, updatedAt])
+  @@index([tenantId, leadId])
   @@map("conversations")
 }
 
@@ -521,6 +592,14 @@ model Message {
   direction      ConversationDirection
   body           String
   meta           Json?
+  author         MessageAuthor         @default(HUMAN)
+  authorId       String?
+  delivery       MessageDelivery       @default(LOGGED)
+  externalId     String?
+  templateKey    String?
+  deliveredAt    DateTime?
+  readAt         DateTime?
+  failedReason   String?
   createdAt      DateTime              @default(now())
 
   @@index([conversationId, createdAt])
@@ -618,4 +697,817 @@ model AuditLog {
   @@index([tenantId, createdAt])
   @@index([tenantId, entity, entityId])
   @@map("audit_logs")
+}
+
+// ── PM round 2: CRM, finance, concierge, notifications, intake ───────────────
+
+enum AppointmentKind {
+  CONSULTATION
+  FOLLOW_UP
+  PROCEDURE
+  CHECK_UP
+}
+
+enum LeadStage {
+  NEW
+  CONTACTED
+  QUALIFIED
+  CONSULTATION_BOOKED
+  CONSULTATION_ATTENDED
+  PROCEDURE_BOOKED
+  WON
+  LOST
+}
+
+enum LeadSource {
+  CLICK_TO_WHATSAPP_AD
+  INSTAGRAM_ORGANIC
+  WEBSITE
+  REFERRAL
+  WALK_IN
+  PHONE
+  OTHER
+}
+
+enum LostReason {
+  NO_RESPONSE
+  PRICE
+  DISTANCE
+  CHOSE_COMPETITOR
+  NOT_A_FIT
+  TIMING
+  OTHER
+}
+
+enum ObjectionTag {
+  PRICE
+  PAIN
+  DOWNTIME
+  RESULTS_DOUBT
+  TRUST
+  TIMING
+}
+
+enum CampaignPlatform {
+  META
+  GOOGLE
+  TIKTOK
+  OTHER
+}
+
+enum ConversationStatus {
+  OPEN
+  WAITING_ON_CLINIC
+  WAITING_ON_PATIENT
+  CLOSED
+}
+
+enum MessageAuthor {
+  PATIENT
+  AI
+  HUMAN
+  SYSTEM
+}
+
+enum MessageDelivery {
+  QUEUED
+  SENT
+  DELIVERED
+  READ
+  FAILED
+  /// Written to the record (and the server log) because no channel is connected.
+  LOGGED
+}
+
+enum ProcedureStatus {
+  PLANNED
+  SIGNED
+  CANCELLED
+}
+
+enum PaymentKind {
+  DEPOSIT
+  PAYMENT
+  REFUND
+  CONSULTATION_FEE
+}
+
+enum PaymentMethod {
+  CASH
+  CARD
+  BANK_TRANSFER
+  WALLET
+  POS
+  OTHER
+}
+
+enum ProtocolStatus {
+  DRAFT
+  ACTIVE
+  RETIRED
+}
+
+enum ProtocolStepKind {
+  INSTRUCTION
+  CHECK_IN
+  PHOTO_REQUEST
+}
+
+enum EnrolmentStatus {
+  ACTIVE
+  PAUSED
+  COMPLETED
+  STOPPED
+}
+
+enum ConciergeTaskStatus {
+  PENDING
+  SENT
+  ANSWERED
+  MISSED
+  SKIPPED
+}
+
+enum TriageLevel {
+  OK
+  WATCH
+  HIGH_RISK
+}
+
+enum EscalationKind {
+  CONCIERGE
+  LEAD_FOLLOW_UP
+  MANUAL
+}
+
+enum EscalationStatus {
+  OPEN
+  ACKNOWLEDGED
+  RESOLVED
+}
+
+enum NotificationKind {
+  BOOKING_CREATED
+  BOOKING_CANCELLED
+  BOOKING_CONFLICT
+  NO_SHOW
+  REVIEW_PENDING
+  ESCALATION
+  FOLLOW_UP_OVERDUE
+  INTAKE_SUBMITTED
+  LEAD_NEW
+  MESSAGE_INBOUND
+  CHECK_IN_ANSWERED
+  PAYMENT_RECORDED
+  ALERT_RULE
+  WEEKLY_BRIEF
+  SYSTEM
+}
+
+enum NotificationLevel {
+  INFO
+  WARNING
+  CRITICAL
+}
+
+enum AlertMetric {
+  NO_SHOW_RATE
+  FIRST_RESPONSE_P50
+  FIRST_RESPONSE_P90
+  FOLLOW_UPS_OVERDUE
+  ESCALATIONS_UNACKNOWLEDGED
+  CHECK_IN_ANSWER_RATE
+  CAMPAIGN_WITHOUT_PROCEDURE
+  REVIEWS_PENDING
+  LOST_LEADS_PRICE_SHARE
+  LEAD_TO_CONSULTATION
+  REVENUE
+}
+
+enum AlertComparator {
+  ABOVE
+  BELOW
+}
+
+enum IntakeLinkKind {
+  OPEN
+  PATIENT
+}
+
+enum IntakeStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+}
+
+enum AppointmentNoteKind {
+  DICTATION
+  TEXT
+}
+
+enum ReviewSource {
+  GOOGLE_BUSINESS_PROFILE
+  MANUAL
+}
+
+/// The clinic's treatment catalogue: what leads ask about, what procedures are
+/// signed as, what a protocol belongs to. Money is whole EGP everywhere.
+model Treatment {
+  id              String   @id @default(cuid())
+  tenantId        String
+  tenant          Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  key             String // "hair-transplant"
+  name            String
+  category        String? // hair | skin | laser | injectables | general
+  consultationFee Int?
+  priceFrom       Int?
+  priceTo         Int?
+  depositAmount   Int?
+  active          Boolean  @default(true)
+  sortOrder       Int      @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  procedures Procedure[]
+  protocols  Protocol[]
+  campaigns  Campaign[]
+
+  @@unique([tenantId, key])
+  @@index([tenantId])
+  @@map("treatments")
+}
+
+/// An ads campaign as the platform names it; costs are entered or imported per period.
+model Campaign {
+  id          String           @id @default(cuid())
+  tenantId    String
+  tenant      Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  externalId  String
+  name        String
+  platform    CampaignPlatform
+  source      LeadSource       @default(CLICK_TO_WHATSAPP_AD)
+  treatmentId String?
+  treatment   Treatment?       @relation(fields: [treatmentId], references: [id])
+  active      Boolean          @default(true)
+  startedAt   DateTime?
+  endedAt     DateTime?
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  leads Lead[]
+  costs CampaignCost[]
+
+  @@unique([tenantId, externalId])
+  @@index([tenantId])
+  @@map("campaigns")
+}
+
+model CampaignCost {
+  id          String   @id @default(cuid())
+  tenantId    String
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  campaignId  String
+  campaign    Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  periodStart DateTime @db.Date
+  periodEnd   DateTime @db.Date
+  amount      Int
+  currency    String   @default("EGP")
+  source      String   @default("manual") // manual | csv | meta | google
+  createdById String?
+  createdAt   DateTime @default(now())
+
+  @@index([tenantId, campaignId, periodStart])
+  @@map("campaign_costs")
+}
+
+/// A CRM lead: an enquiry that may become a patient. Interests hold treatment
+/// keys; a lead with two interests counts once per interest in the reports.
+model Lead {
+  id                        String         @id @default(cuid())
+  tenantId                  String
+  tenant                    Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  patientId                 String?
+  patient                   Patient?       @relation(fields: [patientId], references: [id])
+  fullName                  String
+  phone                     String?
+  whatsapp                  String?
+  email                     String?
+  source                    LeadSource     @default(OTHER)
+  campaignId                String?
+  campaign                  Campaign?      @relation(fields: [campaignId], references: [id])
+  interests                 String[]       @default([])
+  stage                     LeadStage      @default(NEW)
+  ownerId                   String?
+  lostReason                LostReason?
+  lostAtStage               LeadStage?
+  lostAt                    DateTime?
+  lostNote                  String?
+  /// Objections confirmed by staff when the lead is closed.
+  objections                ObjectionTag[] @default([])
+  consultationAppointmentId String?
+  notes                     String?
+  firstTouchAt              DateTime       @default(now())
+  lastContactAt             DateTime?
+  wonAt                     DateTime?
+  createdAt                 DateTime       @default(now())
+  updatedAt                 DateTime       @updatedAt
+  deletedAt                 DateTime?
+
+  followUps     LeadFollowUp[]
+  conversations Conversation[]
+  escalations   Escalation[]
+
+  @@index([tenantId, stage])
+  @@index([tenantId, createdAt])
+  @@index([tenantId, phone])
+  @@index([tenantId, campaignId])
+  @@index([tenantId, ownerId])
+  @@map("leads")
+}
+
+model LeadFollowUp {
+  id          String       @id @default(cuid())
+  tenantId    String
+  tenant      Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  leadId      String
+  lead        Lead         @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  ownerId     String?
+  dueAt       DateTime
+  note        String?
+  channel     ChannelType?
+  doneAt      DateTime?
+  doneById    String?
+  outcome     String?
+  createdById String?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  @@index([tenantId, dueAt])
+  @@index([tenantId, ownerId, doneAt])
+  @@index([leadId])
+  @@map("lead_follow_ups")
+}
+
+/// Reply templates for the reception inbox, with {{placeholders}}.
+model MessageTemplate {
+  id        String       @id @default(cuid())
+  tenantId  String
+  tenant    Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  key       String
+  name      String
+  language  String       @default("ar")
+  body      String
+  channel   ChannelType?
+  category  String? // booking | follow-up | intake | concierge | price
+  active    Boolean      @default(true)
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+
+  @@unique([tenantId, key])
+  @@map("message_templates")
+}
+
+/// How a channel is connected for this tenant (WhatsApp Cloud API, an inbox
+/// webhook, or manual). Secrets are stored hashed; config holds no secret.
+model ChannelIntegration {
+  id             String      @id @default(cuid())
+  tenantId       String
+  tenant         Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  channel        ChannelType
+  provider       String // whatsapp_cloud | inbox_webhook | manual
+  config         Json?
+  secretHash     String?
+  secretPrefix   String?
+  enabled        Boolean     @default(false)
+  lastInboundAt  DateTime?
+  lastOutboundAt DateTime?
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+
+  @@unique([tenantId, channel])
+  @@map("channel_integrations")
+}
+
+/// A treatment performed (or planned) for a patient. Signing it is what enrols
+/// the patient in the concierge protocol and what the revenue reports count.
+model Procedure {
+  id             String          @id @default(cuid())
+  tenantId       String
+  tenant         Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  patientId      String
+  patient        Patient         @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  treatmentId    String
+  treatment      Treatment       @relation(fields: [treatmentId], references: [id])
+  doctorId       String?
+  appointmentId  String?
+  visitId        String?
+  consultationId String?
+  performedAt    DateTime
+  price          Int
+  discount       Int             @default(0)
+  currency       String          @default("EGP")
+  status         ProcedureStatus @default(PLANNED)
+  signedAt       DateTime?
+  signedById     String?
+  cancelledAt    DateTime?
+  cancelReason   String?
+  notes          String?
+  createdById    String?
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  deletedAt      DateTime?
+
+  payments  Payment[]
+  enrolment ConciergeEnrolment?
+
+  @@index([tenantId, performedAt])
+  @@index([tenantId, patientId])
+  @@index([tenantId, doctorId])
+  @@index([tenantId, treatmentId])
+  @@index([tenantId, status])
+  @@map("procedures")
+}
+
+/// Money in or out, whole EGP: deposits, payments, refunds and consultation fees.
+model Payment {
+  id            String        @id @default(cuid())
+  tenantId      String
+  tenant        Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  patientId     String
+  patient       Patient       @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  procedureId   String?
+  procedure     Procedure?    @relation(fields: [procedureId], references: [id])
+  appointmentId String?
+  leadId        String?
+  kind          PaymentKind
+  method        PaymentMethod @default(CASH)
+  amount        Int
+  currency      String        @default("EGP")
+  paidAt        DateTime
+  reference     String?
+  note          String?
+  importBatchId String?
+  createdById   String?
+  createdAt     DateTime      @default(now())
+  deletedAt     DateTime?
+
+  @@index([tenantId, paidAt])
+  @@index([tenantId, patientId])
+  @@index([tenantId, appointmentId])
+  @@index([procedureId])
+  @@map("payments")
+}
+
+/// A versioned post-treatment protocol: instructions, structured check-ins and
+/// photo requests at offsets from the procedure. Steps are JSON (see
+/// modules/concierge/protocols.ts for the shape).
+model Protocol {
+  id           String         @id @default(cuid())
+  tenantId     String
+  tenant       Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  treatmentId  String
+  treatment    Treatment      @relation(fields: [treatmentId], references: [id])
+  name         String
+  version      Int            @default(1)
+  status       ProtocolStatus @default(DRAFT)
+  steps        Json           @default("[]")
+  notes        String?
+  createdById  String?
+  approvedById String?
+  approvedAt   DateTime?
+  retiredAt    DateTime?
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  enrolments ConciergeEnrolment[]
+
+  @@unique([tenantId, treatmentId, version])
+  @@index([tenantId, status])
+  @@map("protocols")
+}
+
+model ConciergeEnrolment {
+  id          String          @id @default(cuid())
+  tenantId    String
+  tenant      Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  patientId   String
+  patient     Patient         @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  procedureId String          @unique
+  procedure   Procedure       @relation(fields: [procedureId], references: [id], onDelete: Cascade)
+  protocolId  String
+  protocol    Protocol        @relation(fields: [protocolId], references: [id])
+  status      EnrolmentStatus @default(ACTIVE)
+  channel     ChannelType     @default(WHATSAPP)
+  language    String          @default("ar")
+  startedAt   DateTime
+  completedAt DateTime?
+  pausedAt    DateTime?
+  pauseReason String?
+  stoppedAt   DateTime?
+  stopReason  String?
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  tasks       ConciergeTask[]
+  checkIns    CheckIn[]
+  escalations Escalation[]
+
+  @@index([tenantId, status])
+  @@index([tenantId, patientId])
+  @@map("concierge_enrolments")
+}
+
+/// One scheduled step of an enrolment. A check-in carries a hashed token for
+/// the patient's public link.
+model ConciergeTask {
+  id          String              @id @default(cuid())
+  tenantId    String
+  tenant      Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  enrolmentId String
+  enrolment   ConciergeEnrolment  @relation(fields: [enrolmentId], references: [id], onDelete: Cascade)
+  stepIndex   Int
+  kind        ProtocolStepKind
+  title       String
+  dueAt       DateTime
+  sentAt      DateTime?
+  status      ConciergeTaskStatus @default(PENDING)
+  tokenHash   String?             @unique
+  messageId   String?
+  answeredAt  DateTime?
+  missedAt    DateTime?
+  attempts    Int                 @default(0)
+  lastError   String?
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+
+  checkIn CheckIn?
+
+  @@index([tenantId, status, dueAt])
+  @@index([enrolmentId, stepIndex])
+  @@map("concierge_tasks")
+}
+
+/// A patient's answers to a check-in, with the triage the protocol produced.
+model CheckIn {
+  id           String             @id @default(cuid())
+  tenantId     String
+  tenant       Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  enrolmentId  String
+  enrolment    ConciergeEnrolment @relation(fields: [enrolmentId], references: [id], onDelete: Cascade)
+  taskId       String             @unique
+  task         ConciergeTask      @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  patientId    String
+  patient      Patient            @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  answers      Json
+  satisfaction Int?
+  freeText     String?
+  photoIds     String[]           @default([])
+  triage       TriageLevel        @default(OK)
+  flags        Json               @default("[]")
+  source       String             @default("link") // link | staff | whatsapp
+  submittedAt  DateTime           @default(now())
+
+  escalations Escalation[]
+
+  @@index([tenantId, submittedAt])
+  @@index([tenantId, patientId])
+  @@map("check_ins")
+}
+
+/// Something a named human must look at within a target time: a high-risk or
+/// out-of-range check-in, an overdue lead, a manual flag.
+model Escalation {
+  id               String              @id @default(cuid())
+  tenantId         String
+  tenant           Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  kind             EscalationKind
+  level            TriageLevel         @default(WATCH)
+  status           EscalationStatus    @default(OPEN)
+  enrolmentId      String?
+  enrolment        ConciergeEnrolment? @relation(fields: [enrolmentId], references: [id], onDelete: Cascade)
+  checkInId        String?
+  checkIn          CheckIn?            @relation(fields: [checkInId], references: [id], onDelete: Cascade)
+  leadId           String?
+  lead             Lead?               @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  patientId        String?
+  summary          String
+  details          Json?
+  assignedToId     String?
+  outOfHours       Boolean             @default(false)
+  dueAt            DateTime
+  acknowledgedAt   DateTime?
+  acknowledgedById String?
+  resolvedAt       DateTime?
+  resolvedById     String?
+  resolution       String?
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+
+  @@index([tenantId, status, dueAt])
+  @@index([tenantId, assignedToId, status])
+  @@map("escalations")
+}
+
+/// In-app notification for one user; e-mail copies follow the preference.
+model Notification {
+  id        String            @id @default(cuid())
+  tenantId  String
+  tenant    Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  kind      NotificationKind
+  level     NotificationLevel @default(INFO)
+  title     String
+  body      String?
+  href      String?
+  entity    String?
+  entityId  String?
+  readAt    DateTime?
+  emailedAt DateTime?
+  createdAt DateTime          @default(now())
+
+  @@index([tenantId, userId, readAt, createdAt])
+  @@index([tenantId, createdAt])
+  @@map("notifications")
+}
+
+model NotificationPreference {
+  id         String   @id @default(cuid())
+  tenantId   String
+  tenant     Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  userId     String   @unique
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// { [NotificationKind]: boolean }; a missing kind is on.
+  inApp      Json     @default("{}")
+  /// { [NotificationKind]: boolean }; a missing kind is off except ESCALATION and ALERT_RULE.
+  email      Json     @default("{}")
+  browser    Boolean  @default(false)
+  digestHour Int?
+  updatedAt  DateTime @updatedAt
+
+  @@index([tenantId])
+  @@map("notification_preferences")
+}
+
+/// A threshold on a reported metric, evaluated on a schedule; firing notifies the roles named.
+model AlertRule {
+  id              String          @id @default(cuid())
+  tenantId        String
+  tenant          Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name            String
+  metric          AlertMetric
+  comparator      AlertComparator
+  threshold       Float
+  windowDays      Int             @default(7)
+  enabled         Boolean         @default(true)
+  notifyRoles     UserRole[]      @default([CLINIC_OWNER])
+  lastEvaluatedAt DateTime?
+  lastFiredAt     DateTime?
+  lastValue       Float?
+  createdById     String?
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  @@index([tenantId, enabled])
+  @@map("alert_rules")
+}
+
+/// Baseline and target per reported metric (the spec's success-metrics table).
+model MetricTarget {
+  id          String    @id @default(cuid())
+  tenantId    String
+  tenant      Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  metric      String
+  baseline    Float?
+  target      Float?
+  unit        String?
+  dueAt       DateTime?
+  updatedById String?
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([tenantId, metric])
+  @@map("metric_targets")
+}
+
+/// A shareable onboarding link: open (anyone with the link) or for one patient.
+model IntakeLink {
+  id            String         @id @default(cuid())
+  tenantId      String
+  tenant        Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  kind          IntakeLinkKind @default(OPEN)
+  tokenHash     String         @unique
+  tokenPrefix   String
+  patientId     String?
+  patient       Patient?       @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  appointmentId String?
+  language      String         @default("ar")
+  label         String?
+  expiresAt     DateTime
+  maxUses       Int?
+  uses          Int            @default(0)
+  revokedAt     DateTime?
+  createdById   String?
+  createdAt     DateTime       @default(now())
+
+  submissions IntakeSubmission[]
+
+  @@index([tenantId, createdAt])
+  @@index([tenantId, patientId])
+  @@map("intake_links")
+}
+
+/// What a patient submitted through an onboarding link, until reception accepts it.
+model IntakeSubmission {
+  id               String       @id @default(cuid())
+  tenantId         String
+  tenant           Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  linkId           String
+  link             IntakeLink   @relation(fields: [linkId], references: [id], onDelete: Cascade)
+  status           IntakeStatus @default(PENDING)
+  fullName         String
+  phone            String?
+  email            String?
+  data             Json
+  matchedPatientId String?
+  patientId        String?
+  reviewedById     String?
+  reviewedAt       DateTime?
+  reviewNote       String?
+  ip               String?
+  submittedAt      DateTime     @default(now())
+
+  @@index([tenantId, status, submittedAt])
+  @@map("intake_submissions")
+}
+
+/// A note dictated (or typed) onto an appointment; carried into the consultation.
+model AppointmentNote {
+  id              String              @id @default(cuid())
+  tenantId        String
+  tenant          Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  appointmentId   String
+  appointment     Appointment         @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  patientId       String
+  patient         Patient             @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  kind            AppointmentNoteKind @default(DICTATION)
+  body            String
+  language        String?
+  durationSeconds Int?
+  authorId        String?
+  createdAt       DateTime            @default(now())
+  deletedAt       DateTime?
+  deletedById     String?
+
+  @@index([tenantId, appointmentId])
+  @@index([tenantId, patientId])
+  @@map("appointment_notes")
+}
+
+/// A user's saved filter set for a list (patients today).
+model SavedView {
+  id        String   @id @default(cuid())
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  scope     String
+  name      String
+  params    Json
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId, userId, scope])
+  @@map("saved_views")
+}
+
+/// Weekly public review count and rating (Google Business Profile, or entered by hand).
+model ReviewSnapshot {
+  id          String       @id @default(cuid())
+  tenantId    String
+  tenant      Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  source      ReviewSource @default(MANUAL)
+  weekStart   DateTime     @db.Date
+  count       Int
+  rating      Float
+  createdById String?
+  createdAt   DateTime     @default(now())
+
+  @@unique([tenantId, source, weekStart])
+  @@map("review_snapshots")
+}
+
+/// Small uploads (check-in photos, intake attachments) kept in the database
+/// when no object storage is configured. Documents point at "blob:<id>".
+model FileBlob {
+  id        String   @id @default(cuid())
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  patientId String?
+  mimeType  String
+  sizeBytes Int
+  bytes     Bytes
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, patientId])
+  @@map("file_blobs")
 }

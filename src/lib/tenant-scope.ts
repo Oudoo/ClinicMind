@@ -14,7 +14,20 @@ import { db, notDeleted } from "@/lib/db";
 
 type Client = Prisma.TransactionClient;
 
-export type TenantScopedEntity = "patient" | "user" | "clinic";
+export type TenantScopedEntity =
+  | "patient"
+  | "user"
+  | "clinic"
+  | "appointment"
+  | "treatment"
+  | "lead"
+  | "campaign"
+  | "conversation"
+  | "procedure"
+  | "protocol"
+  | "enrolment"
+  | "intake_link"
+  | "escalation";
 
 /**
  * Thrown when a referenced row does not belong to the acting tenant (or does

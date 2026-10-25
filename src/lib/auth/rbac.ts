@@ -28,7 +28,14 @@ export type Permission =
   | "reports:read"
   | "analytics:read"
   | "audit:read"
-  | "embed:manage";
+  | "embed:manage"
+  | "leads:read"
+  | "leads:write"
+  | "conversations:write" // reply from the reception inbox
+  | "payments:write" // record deposits, payments and refunds
+  | "finance:read" // the finance dashboard (revenue by doctor is owner-only)
+  | "concierge:read"
+  | "concierge:write"; // answer check-ins, acknowledge and resolve escalations
 
 const ALL: Permission[] = [
   "platform:manage",
@@ -47,6 +54,13 @@ const ALL: Permission[] = [
   "analytics:read",
   "audit:read",
   "embed:manage",
+  "leads:read",
+  "leads:write",
+  "conversations:write",
+  "payments:write",
+  "finance:read",
+  "concierge:read",
+  "concierge:write",
 ];
 
 const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
@@ -70,6 +84,13 @@ const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
     "analytics:read",
     "audit:read",
     "embed:manage",
+    "leads:read",
+    "leads:write",
+    "conversations:write",
+    "payments:write",
+    "finance:read",
+    "concierge:read",
+    "concierge:write",
   ],
   DOCTOR: [
     "patients:read",
@@ -82,6 +103,10 @@ const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
     "conversations:read",
     "reports:read",
     "analytics:read",
+    "leads:read",
+    "conversations:write",
+    "concierge:read",
+    "concierge:write",
   ],
   NURSE: [
     "patients:read",
@@ -90,6 +115,12 @@ const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
     "appointments:write",
     "consultations:read",
     "conversations:read",
+    "conversations:write",
+    "leads:read",
+    "leads:write",
+    "payments:write",
+    "concierge:read",
+    "concierge:write",
   ],
   RECEPTIONIST: [
     "patients:read",
@@ -97,8 +128,13 @@ const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
     "appointments:read",
     "appointments:write",
     "conversations:read",
+    "conversations:write",
+    "leads:read",
+    "leads:write",
+    "payments:write",
+    "concierge:read",
   ],
-  ASSISTANT: ["patients:read", "appointments:read", "conversations:read"],
+  ASSISTANT: ["patients:read", "appointments:read", "conversations:read", "leads:read"],
 };
 
 /**

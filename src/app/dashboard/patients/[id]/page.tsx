@@ -13,6 +13,11 @@ import { PatientHeaderActions } from "@/components/clinicmind/patient-actions";
 import { MedicalHistoryEditor } from "@/components/clinicmind/patient-history-editor";
 import { PatientTimeline } from "@/components/clinicmind/patient-timeline";
 import { PatientVisitsTable, type VisitRow } from "@/components/clinicmind/patient-visits-table";
+import { PatientNextAppointment } from "@/components/clinicmind/patient-next-appointment";
+import { PatientConciergeCard } from "@/components/clinicmind/patient-concierge-card";
+import { PatientFinanceCard } from "@/components/clinicmind/patient-finance-card";
+import { PatientLeadCard } from "@/components/clinicmind/patient-lead-card";
+import { PatientIntakeCard } from "@/components/clinicmind/patient-intake-card";
 import {
   GENDER_LABELS,
   languageLabel,
@@ -226,6 +231,7 @@ export default async function PatientPage({ params }: { params: Promise<{ id: st
               </div>
 
               <div className="space-y-4">
+                <PatientNextAppointment tenantId={ctx.tenantId} userId={ctx.userId} role={ctx.role} patientId={patient.id} canWrite={canWrite && !archived} />
                 <Card className="space-y-3">
                   <SectionTitle title="Upcoming appointments" />
                   {patient.upcomingAppointments.length ? (
@@ -276,6 +282,10 @@ export default async function PatientPage({ params }: { params: Promise<{ id: st
                     <p className="text-sm text-muted-foreground">No notes on this patient.</p>
                   )}
                 </Card>
+                <PatientConciergeCard tenantId={ctx.tenantId} userId={ctx.userId} role={ctx.role} patientId={patient.id} canWrite={canWrite && !archived} />
+                <PatientFinanceCard tenantId={ctx.tenantId} userId={ctx.userId} role={ctx.role} patientId={patient.id} canWrite={canWrite && !archived} />
+                <PatientLeadCard tenantId={ctx.tenantId} userId={ctx.userId} role={ctx.role} patientId={patient.id} canWrite={canWrite && !archived} />
+                <PatientIntakeCard tenantId={ctx.tenantId} userId={ctx.userId} role={ctx.role} patientId={patient.id} canWrite={canWrite && !archived} />
               </div>
             </div>
           </TabsContent>
