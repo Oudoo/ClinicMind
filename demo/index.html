@@ -30,9 +30,34 @@
     <script src="assets/views-ai.js"></script>
     <script src="assets/views-ceo.js"></script>
     <script>
-      window.CM.load();
-      if (!location.hash) location.hash = "/";
-      window.CM.render();
+      // Never a blank page: a half-loaded update (a cached index.html next to new
+      // scripts) or a broken stored state shows a message with a way out.
+      (function () {
+        function fail(err) {
+          console.error(err);
+          var app = document.getElementById("app");
+          if (!app) return;
+          app.innerHTML = '<div class="mx-auto max-w-lg p-10 text-sm">' +
+            '<h1 class="font-display text-lg font-semibold">The prototype could not start</h1>' +
+            '<p class="mt-2 text-muted-foreground">Usually a half-loaded update. Reload the page; if it happens again, reset the demo data (your browser keeps a copy of the seed).</p>' +
+            '<p class="mt-4 flex flex-wrap gap-2"><button class="btn btn-primary" data-boot="reload">Reload</button><button class="btn btn-outline" data-boot="reset">Reset demo data</button></p>' +
+            '<p class="mt-4 font-mono text-xs text-muted-foreground"></p></div>';
+          app.querySelector("p.font-mono").textContent = String((err && err.message) || err);
+          app.querySelector('[data-boot="reload"]').addEventListener("click", function () { location.reload(); });
+          app.querySelector('[data-boot="reset"]').addEventListener("click", function () {
+            try { localStorage.removeItem("cm-proto-v5"); localStorage.removeItem("cm-proto-session"); } catch (e) {}
+            location.reload();
+          });
+        }
+        try {
+          if (!window.CM || !window.CM_SEED) throw new Error("The application scripts did not load completely.");
+          window.CM.load();
+          if (!location.hash) location.hash = "/";
+          window.CM.render();
+          var app = document.getElementById("app");
+          if (app && !app.innerHTML.trim()) throw new Error("Nothing rendered for " + location.hash);
+        } catch (err) { fail(err); }
+      })();
     </script>
   </body>
 </html>

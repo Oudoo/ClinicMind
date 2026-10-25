@@ -23,7 +23,13 @@ window.CM = (function () {
   function load() {
     try {
       const raw = localStorage.getItem(STORAGE);
-      if (raw) { S = JSON.parse(raw); if (S && S.version === 2) return S; }
+      if (raw) {
+        S = JSON.parse(raw);
+        // A stored state must carry what the current views read; anything older or
+        // half-written is regenerated rather than rendered as a blank page.
+        const ok = S && S.version === 2 && Array.isArray(S.users) && Array.isArray(S.patients) && Array.isArray(S.appointments) && Array.isArray(S.tenants) && (S.reporting || !window.CM_SEED_REPORTING) && (S.leads || !window.CM_SEED_AI);
+        if (ok) return S;
+      }
     } catch (e) { /* storage unavailable: regenerate every load */ }
     S = window.CM_SEED.generate(new Date());
     save();
@@ -414,10 +420,10 @@ window.CM = (function () {
       html = `<div class="p-10">${alert(`Something went wrong rendering this page: ${esc(err.message)}`)}</div>`;
     }
     app.innerHTML = html;
-    enhanceMics(app);
+    try { enhanceMics(app); } catch (err) { console.error(err); }
     window.scrollTo(0, 0);
     document.title = `${(currentTenant() && currentTenant().branding && currentTenant().branding.productName) || "ClinicMind"} — ${r.path === "/" ? "Clinic operating system" : r.parts.slice(-1)[0].replace(/-/g, " ")}`;
-    if (views.afterRender) views.afterRender(r);
+    if (views.afterRender) { try { views.afterRender(r); } catch (err) { console.error(err); } }
   }
 
   // ── Global event delegation ─────────────────────────────────────────────

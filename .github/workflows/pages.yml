@@ -38,6 +38,11 @@ jobs:
           # Auto-create the Pages site via the API (uses pages: write permission),
           # so no manual Settings → Pages step is required.
           enablement: true
+      - name: Stamp asset URLs with the commit (cache busting)
+        run: |
+          v="${GITHUB_SHA::8}"
+          sed -i -E "s#(assets/[A-Za-z0-9_./-]+\.(js|css))#\1?v=${v}#g" demo/index.html
+          grep -c "?v=${v}" demo/index.html
       - uses: actions/upload-pages-artifact@v3
         with:
           path: ./demo
