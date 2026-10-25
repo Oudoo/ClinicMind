@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogClose, DialogContent, DialogFooter } from "@/components/ui/dialog";
 import { Alert, Field } from "@/components/ui/field";
 import { Textarea } from "@/components/ui/input";
+import { DictationField } from "@/components/clinicmind/dictate-field";
 import { apiFetch } from "@/lib/http";
 import { formatDateTimeInTz } from "@/lib/time";
 import type { AppointmentDTO } from "@/modules/appointments/dto";
@@ -60,15 +61,17 @@ export function CancelAppointmentDialog({
         <form onSubmit={submit} className="space-y-4" noValidate>
           {error ? <Alert>{error}</Alert> : null}
           <Field label="Reason" htmlFor={reasonId} hint={`Required · up to ${MAX_REASON_LENGTH} characters`}>
-            <Textarea
-              id={reasonId}
-              value={reason}
-              onChange={(e) => setReason(e.target.value)}
-              maxLength={MAX_REASON_LENGTH}
-              required
-              autoFocus
-              placeholder="e.g. Patient asked to cancel by phone"
-            />
+            <DictationField onDictated={setReason} disabled={busy}>
+              <Textarea
+                id={reasonId}
+                value={reason}
+                onChange={(e) => setReason(e.target.value)}
+                maxLength={MAX_REASON_LENGTH}
+                required
+                autoFocus
+                placeholder="e.g. Patient asked to cancel by phone"
+              />
+            </DictationField>
           </Field>
           <DialogFooter>
             <DialogClose asChild>

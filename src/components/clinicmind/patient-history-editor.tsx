@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter } from "@/components/ui/dialog";
 import { Alert } from "@/components/ui/field";
 import { Textarea } from "@/components/ui/input";
+import { DictationField } from "@/components/clinicmind/dictate-field";
 import { DictationControl } from "@/components/clinicmind/dictation";
 import { useToast } from "@/components/ui/toast";
 import { apiFetch, fieldErrors } from "@/lib/http";
@@ -133,14 +134,16 @@ function HistoryForm({
         <details className="text-xs">
           <summary className="cursor-pointer text-muted-foreground">Or paste a note</summary>
           <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-start">
-            <Textarea
-              value={noteText}
-              onChange={(e) => setNoteText(e.target.value)}
-              rows={2}
-              maxLength={20000}
-              placeholder="e.g. Known hypertensive since 2019, allergic to penicillin, appendectomy in 2010"
-              aria-label="Background note"
-            />
+            <DictationField onDictated={setNoteText} patientId={patientId} disabled={pending || suggesting} className="w-full min-w-0">
+              <Textarea
+                value={noteText}
+                onChange={(e) => setNoteText(e.target.value)}
+                rows={2}
+                maxLength={20000}
+                placeholder="e.g. Known hypertensive since 2019, allergic to penicillin, appendectomy in 2010"
+                aria-label="Background note"
+              />
+            </DictationField>
             <Button type="button" variant="outline" size="sm" onClick={() => void suggestFrom(noteText)} disabled={noteText.trim().length < 10 || suggesting}>
               {suggesting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
               Suggest

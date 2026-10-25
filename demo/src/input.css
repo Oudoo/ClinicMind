@@ -176,6 +176,16 @@
   .col-lg {
     @apply hidden lg:table-cell;
   }
+  /* The microphone inside a free-text field. */
+  .mic-btn {
+    @apply absolute right-1.5 inline-flex h-7 items-center gap-1 rounded-md px-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring;
+  }
+  .mic-btn[data-state="listening"] {
+    @apply bg-danger/10 text-danger hover:bg-danger/15 hover:text-danger;
+  }
+  .mic-btn[data-state="listening"] svg {
+    @apply animate-pulse;
+  }
   .dialog-overlay {
     @apply fixed inset-0 z-50 bg-charcoal-slate/40 backdrop-blur-[2px] animate-fade-in;
   }

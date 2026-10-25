@@ -111,7 +111,12 @@ brief generation with structured output, consent capture on a tablet.
 nothing is filed until the doctor signs, every sentence traceable.
 
 **Show:** **Consultations → New consultation**. Pick **Ali Adel**, paste the
-transcript below, click **Extract clinical data**.
+transcript below, click **Extract clinical data**. Point at the **Dictate**
+control under the transcript (language Auto, dictation or ambient with
+consent) and at the small microphone inside every free-text field (reason,
+notes, summary, address, the assistant's question): one tap records, the next
+stops, the words land at the caret. In the prototype the microphone is
+simulated; the application sends the audio to the clinic's provider.
 
 ```
 Doctor: Good morning Ali, how is the scalp since the last injection?

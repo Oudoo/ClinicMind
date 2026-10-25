@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogClose, DialogContent, DialogFooter } from "@/components/ui/dialog";
 import { Alert, Field } from "@/components/ui/field";
 import { Input, Select, Textarea } from "@/components/ui/input";
+import { DictationField } from "@/components/clinicmind/dictate-field";
 import { apiFetch, fieldErrors } from "@/lib/http";
 import { fromLocalInput } from "@/lib/time";
 import type { AppointmentConflictDTO, AppointmentDTO } from "@/modules/appointments/dto";
@@ -171,22 +172,26 @@ export function NewAppointmentDialog({
           </div>
 
           <Field label="Reason" htmlFor={`${id}-reason`} hint={issue("reason") ?? "Optional · shown on the schedule"}>
-            <Input
-              id={`${id}-reason`}
-              value={reason}
-              onChange={(e) => setReason(e.target.value)}
-              maxLength={MAX_REASON_LENGTH}
-              placeholder="e.g. Follow-up, blood pressure check"
-            />
+            <DictationField multiline={false} onDictated={setReason} disabled={busy}>
+              <Input
+                id={`${id}-reason`}
+                value={reason}
+                onChange={(e) => setReason(e.target.value)}
+                maxLength={MAX_REASON_LENGTH}
+                placeholder="e.g. Follow-up, blood pressure check"
+              />
+            </DictationField>
           </Field>
           <Field label="Notes" htmlFor={`${id}-notes`} hint={issue("notes") ?? "Optional · for the front desk and the doctor"}>
-            <Textarea
-              id={`${id}-notes`}
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              maxLength={2000}
-              className="min-h-[4.5rem]"
-            />
+            <DictationField onDictated={setNotes} disabled={busy}>
+              <Textarea
+                id={`${id}-notes`}
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                maxLength={2000}
+                className="min-h-[4.5rem]"
+              />
+            </DictationField>
           </Field>
 
           <DialogFooter>

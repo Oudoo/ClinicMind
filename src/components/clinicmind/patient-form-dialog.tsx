@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter } from "@/components/ui/dialog";
 import { Alert, Field } from "@/components/ui/field";
 import { Input, Select, Textarea } from "@/components/ui/input";
+import { DictationField } from "@/components/clinicmind/dictate-field";
 import { useToast } from "@/components/ui/toast";
 import { apiFetch, fieldErrors } from "@/lib/http";
 import { ChipInput } from "@/components/clinicmind/patient-chip-input";
@@ -252,14 +253,16 @@ function PatientForm({
 
         <div className="sm:col-span-2">
           <FormField id="patient-address" label="Address" error={errors.address}>
-            <Input
-              id="patient-address"
-              value={values.address}
-              onChange={(e) => set("address", e.target.value)}
-              maxLength={300}
-              autoComplete="off"
-              aria-invalid={errors.address ? true : undefined}
-            />
+            <DictationField multiline={false} onDictated={(v) => set("address", v)} disabled={pending}>
+              <Input
+                id="patient-address"
+                value={values.address}
+                onChange={(e) => set("address", e.target.value)}
+                maxLength={300}
+                autoComplete="off"
+                aria-invalid={errors.address ? true : undefined}
+              />
+            </DictationField>
           </FormField>
         </div>
 
@@ -278,14 +281,16 @@ function PatientForm({
 
         <div className="sm:col-span-2">
           <FormField id="patient-notes" label="Notes" error={errors.notes}>
-            <Textarea
-              id="patient-notes"
-              value={values.notes}
-              onChange={(e) => set("notes", e.target.value)}
-              maxLength={2000}
-              rows={3}
-              aria-invalid={errors.notes ? true : undefined}
-            />
+            <DictationField onDictated={(v) => set("notes", v)} disabled={pending}>
+              <Textarea
+                id="patient-notes"
+                value={values.notes}
+                onChange={(e) => set("notes", e.target.value)}
+                maxLength={2000}
+                rows={3}
+                aria-invalid={errors.notes ? true : undefined}
+              />
+            </DictationField>
           </FormField>
         </div>
       </div>

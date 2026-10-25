@@ -214,6 +214,7 @@ window.CM = (function () {
     wrap.id = "dialog"; wrap.className = "fixed inset-0 z-50";
     wrap.innerHTML = `<div class="dialog-overlay" data-action="close-dialog"></div><div role="dialog" aria-modal="true" aria-labelledby="dialog-title" class="dialog ${size}"><div class="mb-4 flex items-start justify-between gap-4"><div><h2 id="dialog-title" class="font-display text-lg font-semibold tracking-tight">${esc(title)}</h2>${description ? `<p class="mt-0.5 text-sm text-muted-foreground">${description}</p>` : ""}</div><button class="btn btn-ghost btn-icon" data-action="close-dialog" aria-label="Close">${icon("x")}</button></div><div id="dialog-body">${body}</div>${footer ? `<div class="mt-6 flex items-center justify-end gap-2" id="dialog-footer">${footer}</div>` : ""}</div>`;
     document.body.appendChild(wrap);
+    enhanceMics(wrap);
     dialogState = { onMount };
     const first = wrap.querySelector("input, textarea, select, button:not([data-action=close-dialog])");
     if (first) first.focus();
@@ -231,6 +232,82 @@ window.CM = (function () {
   }
   let confirmResolver = null;
 
+  // ── Microphone in free-text fields (simulated speech-to-text) ──────────
+  // The application records the field's audio and sends it to the clinic's
+  // speech-to-text provider; the prototype listens for two seconds and types
+  // a phrase that fits the field, inserted at the caret like the real one.
+  const MIC_PHRASES = [
+    [/transcript/, "Doctor: Patient reports less shedding since starting minoxidil. On examination, mild thinning at the crown, no scalp inflammation. Plan: continue minoxidil 5% twice daily, ferritin and TSH, review in three months with photos."],
+    [/summary/, "Acne follow-up. Clear improvement on adapalene; continue nightly, sunscreen every morning, review in six weeks."],
+    [/cancel/, "Patient asked to cancel by phone; travelling next week."],
+    [/reason/, "Hair loss follow-up"],
+    [/notes?\b/, "Patient prefers afternoon appointments and speaks Arabic; call before the visit."],
+    [/\b(body|reply|message)\b/, "Thanks for your message! The next free consultation is Thursday at 11:00. Shall I book it for you?"],
+    [/\bmq\b/, "no-show rate by doctor"],
+    [/\b(ask|q|question)\b/, "Which patients are on isotretinoin?"],
+    [/concern/, "Thinning at the crown for about a year"],
+    [/expectations/, "Stop the shedding and regrow the crown"],
+    [/prior/, "Minoxidil 5% for two months, then stopped"],
+    [/\ba\b/, "Yes, we see children from the age of two."],
+  ];
+  const micPhrase = (el) => { const key = `${el.name || ""} ${el.id || ""}`.toLowerCase(); const hit = MIC_PHRASES.find(([re]) => re.test(key)); return hit ? hit[1] : "Patient is well and will return for review."; };
+  const micWanted = (el) => {
+    if (el.dataset.noMic != null || el.readOnly || el.disabled || /font-mono/.test(el.className) || el.closest("[data-mic-wrap]")) return false;
+    if (el.tagName === "TEXTAREA") return true;
+    if (el.type && el.type !== "text") return false;
+    return el.name === "reason" || el.name === "concern" || (el.name === "q" && el.id !== "q");
+  };
+  function enhanceMics(root) {
+    root.querySelectorAll("textarea, input").forEach((el) => {
+      if (!micWanted(el)) return;
+      const area = el.tagName === "TEXTAREA";
+      const wrap = document.createElement("div");
+      wrap.setAttribute("data-mic-wrap", "");
+      wrap.className = ["relative", /\bflex-1\b/.test(el.className) ? "flex-1" : "", /\bmin-w-0\b/.test(el.className) ? "min-w-0" : "", /\bw-full\b/.test(el.className) || area ? "w-full" : ""].filter(Boolean).join(" ");
+      el.parentNode.insertBefore(wrap, el);
+      wrap.appendChild(el);
+      el.classList.add("pr-10");
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = `mic-btn ${area ? "top-1.5" : "top-1/2 -translate-y-1/2"}`;
+      btn.dataset.action = "mic";
+      btn.dataset.state = "idle";
+      btn.setAttribute("aria-label", "Dictate into this field");
+      btn.title = "Dictate into this field (Arabic, English or a mix)";
+      btn.innerHTML = icon("mic");
+      wrap.appendChild(btn);
+    });
+  }
+  const micTimers = new WeakMap();
+  function micAction(btn) {
+    const wrap = btn.closest("[data-mic-wrap]"); const el = wrap && wrap.querySelector("textarea, input"); if (!el) return;
+    const state = btn.dataset.state || "idle";
+    const clear = () => { const t = micTimers.get(btn); if (t) { clearInterval(t.tick); clearTimeout(t.stop); micTimers.delete(btn); } };
+    const finish = () => {
+      clear();
+      btn.dataset.state = "busy"; btn.setAttribute("aria-label", "Transcribing"); btn.innerHTML = icon("refresh", "h-4 w-4 animate-spin");
+      setTimeout(() => {
+        const text = micPhrase(el);
+        const start = el.selectionStart == null ? el.value.length : el.selectionStart, end = el.selectionEnd == null ? start : el.selectionEnd;
+        const before = el.value.slice(0, start), after = el.value.slice(end);
+        const sepB = before && !/\s$/.test(before) ? " " : "", sepA = after && !/^\s/.test(after) ? " " : "";
+        el.value = before + sepB + text + sepA + after;
+        const caret = (before + sepB + text).length;
+        el.dispatchEvent(new Event("input", { bubbles: true }));
+        el.focus(); try { el.setSelectionRange(caret, caret); } catch (e) { /* not every input has a selection */ }
+        btn.dataset.state = "idle"; btn.setAttribute("aria-label", "Dictate into this field"); btn.innerHTML = icon("mic");
+        toast({ title: "Dictated into the field", description: "Simulated speech-to-text. The application sends the audio to the clinic's provider; Arabic, English or a mix.", tone: "info" });
+      }, 700);
+    };
+    if (state === "listening") { finish(); return; }
+    if (state === "busy") return;
+    btn.dataset.state = "listening"; btn.setAttribute("aria-label", "Stop dictating");
+    btn.innerHTML = `${icon("mic")}<span class="font-mono text-[10px] tabular-nums">00:0<span data-t>0</span></span>`;
+    let t = 0;
+    const tick = setInterval(() => { t++; const s = btn.querySelector("[data-t]"); if (s) s.textContent = String(Math.min(9, t)); }, 1000);
+    micTimers.set(btn, { tick, stop: setTimeout(finish, 2400) });
+  }
+
   // ── Router ──────────────────────────────────────────────────────────────
   function route() {
     const hash = location.hash.replace(/^#/, "") || "/";
@@ -241,6 +318,7 @@ window.CM = (function () {
   function go(hash) { if (location.hash === "#" + hash) render(); else location.hash = hash; }
   const views = {};
   const actions = {};
+  actions.mic = micAction;
   const forms = {};
 
   const NAV = [
@@ -336,6 +414,7 @@ window.CM = (function () {
       html = `<div class="p-10">${alert(`Something went wrong rendering this page: ${esc(err.message)}`)}</div>`;
     }
     app.innerHTML = html;
+    enhanceMics(app);
     window.scrollTo(0, 0);
     document.title = `${(currentTenant() && currentTenant().branding && currentTenant().branding.productName) || "ClinicMind"} — ${r.path === "/" ? "Clinic operating system" : r.parts.slice(-1)[0].replace(/-/g, " ")}`;
     if (views.afterRender) views.afterRender(r);

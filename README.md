@@ -130,7 +130,12 @@ provider and returns the transcript; the audio is not stored. Two modes:
 *dictation* (the doctor alone) and *ambient* (doctor and patient, turns
 labelled, consent confirmed and logged). The transcript then goes through the
 same extract → review → sign path as a typed one, or, in the history editor,
-becomes suggested entries the clinician reviews before saving.
+becomes suggested entries the clinician reviews before saving. Every other
+free-text field (appointment reason and notes, cancellation reason, visit
+summary, patient address and notes, the assistant's question box) carries a
+small microphone inside the field: one tap records, the next stops, and the
+transcript lands at the caret with the existing text kept
+(`DictationField`, built on the same `useDictation` hook).
 
 | Variable | Default | Purpose |
 |---|---|---|

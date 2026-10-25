@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { AlertTriangle, Quote, Search, Send, ShieldCheck, Sparkles, UserRound, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { DictationField } from "@/components/clinicmind/dictate-field";
 import { Badge } from "@/components/ui/primitives";
 import { apiFetch, ApiError } from "@/lib/http";
 
@@ -221,13 +222,16 @@ export function AssistantChat({ initialPatient = null }: { initialPatient?: Pati
         className="border-t border-border p-4"
       >
         <div className="flex items-center gap-2">
-          <input
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            maxLength={2000}
-            placeholder={patient ? `Ask about ${patient.fullName}…` : "Ask about patients, treatments, allergies, follow-ups…"}
-            className="h-10 flex-1 rounded-lg border border-input bg-background px-4 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-          />
+          <DictationField multiline={false} onDictated={setInput} disabled={loading} patientId={patient?.id ?? null} className="min-w-0 flex-1">
+            <input
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              maxLength={2000}
+              placeholder={patient ? `Ask about ${patient.fullName}…` : "Ask about patients, treatments, allergies, follow-ups…"}
+              aria-label="Question"
+              className="h-10 w-full rounded-lg border border-input bg-background px-4 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+            />
+          </DictationField>
           <Button type="submit" size="icon" disabled={loading || !input.trim()} aria-label="Send">
             <Send className="h-4 w-4" />
           </Button>

@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/dialog";
 import { Alert, Field } from "@/components/ui/field";
 import { Checkbox, Input, Textarea } from "@/components/ui/input";
+import { DictationField } from "@/components/clinicmind/dictate-field";
 import { Badge, Card, SectionTitle } from "@/components/ui/primitives";
 import { useToast } from "@/components/ui/toast";
 import { apiFetch, ApiError, fieldErrors } from "@/lib/http";
@@ -281,14 +282,16 @@ export function ConsultationReview(props: ConsultationReviewProps) {
           </span>
         }
       >
-        <Textarea
-          id="review-summary"
-          rows={5}
-          maxLength={SUMMARY_MAX_LENGTH}
-          value={summary}
-          onChange={(e) => setSummary(e.target.value)}
-          placeholder="Summarise the visit for the record…"
-        />
+        <DictationField onDictated={setSummary} disabled={busy}>
+          <Textarea
+            id="review-summary"
+            rows={5}
+            maxLength={SUMMARY_MAX_LENGTH}
+            value={summary}
+            onChange={(e) => setSummary(e.target.value)}
+            placeholder="Summarise the visit for the record…"
+          />
+        </DictationField>
       </Field>
 
       {blankMedicationRows ? (
