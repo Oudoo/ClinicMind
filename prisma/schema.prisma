@@ -449,6 +449,8 @@ model Appointment {
   confirmedAt     DateTime?
   checkedInAt     DateTime?
   reminderSentAt  DateTime?
+  /// Set once when reception was told the patient has not checked in (appointments-late-flag job).
+  lateFlaggedAt   DateTime?
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt

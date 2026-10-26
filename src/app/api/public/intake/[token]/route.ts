@@ -16,11 +16,17 @@ export const dynamic = "force-dynamic";
 type Params = { params: Promise<{ token: string }> };
 const NO_STORE = { "Cache-Control": "no-store" };
 
+/** The host the patient opened the link on; on a clinic's own domain only that clinic's tokens resolve. */
+function requestHost(req: Request): string | null {
+  return req.headers.get("x-forwarded-host") ?? req.headers.get("host");
+}
+
 /**
  * `GET /api/public/intake/[token]` — what the onboarding page needs:
  * `{ clinicName, productName, language, kind, prefill, treatments }`.
  * No session: the token is the credential. Unknown, expired, revoked and
- * used-up tokens are all a plain 404; the token is never echoed back.
+ * used-up tokens, and another clinic's token on a clinic's own domain, are
+ * all a plain 404; the token is never echoed back.
  */
 export async function GET(req: Request, { params }: Params) {
   try {
@@ -29,7 +35,7 @@ export async function GET(req: Request, { params }: Params) {
     if (!limit.ok) return tooManyRequests(limit.retryAfterSeconds);
 
     const { token } = await params;
-    const intake = await getPublicIntake(token);
+    const intake = await getPublicIntake(token, { host: requestHost(req) });
     if (!intake) return notFound();
     return NextResponse.json(intake, { headers: NO_STORE });
   } catch (err) {
@@ -51,7 +57,7 @@ export async function POST(req: Request, { params }: Params) {
 
     const { token } = await params;
     const body: unknown = await req.json().catch(() => null);
-    const result = await submitPublicIntake(token, body ?? {}, { ip: clientIp(req) });
+    const result = await submitPublicIntake(token, body ?? {}, { ip: clientIp(req), host: requestHost(req) });
     if (!result) return notFound();
     return NextResponse.json(result, { headers: NO_STORE });
   } catch (err) {

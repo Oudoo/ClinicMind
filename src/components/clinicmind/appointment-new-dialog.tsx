@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useState, type FormEvent } from "react";
+import { useEffect, useId, useRef, useState, type FormEvent } from "react";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogClose, DialogContent, DialogFooter } from "@/components/ui/dialog";
@@ -65,6 +65,15 @@ export function NewAppointmentDialog({
   const [showSlots, setShowSlots] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // The form scrolls inside the dialog and the refusal (with its suggestions) is
+  // shown at its top: scroll back up when one arrives, or it lands out of sight.
+  const noticeRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!conflict && !error) return;
+    const box = noticeRef.current?.closest<HTMLElement>("[role=dialog]");
+    if (box) box.scrollTop = 0;
+    else noticeRef.current?.scrollIntoView({ block: "start" });
+  }, [conflict, error]);
 
   const effectiveDoctorId = doctorId || (doctors?.length === 1 ? (doctors[0]?.id ?? "") : "");
   const startsAt = fromLocalInput(`${date}T${time}`, timezone);
@@ -155,19 +164,21 @@ export function NewAppointmentDialog({
     <Dialog open onOpenChange={onOpenChange}>
       <DialogContent title="New appointment" description={`Times on the clinic clock (${timezone}).`} className="max-w-xl">
         <form onSubmit={onSubmit} className="space-y-4" noValidate>
-          {error ? <Alert>{error}</Alert> : null}
-          {conflict ? (
-            <ConflictNotice
-              conflict={conflict}
-              timezone={timezone}
-              dayKey={date}
-              suggestions={suggestions}
-              onPickSuggestion={pickSuggestion}
-              onWaitlist={conflict.kind === "slot" ? () => void submit({ allowWaitlist: true }) : undefined}
-              onOverride={conflict.kind === "patient" ? () => void submit({ allowPatientOverlap: true }) : undefined}
-              busy={busy}
-            />
-          ) : null}
+          <div ref={noticeRef} className="space-y-4 empty:hidden">
+            {error ? <Alert>{error}</Alert> : null}
+            {conflict ? (
+              <ConflictNotice
+                conflict={conflict}
+                timezone={timezone}
+                dayKey={date}
+                suggestions={suggestions}
+                onPickSuggestion={pickSuggestion}
+                onWaitlist={conflict.kind === "slot" ? () => void submit({ allowWaitlist: true }) : undefined}
+                onOverride={conflict.kind === "patient" ? () => void submit({ allowPatientOverlap: true }) : undefined}
+                busy={busy}
+              />
+            ) : null}
+          </div>
 
           <PatientPicker value={patient} onChange={setPatient} error={issues.patientId} />
 
@@ -204,7 +215,7 @@ export function NewAppointmentDialog({
             </Field>
           </div>
 
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-[minmax(0,1.45fr)_minmax(0,1.15fr)_minmax(0,1fr)_minmax(0,1fr)]">
             <Field label="Date" htmlFor={`${id}-date`} hint={issue("startsAt")}>
               <Input
                 id={`${id}-date`}

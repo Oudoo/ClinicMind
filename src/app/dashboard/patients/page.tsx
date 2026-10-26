@@ -7,7 +7,7 @@ import { historyLists, listOptionsFromQuery, listPatientTags, listPatients } fro
 import { listSavedViews } from "@/modules/patients/views";
 import { countPendingSubmissions } from "@/modules/intake/service";
 import { parsePatientListQuery, patientListHref, patientQueryParams, hasPatientFilters } from "@/modules/patients/filters";
-import { ageFrom, initials } from "@/lib/utils";
+import { ageFrom, cn, initials } from "@/lib/utils";
 import { formatDateInTz, formatTimeInTz } from "@/lib/time";
 import { Badge, Card, EmptyState, SectionTitle } from "@/components/ui/primitives";
 import { Button } from "@/components/ui/button";
@@ -20,6 +20,9 @@ import { GENDER_LABELS } from "@/components/clinicmind/patient-shared";
 export const dynamic = "force-dynamic";
 
 type SearchParams = Record<string, string | string[] | undefined>;
+
+/** A dense registry: tighter cell padding so every column fits a 1366 px laptop without scrolling the table. */
+const DENSE = "px-3 sm:px-3";
 
 /**
  * `/dashboard/patients` — the registry with server-side, URL-synced filters
@@ -79,19 +82,20 @@ export default async function PatientsPage({ searchParams }: { searchParams: Pro
             tags={tags}
             views={views.map((v) => ({ id: v.id, name: v.name, params: v.params }))}
             canSaveViews={Boolean(ctx.userId)}
+            canExport={can(ctx.role, "patients:export")}
           />
 
           {patients.length ? (
             <Table>
               <THead>
                 <TR className="hover:bg-transparent">
-                  <TH>Patient</TH>
-                  <TH>Age</TH>
-                  <TH>Contact</TH>
-                  <TH className="hidden md:table-cell">City · tags</TH>
-                  <TH className="hidden lg:table-cell">Conditions</TH>
-                  <TH className="hidden lg:table-cell">Last visit</TH>
-                  <TH className="hidden lg:table-cell">Next appointment</TH>
+                  <TH className={DENSE}>Patient</TH>
+                  <TH className={DENSE}>Age</TH>
+                  <TH className={DENSE}>Contact</TH>
+                  <TH className={cn(DENSE, "hidden md:table-cell")}>City · tags</TH>
+                  <TH className={cn(DENSE, "hidden xl:table-cell")}>Conditions</TH>
+                  <TH className={cn(DENSE, "hidden xl:table-cell")}>Last visit</TH>
+                  <TH className={cn(DENSE, "hidden lg:table-cell")}>Next appointment</TH>
                 </TR>
               </THead>
               <TBody>
@@ -100,8 +104,8 @@ export default async function PatientsPage({ searchParams }: { searchParams: Pro
                   const age = ageFrom(p.dateOfBirth);
                   return (
                     <TR key={p.id} className={p.exact ? "bg-accent-muted/40" : undefined}>
-                      <TD>
-                        <div className="flex items-center gap-3">
+                      <TD className={DENSE}>
+                        <div className="flex min-w-[9rem] items-center gap-3">
                           <span
                             aria-hidden="true"
                             className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-accent-muted font-mono text-xs text-accent"
@@ -126,12 +130,16 @@ export default async function PatientsPage({ searchParams }: { searchParams: Pro
                           </div>
                         </div>
                       </TD>
-                      <TD className="font-mono tabular-nums text-muted-foreground">{age ?? "—"}</TD>
-                      <TD className="font-mono text-xs text-muted-foreground">
-                        <div>{p.phone ?? "—"}</div>
-                        {p.email ? <div className="max-w-[14rem] truncate">{p.email}</div> : null}
+                      <TD className={cn(DENSE, "font-mono tabular-nums text-muted-foreground")}>{age ?? "—"}</TD>
+                      <TD className={cn(DENSE, "font-mono text-xs text-muted-foreground")}>
+                        <div className="whitespace-nowrap">{p.phone ?? "—"}</div>
+                        {p.email ? (
+                          <div className="hidden max-w-[10rem] truncate md:block" title={p.email}>
+                            {p.email}
+                          </div>
+                        ) : null}
                       </TD>
-                      <TD className="hidden md:table-cell">
+                      <TD className={cn(DENSE, "hidden md:table-cell")}>
                         <div className="space-y-1">
                           {p.city ? <div className="text-xs">{p.city}</div> : null}
                           <div className="flex flex-wrap gap-1">
@@ -143,25 +151,28 @@ export default async function PatientsPage({ searchParams }: { searchParams: Pro
                           </div>
                         </div>
                       </TD>
-                      <TD className="hidden lg:table-cell">
+                      <TD className={cn(DENSE, "hidden xl:table-cell")}>
                         <div className="flex flex-wrap gap-1">
                           {conditions.slice(0, 2).map((c) => (
-                            <Badge key={c} tone="warning">
-                              {c}
+                            <Badge key={c} tone="warning" className="max-w-[10rem]" title={c}>
+                              <span className="min-w-0 truncate">{c}</span>
                             </Badge>
                           ))}
                           {conditions.length > 2 ? <Badge>+{conditions.length - 2}</Badge> : null}
                         </div>
                       </TD>
-                      <TD className="hidden whitespace-nowrap font-mono text-xs text-muted-foreground lg:table-cell">
+                      <TD className={cn(DENSE, "hidden whitespace-nowrap font-mono text-xs text-muted-foreground xl:table-cell")}>
                         {date(p.lastVisitAt) ?? "—"}
                         <div className="text-[11px]">{p._count.visits} {p._count.visits === 1 ? "visit" : "visits"}</div>
                       </TD>
-                      <TD className="hidden whitespace-nowrap font-mono text-xs text-muted-foreground lg:table-cell">
+                      <TD className={cn(DENSE, "hidden whitespace-nowrap font-mono text-xs text-muted-foreground lg:table-cell")}>
                         {p.nextAppointmentAt ? (
                           <>
-                            {date(p.nextAppointmentAt)} · {formatTimeInTz(p.nextAppointmentAt, timezone)}
-                            {p.upcomingCount > 1 ? <div className="text-[11px]">+{p.upcomingCount - 1} more</div> : null}
+                            {date(p.nextAppointmentAt)}
+                            <div className="text-[11px]">
+                              {formatTimeInTz(p.nextAppointmentAt, timezone)}
+                              {p.upcomingCount > 1 ? ` · +${p.upcomingCount - 1} more` : ""}
+                            </div>
                           </>
                         ) : (
                           "—"

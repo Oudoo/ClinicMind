@@ -287,6 +287,9 @@ function searchClauses(raw: string | undefined): SearchClauses {
     search.push({ nationalId: { contains: q, mode: "insensitive" } });
     if (/^[A-Za-z0-9/-]{6,40}$/.test(q)) exact.push({ nationalId: { equals: q, mode: "insensitive" } });
   }
+  // An exact spelling must also *find* the row, not only rank it: "+20 10…"
+  // typed at the desk shares no substring with a phone stored as "010…".
+  search.push(...exact);
   return { search, exact: exact.length ? { OR: exact } : null };
 }
 

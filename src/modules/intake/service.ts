@@ -5,7 +5,7 @@ import { db, notDeleted } from "@/lib/db";
 import { env } from "@/lib/env";
 import { audit } from "@/lib/audit";
 import { BRAND, type TenantBranding } from "@/lib/brand";
-import { generateToken, hashToken } from "@/lib/auth/tokens";
+import { resolveTenantHintFromHost } from "@/lib/tenant";
 import { requireTenantPatient } from "@/lib/tenant-scope";
 import { parsePaging, zOptionalText, zText } from "@/lib/validation";
 import { ingestInBackground } from "@/modules/knowledge/ingest";
@@ -20,16 +20,17 @@ import {
   type IntakeForm,
   type IntakeLanguage,
 } from "@/modules/intake/form";
+import { hashIntakeToken, isPlausibleIntakeToken, issueIntakeToken } from "@/modules/intake/tokens";
 
 /**
  * Intake: shareable onboarding links and the submissions they collect.
  *
  * A link is an opaque 256-bit token; only its keyed hash is stored, so the URL
  * (and QR) can be shown exactly once, at creation. Public endpoints resolve
- * the hash, never confirm whether a token exists (unknown, expired, revoked
- * and used-up all behave the same) and are rate-limited by the route. Staff
- * routes are tenant-scoped like every other module: a submission or link of
- * another tenant is a 404.
+ * the hash, never confirm whether a token exists (unknown, expired, revoked,
+ * used-up and another clinic's tokens all behave the same) and are
+ * rate-limited by the route. Staff routes are tenant-scoped like every other
+ * module: a submission or link of another tenant is a 404.
  */
 
 export const DEFAULT_LINK_TTL_DAYS = 14;
@@ -38,8 +39,6 @@ export const INTAKE_REVIEW_PATH = "/dashboard/patients/intake";
 export const INTAKE_RATE_WINDOW_MS = 15 * 60 * 1000;
 export const INTAKE_PUBLIC_GET_LIMIT = 60;
 export const INTAKE_PUBLIC_POST_LIMIT = 10;
-
-const TOKEN_PURPOSE = "auth-token" as const;
 
 export class IntakeError extends Error {
   constructor(
@@ -201,14 +200,14 @@ export async function createIntakeLink(tenantId: string, input: unknown, actor: 
   const patient = data.kind === "PATIENT" && data.patientId ? await requireTenantPatient(tenantId, data.patientId) : null;
   const tenant = await db.tenant.findFirstOrThrow({ where: { id: tenantId }, select: { name: true } });
 
-  const token = generateToken();
+  const { token, tokenHash, tokenPrefix } = issueIntakeToken();
   const now = new Date();
   const row = await db.intakeLink.create({
     data: {
       tenantId,
       kind: data.kind,
-      tokenHash: hashToken(token, TOKEN_PURPOSE),
-      tokenPrefix: token.slice(0, 8),
+      tokenHash,
+      tokenPrefix,
       patientId: patient?.id ?? null,
       language: data.language,
       label: data.label ?? null,
@@ -312,6 +311,7 @@ const publicLinkInclude = {
   patient: {
     select: {
       id: true,
+      tenantId: true,
       fullName: true,
       phone: true,
       whatsapp: true,
@@ -329,13 +329,51 @@ const publicLinkInclude = {
 
 type PublicLinkRow = Prisma.IntakeLinkGetPayload<{ include: typeof publicLinkInclude }>;
 
-/** The live link behind a token, or null for unknown / expired / revoked / used-up (indistinguishable on purpose). */
-async function resolveLink(token: string, now = new Date()): Promise<PublicLinkRow | null> {
-  if (!token || token.length < 16 || token.length > 128 || !/^[A-Za-z0-9_-]+$/.test(token)) return null;
-  const link = await db.intakeLink.findUnique({ where: { tokenHash: hashToken(token, TOKEN_PURPOSE) }, include: publicLinkInclude });
+/** Where the public request arrived: the `Host` (or `X-Forwarded-Host`) header, used only to narrow. */
+export interface PublicRequestMeta {
+  host?: string | null;
+}
+
+function hostOf(url: string): string | null {
+  try {
+    return new URL(url).host.toLowerCase();
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The tenant a public request's host names: one of the tenant's subdomains
+ * (`<slug>.<ROOT_DOMAIN>`) or its verified custom domain. The host links are
+ * minted for (PUBLIC_URL / APP_URL) names no tenant, so a link always works
+ * there; on a clinic's own domain only that clinic's links resolve.
+ */
+async function tenantIdForHost(host: string | null | undefined): Promise<string | null> {
+  const value = host?.split(",")[0]?.trim().toLowerCase();
+  if (!value) return null;
+  if (value === hostOf(env.APP_URL) || (env.PUBLIC_URL && value === hostOf(env.PUBLIC_URL))) return null;
+  const hint = resolveTenantHintFromHost(value);
+  if (!hint.slug && !hint.customDomain) return null;
+  const tenant = await db.tenant.findFirst({
+    where: hint.customDomain ? { customDomain: hint.customDomain, customDomainVerified: true } : { slug: hint.slug },
+    select: { id: true },
+  });
+  return tenant?.id ?? null;
+}
+
+/**
+ * The live link behind a token, or null for unknown / expired / revoked /
+ * used-up tokens, a suspended clinic, and another clinic's token presented on
+ * a clinic's own domain (all indistinguishable on purpose).
+ */
+async function resolveLink(token: string, meta: PublicRequestMeta = {}, now = new Date()): Promise<PublicLinkRow | null> {
+  if (!isPlausibleIntakeToken(token)) return null;
+  const link = await db.intakeLink.findUnique({ where: { tokenHash: hashIntakeToken(token) }, include: publicLinkInclude });
   if (!link || linkStatus(link, now) !== "active") return null;
   if (link.tenant.deletedAt || link.tenant.status !== "ACTIVE") return null;
-  if (link.kind === "PATIENT" && (!link.patient || link.patient.deletedAt)) return null;
+  if (link.kind === "PATIENT" && (!link.patient || link.patient.deletedAt || link.patient.tenantId !== link.tenantId)) return null;
+  const hostTenant = await tenantIdForHost(meta.host);
+  if (hostTenant && hostTenant !== link.tenantId) return null;
   return link;
 }
 
@@ -363,8 +401,8 @@ export interface PublicIntake {
   treatments: { key: string; name: string }[];
 }
 
-export async function getPublicIntake(token: string): Promise<PublicIntake | null> {
-  const link = await resolveLink(token);
+export async function getPublicIntake(token: string, meta: PublicRequestMeta = {}): Promise<PublicIntake | null> {
+  const link = await resolveLink(token, meta);
   if (!link) return null;
   const branding = (link.tenant.branding as TenantBranding | null) ?? null;
   const treatments = await listTreatments(link.tenantId);
@@ -409,11 +447,16 @@ async function findPatientByPhone(tenantId: string, phone: string | null): Promi
 
 /**
  * Store a submission for a live link. Returns null when the token does not
- * resolve (the route answers 404). The link's `uses` is bumped with an
- * optimistic check so a `maxUses` limit holds under concurrent submissions.
+ * resolve (the route answers 404). The link's `uses` is bumped by one atomic
+ * conditional UPDATE, so a `maxUses` limit holds under concurrent submissions
+ * and two patients sending through the desk QR at the same moment both land.
  */
-export async function submitPublicIntake(token: string, body: unknown, meta: { ip?: string | null } = {}): Promise<{ ok: true } | null> {
-  const link = await resolveLink(token);
+export async function submitPublicIntake(
+  token: string,
+  body: unknown,
+  meta: { ip?: string | null; host?: string | null } = {},
+): Promise<{ ok: true } | null> {
+  const link = await resolveLink(token, { host: meta.host });
   if (!link) return null;
   const form = IntakeFormInput.parse(body);
 
@@ -426,8 +469,15 @@ export async function submitPublicIntake(token: string, body: unknown, meta: { i
     link.kind === "PATIENT" && link.patient ? link.patient.id : await findPatientByPhone(link.tenantId, form.phone);
 
   const submission = await db.$transaction(async (tx) => {
+    // Revocation, expiry and the use limit are re-checked by the UPDATE itself
+    // (row-locked), not by the read above.
     const bumped = await tx.intakeLink.updateMany({
-      where: { id: link.id, uses: link.uses, revokedAt: null },
+      where: {
+        id: link.id,
+        revokedAt: null,
+        expiresAt: { gt: new Date() },
+        ...(link.maxUses !== null ? { uses: { lt: link.maxUses } } : {}),
+      },
       data: { uses: { increment: 1 } },
     });
     if (bumped.count === 0) throw new IntakeError("link_unavailable", 404, "Link not found");
@@ -569,6 +619,21 @@ export const RejectSubmissionInput = z.object({
   note: zText(500).min(1, "Say why the form is rejected"),
 });
 
+/**
+ * Claim a pending submission inside the review transaction. The conditional
+ * UPDATE takes the row lock, so of two receptionists pressing "Accept" at the
+ * same moment exactly one wins and the other gets the 409, never a second patient.
+ */
+async function claimPending(
+  tx: Prisma.TransactionClient,
+  tenantId: string,
+  id: string,
+  data: Prisma.IntakeSubmissionUpdateManyMutationInput,
+): Promise<void> {
+  const claimed = await tx.intakeSubmission.updateMany({ where: { id, tenantId, status: "PENDING" }, data });
+  if (!claimed.count) throw new IntakeError("not_pending", 409, "Submission already reviewed");
+}
+
 function summaryBody(form: IntakeForm, link: { kind: IntakeLinkKind; label: string | null }, treatmentNames: string[]): string {
   const via = link.kind === "PATIENT" ? "personal link" : `open link${link.label ? ` (${link.label})` : ""}`;
   const concern = [form.concern, form.sinceWhen ? `since ${form.sinceWhen}` : null].filter(Boolean).join(" — ");
@@ -612,8 +677,11 @@ export async function acceptSubmission(tenantId: string, id: string, input: unkn
   let created = false;
   let auditPatient: { action: string; before?: unknown; after: unknown };
 
+  const accepted = { status: "ACCEPTED" as const, reviewedById: actor.id ?? null, reviewedAt: now, reviewNote: null };
+
   if (data.mode === "create") {
     const patient = await db.$transaction(async (tx) => {
+      await claimPending(tx, tenantId, submission.id, accepted);
       const p = await tx.patient.create({
         data: {
           tenantId,
@@ -651,10 +719,7 @@ export async function acceptSubmission(tenantId: string, id: string, input: unkn
       await tx.timelineEvent.create({
         data: { tenantId, patientId: p.id, kind: "INTAKE", title: "Onboarding form received", body, refId: submission.id, occurredAt: submission.submittedAt },
       });
-      await tx.intakeSubmission.update({
-        where: { id: submission.id },
-        data: { status: "ACCEPTED", patientId: p.id, reviewedById: actor.id ?? null, reviewedAt: now, reviewNote: null },
-      });
+      await tx.intakeSubmission.update({ where: { id: submission.id }, data: { patientId: p.id } });
       return p;
     });
     patientId = patient.id;
@@ -700,6 +765,7 @@ export async function acceptSubmission(tenantId: string, id: string, input: unkn
     const newMeds = form.medications.filter((m) => !knownMeds.has(m.name.toLowerCase()));
 
     await db.$transaction(async (tx) => {
+      await claimPending(tx, tenantId, submission.id, accepted);
       if (Object.keys(patch).length) await tx.patient.update({ where: { id: existing.id }, data: patch });
       if (historyChanged) {
         await tx.medicalHistory.upsert({
@@ -716,10 +782,7 @@ export async function acceptSubmission(tenantId: string, id: string, input: unkn
       await tx.timelineEvent.create({
         data: { tenantId, patientId: existing.id, kind: "INTAKE", title: "Onboarding form received", body, refId: submission.id, occurredAt: submission.submittedAt },
       });
-      await tx.intakeSubmission.update({
-        where: { id: submission.id },
-        data: { status: "ACCEPTED", patientId: existing.id, reviewedById: actor.id ?? null, reviewedAt: now, reviewNote: null },
-      });
+      await tx.intakeSubmission.update({ where: { id: submission.id }, data: { patientId: existing.id } });
     });
     patientId = existing.id;
     const changedKeys = Object.keys(patch) as (keyof typeof patch)[];
@@ -771,10 +834,9 @@ export async function rejectSubmission(tenantId: string, id: string, input: unkn
   if (submission.status !== "PENDING") {
     throw new IntakeError("not_pending", 409, `Submission already ${submission.status.toLowerCase()}`);
   }
-  const row = await db.intakeSubmission.update({
-    where: { id: submission.id },
-    data: { status: "REJECTED", reviewNote: data.note, reviewedById: actor.id ?? null, reviewedAt: new Date() },
-    include: submissionInclude,
+  const row = await db.$transaction(async (tx) => {
+    await claimPending(tx, tenantId, submission.id, { status: "REJECTED", reviewNote: data.note, reviewedById: actor.id ?? null, reviewedAt: new Date() });
+    return tx.intakeSubmission.findFirstOrThrow({ where: { id: submission.id, tenantId }, include: submissionInclude });
   });
   await audit({
     tenantId,

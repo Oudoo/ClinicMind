@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { headers } from "next/headers";
 import { Clock } from "lucide-react";
 import { BRAND } from "@/lib/brand";
 import { getPublicIntake } from "@/modules/intake/service";
@@ -20,7 +21,8 @@ export const metadata: Metadata = {
  */
 export default async function OnboardPage({ params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;
-  const intake = await getPublicIntake(token);
+  const headerStore = await headers();
+  const intake = await getPublicIntake(token, { host: headerStore.get("x-forwarded-host") ?? headerStore.get("host") });
   if (!intake) return <ExpiredLink />;
   return <IntakeForm token={token} intake={intake} />;
 }

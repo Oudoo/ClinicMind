@@ -194,8 +194,8 @@ export default async function PatientPage({ params }: { params: Promise<{ id: st
                         <TR className="hover:bg-transparent">
                           <TH>Medication</TH>
                           <TH>Dosage</TH>
-                          <TH>Frequency</TH>
-                          <TH>Since</TH>
+                          <TH className="hidden sm:table-cell">Frequency</TH>
+                          <TH className="hidden md:table-cell">Since</TH>
                         </TR>
                       </THead>
                       <TBody>
@@ -203,8 +203,8 @@ export default async function PatientPage({ params }: { params: Promise<{ id: st
                           <TR key={m.id}>
                             <TD className="font-medium">{m.name}</TD>
                             <TD className="text-muted-foreground">{m.dosage ?? "—"}</TD>
-                            <TD className="text-muted-foreground">{m.frequency ?? "—"}</TD>
-                            <TD className="whitespace-nowrap font-mono text-xs text-muted-foreground">
+                            <TD className="hidden text-muted-foreground sm:table-cell">{m.frequency ?? "—"}</TD>
+                            <TD className="hidden whitespace-nowrap font-mono text-xs text-muted-foreground md:table-cell">
                               {m.startDate ? formatDate(m.startDate) : "—"}
                             </TD>
                           </TR>

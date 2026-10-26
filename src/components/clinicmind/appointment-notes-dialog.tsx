@@ -51,6 +51,11 @@ export function AppointmentNotesDialog({
   const [notes, setNotes] = useState<AppointmentNoteDTO[] | null>(appointment.dictatedNotes ?? null);
   const [error, setError] = useState<string | null>(null);
   const [removing, setRemoving] = useState<string | null>(null);
+  // The list is chronological, so a note just saved lands at the bottom: bring it into view.
+  const [justSaved, setJustSaved] = useState<string | null>(null);
+  useEffect(() => {
+    if (justSaved) document.getElementById(`appointment-note-${justSaved}`)?.scrollIntoView({ block: "nearest" });
+  }, [justSaved]);
 
   useEffect(() => {
     let cancelled = false;
@@ -101,6 +106,7 @@ export function AppointmentNotesDialog({
               onSaved={(note) => {
                 const next = [...(notes ?? []), note];
                 setNotes(next);
+                setJustSaved(note.id);
                 onChanged?.(next.length);
               }}
             />
@@ -119,7 +125,11 @@ export function AppointmentNotesDialog({
                 {notes.map((note) => {
                   const mayRemove = canWrite && (canManage || (userId !== null && note.author?.id === userId));
                   return (
-                    <li key={note.id} className="rounded-lg border border-border bg-card p-3">
+                    <li
+                      key={note.id}
+                      id={`appointment-note-${note.id}`}
+                      className={cn("rounded-lg border bg-card p-3", note.id === justSaved ? "border-accent/60" : "border-border")}
+                    >
                       <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
                         <Badge tone={note.kind === "DICTATION" ? "accent" : "default"}>
                           {note.kind === "DICTATION" ? <Mic className="h-3 w-3" aria-hidden="true" /> : <Type className="h-3 w-3" aria-hidden="true" />}

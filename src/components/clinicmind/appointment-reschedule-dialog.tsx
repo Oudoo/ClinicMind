@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useState, type FormEvent } from "react";
+import { useEffect, useId, useRef, useState, type FormEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogClose, DialogContent, DialogFooter } from "@/components/ui/dialog";
 import { Alert, Field } from "@/components/ui/field";
@@ -39,6 +39,15 @@ export function RescheduleAppointmentDialog({
   const [suggestions, setSuggestions] = useState<SlotSuggestionDTO[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // The form scrolls inside the dialog and the refusal (with its suggestions) is
+  // shown at its top: scroll back up when one arrives, or it lands out of sight.
+  const noticeRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!conflict && !error) return;
+    const box = noticeRef.current?.closest<HTMLElement>("[role=dialog]");
+    if (box) box.scrollTop = 0;
+    else noticeRef.current?.scrollIntoView({ block: "start" });
+  }, [conflict, error]);
 
   const startsAt = fromLocalInput(start, timezone);
   const endsAt = fromLocalInput(end, timezone);
@@ -152,19 +161,21 @@ export function RescheduleAppointmentDialog({
         className="max-w-xl"
       >
         <form onSubmit={onSubmit} className="space-y-4" noValidate>
-          {error ? <Alert>{error}</Alert> : null}
-          {conflict ? (
-            <ConflictNotice
-              conflict={conflict}
-              timezone={timezone}
-              dayKey={dayKey}
-              suggestions={suggestions}
-              onPickSuggestion={pickSuggestion}
-              onWaitlist={conflict.kind === "slot" ? () => void submit({ allowWaitlist: true }) : undefined}
-              onOverride={conflict.kind === "patient" ? () => void submit({ allowPatientOverlap: true }) : undefined}
-              busy={busy}
-            />
-          ) : null}
+          <div ref={noticeRef} className="space-y-4 empty:hidden">
+            {error ? <Alert>{error}</Alert> : null}
+            {conflict ? (
+              <ConflictNotice
+                conflict={conflict}
+                timezone={timezone}
+                dayKey={dayKey}
+                suggestions={suggestions}
+                onPickSuggestion={pickSuggestion}
+                onWaitlist={conflict.kind === "slot" ? () => void submit({ allowWaitlist: true }) : undefined}
+                onOverride={conflict.kind === "patient" ? () => void submit({ allowPatientOverlap: true }) : undefined}
+                busy={busy}
+              />
+            ) : null}
+          </div>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <Field label="Starts" htmlFor={`${id}-start`}>
               <Input id={`${id}-start`} type="datetime-local" value={start} onChange={(e) => moveStart(e.target.value)} required />

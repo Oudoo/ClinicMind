@@ -11,20 +11,24 @@ import { NO_SHOW_FLAG_AFTER_MINUTES } from "./transitions";
  *
  * `appointments-late-flag` (every 5 minutes): for every active tenant, a
  * SCHEDULED or CONFIRMED appointment more than 20 minutes past its start with
- * no check-in gets one NO_SHOW-kind notification ("X has not checked in") to
- * reception, so the desk can call the patient or free the slot.
+ * no check-in gets exactly one NO_SHOW-kind WARNING ("<patient> has not
+ * checked in") for reception and the appointment's doctor, so the desk can
+ * call the patient or free the slot.
  *
- * Fires-once marker: the schema has no column for this flag, so the job stamps
- * `Appointment.reminderSentAt` when it has notified. Nothing else writes that
- * column today (patient reminders are not built yet); when they are, the two
- * should be separated by a dedicated `lateFlaggedAt` column (integrator request).
- * The claim is an `updateMany … WHERE reminderSentAt IS NULL`, so two overlapping
- * runs can never notify twice. Only the last 24 hours are considered, so an old
- * backlog never floods the bell.
+ * The "flagged" stamp is `Appointment.lateFlaggedAt`. A row is flagged only
+ * while it is null, and the job claims it with
+ * `UPDATE … SET lateFlaggedAt = now WHERE id = … AND lateFlaggedAt IS NULL`
+ * before notifying, so two overlapping runs (or two server instances) can
+ * never notify twice.
+ *
+ * Only bookings that started within the last 24 hours are considered, so a
+ * backlog of old, never-closed bookings does not flood the bell; at most 100
+ * per tenant per run (the rest are picked up five minutes later).
  */
 
 export const LATE_FLAG_JOB = "appointments-late-flag";
 const LOOKBACK_MS = 24 * 60 * 60 * 1000;
+const BATCH = 100;
 
 export interface LateFlagSummary {
   tenants: number;
@@ -44,11 +48,11 @@ export async function flagLateAppointments(now: Date = new Date()): Promise<Late
         ...notDeleted,
         status: { in: ["SCHEDULED", "CONFIRMED"] },
         checkedInAt: null,
-        reminderSentAt: null,
+        lateFlaggedAt: null,
         startsAt: { lt: cutoff, gte: floor },
       },
       orderBy: { startsAt: "asc" },
-      take: 100,
+      take: BATCH,
       select: { id: true, startsAt: true, doctorId: true, room: true, patient: { select: { fullName: true } } },
     });
     if (!rows.length) continue;
@@ -62,7 +66,10 @@ export async function flagLateAppointments(now: Date = new Date()): Promise<Late
 
     for (const a of rows) {
       // Claim the row first: the stamp is what makes the flag fire once.
-      const claimed = await db.appointment.updateMany({ where: { id: a.id, reminderSentAt: null }, data: { reminderSentAt: now } });
+      const claimed = await db.appointment.updateMany({
+        where: { id: a.id, tenantId: tenant.id, lateFlaggedAt: null },
+        data: { lateFlaggedAt: now },
+      });
       if (!claimed.count) continue;
       const minutes = Math.floor((now.getTime() - a.startsAt.getTime()) / 60_000);
       const who = a.doctorId ? doctorName.get(a.doctorId) : null;
@@ -71,10 +78,12 @@ export async function flagLateAppointments(now: Date = new Date()): Promise<Late
         level: "WARNING",
         title: `${a.patient.fullName} has not checked in`,
         body: `Booked ${formatTimeInTz(a.startsAt, tz)}${who ? ` with ${who}` : ""}${a.room ? ` · ${a.room}` : ""} · ${minutes} min past the start. Call the patient or mark the no-show.`,
-        href: `/dashboard/appointments?view=day&date=${dateKeyInTz(a.startsAt, tz)}`,
+        href: `/dashboard/appointments?date=${dateKeyInTz(a.startsAt, tz)}&view=day`,
         entity: "Appointment",
         entityId: a.id,
         roles: ["RECEPTIONIST"],
+        // The booking's doctor, when the id is a user of this tenant (looked up above).
+        userIds: a.doctorId && doctorName.has(a.doctorId) ? [a.doctorId] : [],
       }).catch((err) => console.error("[appointments-late-flag] notification failed", err));
       flagged += 1;
     }

@@ -4,11 +4,25 @@ import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Alert } from "@/components/ui/field";
 import { ApiError, apiFetch } from "@/lib/http";
-import { formatDateInTz, formatTimeInTz } from "@/lib/time";
+import { formatDateInTz, formatTimeInTz, zonedParts } from "@/lib/time";
 import type { AppointmentConflictDTO, FreeSlotsDTO, SlotSuggestionDTO } from "@/modules/appointments/dto";
 import { STATUS_LABEL, type AppointmentStatus } from "@/modules/appointments/transitions";
 
 /** Pieces shared by the booking dialogs, the calendar and the next-appointment button. */
+
+const WEEKDAY_SHORT = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
+const MONTH_SHORT = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"] as const;
+
+/**
+ * "Mon 02 Nov" on the clinic clock. Built from the numeric parts rather than
+ * `Intl`'s weekday format, whose punctuation differs between ICU versions
+ * ("Mon, 02 Nov" in Node, "Mon 02 Nov" in Chromium): text rendered on the
+ * server and hydrated in the browser must be identical.
+ */
+export function shortDayLabel(date: Date, timeZone: string): string {
+  const p = zonedParts(date, timeZone);
+  return `${WEEKDAY_SHORT[p.weekday]} ${String(p.day).padStart(2, "0")} ${MONTH_SHORT[p.month - 1]}`;
+}
 
 export interface StaffOption {
   id: string;
@@ -141,7 +155,7 @@ export function suggestionLabel(s: SlotSuggestionDTO, timezone: string, dayKey: 
   const start = new Date(s.startsAt);
   const time = formatTimeInTz(start, timezone);
   if (s.date === dayKey) return `Book ${time} instead`;
-  return `Book ${formatDateInTz(start, timezone, { weekday: "short", day: "2-digit", month: "short" })} ${time} instead`;
+  return `Book ${shortDayLabel(start, timezone)} ${time} instead`;
 }
 
 /**

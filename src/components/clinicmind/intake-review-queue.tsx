@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useState, type FormEvent, type ReactNode } from "react";
+import { Fragment, useId, useState, type FormEvent, type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { CheckCircle2, Loader2, Merge, UserPlus, UserRoundSearch, XCircle } from "lucide-react";
@@ -21,6 +21,45 @@ import { GENDER_LABELS, apiErrorMessage, type BadgeTone, type PatientGender } fr
 import { treatmentLabel } from "@/components/clinicmind/intake-copy";
 
 const STATUS_TONE: Record<IntakeStatus, BadgeTone> = { PENDING: "warning", ACCEPTED: "success", REJECTED: "danger" };
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"] as const;
+
+/** `1994-06-17` → `17 Jun 1994` (built by hand: no Intl, so server and browser render the same text). */
+function dobLabel(key: string | undefined): string | null {
+  const m = key ? /^(\d{4})-(\d{2})-(\d{2})$/.exec(key) : null;
+  return m ? `${m[3]} ${MONTHS[Number(m[2]) - 1] ?? m[2]} ${m[1]}` : (key ?? null);
+}
+
+/** A phone number kept left-to-right inside Arabic text (otherwise the "+" jumps to the end). */
+function Phone({ value }: { value: string | null | undefined }) {
+  return value ? (
+    <bdi dir="ltr" className="font-mono text-xs">
+      {value}
+    </bdi>
+  ) : null;
+}
+
+/** Patient-typed entries, each isolated so Arabic and English items keep their own direction. */
+function list(items: readonly string[]): ReactNode {
+  if (!items.length) return null;
+  return items.map((item, i) => (
+    <Fragment key={`${i}-${item}`}>
+      {i ? ", " : ""}
+      <bdi>{item}</bdi>
+    </Fragment>
+  ));
+}
+
+/** Pieces joined with " · ", empty ones dropped. */
+function joined(parts: readonly ReactNode[]): ReactNode {
+  const present = parts.filter((p) => p !== null && p !== undefined && p !== "" && p !== false);
+  if (!present.length) return null;
+  return present.map((part, i) => (
+    <Fragment key={i}>
+      {i ? " · " : ""}
+      {part}
+    </Fragment>
+  ));
+}
 
 export type QueueStatus = IntakeStatus | "all";
 
@@ -126,7 +165,9 @@ function SubmissionCard({ submission: s, timezone, treatments }: { submission: I
       <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
         <div className="min-w-0 space-y-1">
           <div className="flex flex-wrap items-center gap-2">
-            <h3 className="font-display text-lg font-semibold tracking-tight">{s.fullName}</h3>
+            <h3 dir="auto" className="font-display text-lg font-semibold tracking-tight">
+              {s.fullName}
+            </h3>
             <Badge tone={STATUS_TONE[s.status]}>{s.status}</Badge>
             <Badge tone="accent">{s.language === "ar" ? "Arabic" : "English"}</Badge>
           </div>
@@ -195,26 +236,33 @@ function SubmissionCard({ submission: s, timezone, treatments }: { submission: I
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         <Section title="Personal">
           <Row label="Gender" value={GENDER_LABELS[d.gender as PatientGender] ?? d.gender} />
-          <Row label="Date of birth" value={d.dateOfBirth} />
-          <Row label="WhatsApp" value={d.whatsappSame ? `${d.phone} (same)` : d.whatsapp} mono />
+          <Row label="Date of birth" value={dobLabel(d.dateOfBirth)} />
+          <Row label="WhatsApp" value={d.whatsappSame ? joined([<Phone key="p" value={d.phone} />, "same as mobile"]) : <Phone value={d.whatsapp} />} />
           <Row label="City" value={d.city} />
           <Row label="National ID" value={d.nationalId} mono />
         </Section>
         <Section title="Contact">
           <Row label="E-mail" value={d.email} />
           <Row label="Address" value={d.address} />
-          <Row label="Emergency contact" value={[d.emergencyContactName, d.emergencyContactPhone, d.emergencyContactRelation ? `(${d.emergencyContactRelation})` : null].filter(Boolean).join(" · ")} />
+          <Row
+            label="Emergency contact"
+            value={joined([
+              d.emergencyContactName ? <bdi key="n">{d.emergencyContactName}</bdi> : null,
+              d.emergencyContactPhone ? <Phone key="p" value={d.emergencyContactPhone} /> : null,
+              d.emergencyContactRelation ? <bdi key="r">({d.emergencyContactRelation})</bdi> : null,
+            ])}
+          />
         </Section>
         <Section title="Visit">
-          <Row label="Interested in" value={d.treatmentKeys.map(treatmentName).join(", ")} />
+          <Row label="Interested in" value={list(d.treatmentKeys.map(treatmentName))} />
           <Row label="Concern" value={d.concern} />
           <Row label="Since" value={d.sinceWhen} />
         </Section>
         <Section title="Medical history">
-          <Row label="Chronic conditions" value={d.chronicConditions.join(", ")} />
-          <Row label="Allergies" value={d.allergies.join(", ")} />
-          <Row label="Medications" value={d.medications.map((m) => (m.dose ? `${m.name} (${m.dose})` : m.name)).join(", ")} />
-          <Row label="Surgeries" value={d.surgeries.join(", ")} />
+          <Row label="Chronic conditions" value={list(d.chronicConditions)} />
+          <Row label="Allergies" value={list(d.allergies)} />
+          <Row label="Medications" value={list(d.medications.map((m) => (m.dose ? `${m.name} (${m.dose})` : m.name)))} />
+          <Row label="Surgeries" value={list(d.surgeries)} />
           <Row label="WhatsApp updates" value={d.whatsappUpdates ? "Agreed" : "Not agreed"} />
         </Section>
       </div>
@@ -243,11 +291,19 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
   );
 }
 
-function Row({ label, value, mono }: { label: string; value: string | null | undefined; mono?: boolean }) {
+/**
+ * One answer. `dir="auto"` lays each value out in its own direction (an
+ * Arabic concern keeps its punctuation at the right end, an English one at
+ * the left); composite values isolate their pieces with <bdi>.
+ */
+function Row({ label, value, mono }: { label: string; value: ReactNode; mono?: boolean }) {
+  const empty = value === null || value === undefined || value === "" || value === false;
   return (
     <div className="flex flex-col gap-0.5 text-sm sm:flex-row sm:justify-between sm:gap-3">
       <dt className="shrink-0 text-xs text-muted-foreground">{label}</dt>
-      <dd className={cn("min-w-0 break-words sm:text-right", mono && "font-mono text-xs", !value && "text-muted-foreground")}>{value || "—"}</dd>
+      <dd dir="auto" className={cn("min-w-0 break-words sm:text-right", mono && "font-mono text-xs", empty && "text-muted-foreground")}>
+        {empty ? "—" : value}
+      </dd>
     </div>
   );
 }

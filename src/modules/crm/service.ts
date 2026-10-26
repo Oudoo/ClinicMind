@@ -512,7 +512,8 @@ export async function createLead(tenantId: string, rawInput: unknown, actor: Act
   });
 
   const interestNames = input.interests.map((k) => treatments.get(k)?.name ?? k);
-  notify(tenantId, {
+  // Awaited (errors swallowed) so the lead is never reported created before reception is told.
+  await notify(tenantId, {
     kind: "LEAD_NEW",
     title: `New lead: ${lead.fullName}`,
     body: [SOURCE_LABELS[lead.source], interestNames.join(", ")].filter(Boolean).join(" · "),

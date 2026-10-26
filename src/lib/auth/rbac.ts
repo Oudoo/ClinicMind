@@ -19,6 +19,7 @@ export type Permission =
   | "users:manage"
   | "patients:read"
   | "patients:write"
+  | "patients:export" // bulk export of the patient list (personal data leaving the system)
   | "appointments:read"
   | "appointments:write"
   | "consultations:read"
@@ -44,6 +45,7 @@ const ALL: Permission[] = [
   "users:manage",
   "patients:read",
   "patients:write",
+  "patients:export",
   "appointments:read",
   "appointments:write",
   "consultations:read",
@@ -74,6 +76,7 @@ const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
     "users:manage",
     "patients:read",
     "patients:write",
+    "patients:export",
     "appointments:read",
     "appointments:write",
     "consultations:read",

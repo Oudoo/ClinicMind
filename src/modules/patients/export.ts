@@ -32,16 +32,33 @@ export const EXPORT_COLUMNS = [
 
 const BOM = "﻿";
 
-/** Quote a cell for CSV and defuse spreadsheet formula injection. */
+/**
+ * Quote a cell for CSV and defuse spreadsheet formula injection: any text
+ * starting with `=`, `+`, `-`, `@`, a tab or a carriage return is prefixed
+ * with `'` (OWASP), so a name like `-2+3` or `=HYPERLINK(…)` stays text.
+ * Numbers are written as numbers.
+ */
 export function csvCell(value: string | number | null | undefined): string {
   if (value === null || value === undefined) return "";
-  let text = String(value);
+  if (typeof value === "number") return Number.isFinite(value) ? String(value) : "";
+  let text = value;
   if (/^\+\d{6,}$/.test(text)) {
     // Phone numbers: keep them as text in Excel / Sheets / LibreOffice.
     return `"=""${text}"""`;
   }
-  if (/^[=@\t\r]/.test(text) || (/^[+-]/.test(text) && !/^[+-]?\d/.test(text))) text = `'${text}`;
+  if (/^[=+\-@\t\r]/.test(text)) text = `'${text}`;
   return /[",\n\r;]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+}
+
+/**
+ * Phones and national ids: a long run of digits is written as a text formula
+ * so the spreadsheet keeps the leading `+` / `0` and never shows a 14-digit
+ * national id as 2.9E+13.
+ */
+export function csvTextCell(value: string | null | undefined): string {
+  if (!value) return "";
+  if (/^\+?\d{6,20}$/.test(value)) return `"=""${value}"""`;
+  return csvCell(value);
 }
 
 export function csvLine(cells: readonly (string | number | null | undefined)[]): string {
@@ -57,23 +74,23 @@ function dateTimeCell(d: Date | null | undefined, timezone: string): string {
 }
 
 export function patientCsvRow(p: PatientListRow, timezone: string): string {
-  return csvLine([
-    p.fullName,
-    p.gender,
-    ageFrom(p.dateOfBirth),
-    p.phone,
-    p.whatsapp,
-    p.email,
-    p.nationalId,
-    p.city,
-    p.language,
-    p.tags.join("; "),
-    dateCell(p.createdAt, timezone),
-    dateCell(p.lastVisitAt, timezone),
-    dateTimeCell(p.nextAppointmentAt, timezone),
-    p.upcomingCount,
-    p._count.visits,
-  ]);
+  return [
+    csvCell(p.fullName),
+    csvCell(p.gender),
+    csvCell(ageFrom(p.dateOfBirth)),
+    csvTextCell(p.phone),
+    csvTextCell(p.whatsapp),
+    csvCell(p.email),
+    csvTextCell(p.nationalId),
+    csvCell(p.city),
+    csvCell(p.language),
+    csvCell(p.tags.join("; ")),
+    csvCell(dateCell(p.createdAt, timezone)),
+    csvCell(dateCell(p.lastVisitAt, timezone)),
+    csvCell(dateTimeCell(p.nextAppointmentAt, timezone)),
+    csvCell(p.upcomingCount),
+    csvCell(p._count.visits),
+  ].join(",");
 }
 
 export interface PatientCsvExport {

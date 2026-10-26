@@ -77,11 +77,11 @@ export function IntakeLinksTable({ links, timezone }: { links: IntakeLinkDTO[]; 
             <THead>
               <TR className="hover:bg-transparent">
                 <TH>Link</TH>
-                <TH>Kind</TH>
-                <TH className="hidden md:table-cell">Created by</TH>
-                <TH className="hidden md:table-cell">Expires</TH>
-                <TH>Uses</TH>
-                <TH>Status</TH>
+                <TH className="hidden md:table-cell">Kind</TH>
+                <TH className="hidden lg:table-cell">Created by</TH>
+                <TH className="hidden lg:table-cell">Expires</TH>
+                <TH className="hidden md:table-cell">Uses</TH>
+                <TH className="hidden md:table-cell">Status</TH>
                 <TH className="text-right">Actions</TH>
               </TR>
             </THead>
@@ -95,8 +95,28 @@ export function IntakeLinksTable({ links, timezone }: { links: IntakeLinkDTO[]; 
                       <div className="font-mono text-[11px] text-muted-foreground">
                         {link.tokenPrefix}… · {date(link.createdAt)}
                       </div>
+                      {/* Phones: kind, uses and status live here so the actions stay on screen. */}
+                      <div className="mt-1.5 space-y-1 text-xs text-muted-foreground md:hidden">
+                        <div>
+                          {link.kind === "PATIENT" && link.patient ? (
+                            <Link href={`/dashboard/patients/${link.patient.id}`} className="font-medium text-foreground underline-offset-2 hover:underline">
+                              {link.patient.fullName}
+                            </Link>
+                          ) : (
+                            "Open link"
+                          )}{" "}
+                          · {link.language === "ar" ? "Arabic" : "English"}
+                        </div>
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <Badge tone={STATUS_TONE[link.status]}>{link.status}</Badge>
+                          <span className="font-mono tabular-nums">
+                            {link.uses}
+                            {link.maxUses ? ` / ${link.maxUses}` : ""} used · {link.submissionCount} {link.submissionCount === 1 ? "form" : "forms"}
+                          </span>
+                        </div>
+                      </div>
                     </TD>
-                    <TD>
+                    <TD className="hidden md:table-cell">
                       {link.kind === "PATIENT" && link.patient ? (
                         <Link href={`/dashboard/patients/${link.patient.id}`} className="text-sm underline-offset-2 hover:text-accent hover:underline">
                           {link.patient.fullName}
@@ -106,16 +126,16 @@ export function IntakeLinksTable({ links, timezone }: { links: IntakeLinkDTO[]; 
                       )}
                       <div className="text-[11px] text-muted-foreground">{link.language === "ar" ? "Arabic" : "English"}</div>
                     </TD>
-                    <TD className="hidden text-sm text-muted-foreground md:table-cell">{link.createdBy?.fullName ?? "—"}</TD>
-                    <TD className="hidden whitespace-nowrap font-mono text-xs text-muted-foreground md:table-cell">{date(link.expiresAt)}</TD>
-                    <TD className="font-mono text-xs tabular-nums">
+                    <TD className="hidden text-sm text-muted-foreground lg:table-cell">{link.createdBy?.fullName ?? "—"}</TD>
+                    <TD className="hidden whitespace-nowrap font-mono text-xs text-muted-foreground lg:table-cell">{date(link.expiresAt)}</TD>
+                    <TD className="hidden font-mono text-xs tabular-nums md:table-cell">
                       {link.uses}
                       {link.maxUses ? ` / ${link.maxUses}` : ""}
                       <div className="text-[11px] text-muted-foreground">
                         {link.submissionCount} {link.submissionCount === 1 ? "form" : "forms"}
                       </div>
                     </TD>
-                    <TD>
+                    <TD className="hidden md:table-cell">
                       <Badge tone={STATUS_TONE[link.status]}>{link.status}</Badge>
                     </TD>
                     <TD className="text-right">

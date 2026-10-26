@@ -22,15 +22,15 @@ import { Button } from "@/components/ui/button";
 import { Badge, Card } from "@/components/ui/primitives";
 import { useToast } from "@/components/ui/toast";
 import { apiFetch } from "@/lib/http";
-import { addDays, dateKeyInTz, formatDateInTz, formatTimeInTz } from "@/lib/time";
+import { addDays, dateKeyInTz, formatTimeInTz } from "@/lib/time";
 import { cn } from "@/lib/utils";
 import { describeCountdown, isRunningLate, type CountdownTone } from "@/modules/appointments/countdown";
 import type { AppointmentDTO, NextAppointmentDTO } from "@/modules/appointments/dto";
-import { canTransition, isReschedulable, STATUS_LABEL, type AppointmentStatus } from "@/modules/appointments/transitions";
+import { canTransition, isReschedulable, KIND_LABEL, STATUS_LABEL, type AppointmentStatus } from "@/modules/appointments/transitions";
 import { NewAppointmentDialog } from "./appointment-new-dialog";
 import { AppointmentNotesDialog } from "./appointment-notes-dialog";
 import { RescheduleAppointmentDialog } from "./appointment-reschedule-dialog";
-import { describeApiError } from "./appointment-shared";
+import { describeApiError, shortDayLabel } from "./appointment-shared";
 import { AppointmentKindBadge, AppointmentStatusBadge } from "./appointment-status";
 
 /** The card asks the server for a fresh answer this often (while the tab is visible). */
@@ -156,7 +156,7 @@ export function NextAppointmentCard({ initial, timezone, variant, patientId, pat
   const tomorrowKey = dateKeyInTz(addDays(now, 1, timezone), timezone);
   const dayLabel = (d: Date) => {
     const key = dateKeyInTz(d, timezone);
-    return key === todayKey ? "Today" : key === tomorrowKey ? "Tomorrow" : formatDateInTz(d, timezone, { weekday: "short", day: "2-digit", month: "short" });
+    return key === todayKey ? "Today" : key === tomorrowKey ? "Tomorrow" : shortDayLabel(d, timezone);
   };
 
   const eyebrow =
@@ -220,7 +220,7 @@ export function NextAppointmentCard({ initial, timezone, variant, patientId, pat
     return (
       <>
         <Card className="border-dashed p-5 sm:p-6" data-testid="next-appointment-empty">
-          <div className="flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className={cn("flex flex-col items-start gap-3", variant === "hero" && "sm:flex-row sm:items-center sm:justify-between")}>
             <div className="min-w-0">
               <p className="data-label">{eyebrow}</p>
               <p className="mt-1 font-display text-xl font-semibold tracking-tight">
@@ -247,6 +247,7 @@ export function NextAppointmentCard({ initial, timezone, variant, patientId, pat
     );
   }
 
+  const hero = variant === "hero";
   const start = new Date(a.startsAt);
   const end = new Date(a.endsAt);
   const countdown = describeCountdown(a, now);
@@ -263,21 +264,27 @@ export function NextAppointmentCard({ initial, timezone, variant, patientId, pat
         className={cn("relative overflow-hidden border-accent/40 p-5 sm:p-6", countdown.late && "border-warning/70")}
       >
         <div className="pointer-events-none absolute inset-y-0 right-0 w-2/3 bg-gradient-to-l from-accent-muted/70 to-transparent" aria-hidden="true" />
-        <div className="relative grid gap-5 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
+        {/* The hero spans the overview; the patient card sits in the record's side column, so it stays one column at every width. */}
+        <div className={cn("relative grid gap-5", hero && "lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center")}>
           <div className="min-w-0 space-y-3">
             <p className="data-label">{eyebrow}</p>
             <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
-              <Link
-                href={`/dashboard/patients/${a.patientId}`}
-                className="max-w-full truncate font-display text-2xl font-semibold tracking-tight hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:text-3xl"
-              >
-                {a.patient.fullName}
-              </Link>
+              {hero ? (
+                <Link
+                  href={`/dashboard/patients/${a.patientId}`}
+                  className="max-w-full truncate font-display text-2xl font-semibold tracking-tight hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:text-3xl"
+                >
+                  {a.patient.fullName}
+                </Link>
+              ) : (
+                // On the patient's own record the day is the headline, not their name.
+                <span className="font-display text-2xl font-semibold tracking-tight">{dayLabel(start)}</span>
+              )}
               <span className="font-mono text-xl tabular-nums sm:text-2xl">
                 {formatTimeInTz(start, timezone)}
                 <span className="text-muted-foreground">–{formatTimeInTz(end, timezone)}</span>
               </span>
-              <span className="text-sm text-muted-foreground">{dayLabel(start)}</span>
+              {hero ? <span className="text-sm text-muted-foreground">{dayLabel(start)}</span> : null}
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <span
@@ -306,7 +313,7 @@ export function NextAppointmentCard({ initial, timezone, variant, patientId, pat
             </p>
           </div>
 
-          <div className="flex flex-col gap-2 lg:w-64">
+          <div className={cn("flex flex-col gap-2", hero && "lg:w-64")}>
             {canWrite && step ? (
               <Button
                 type="button"
@@ -372,7 +379,7 @@ export function NextAppointmentCard({ initial, timezone, variant, patientId, pat
             <p className="data-label mb-2">
               {variant === "patient" ? "Also booked" : "Rest of today's queue"} · {data.queue.length}
             </p>
-            <ul className="grid gap-2 sm:grid-cols-3" data-testid="next-appointment-queue">
+            <ul className={cn("grid gap-2", hero && "sm:grid-cols-3")} data-testid="next-appointment-queue">
               {data.queue.map((q) => {
                 const late = isRunningLate(q, now);
                 const qStart = new Date(q.startsAt);
@@ -383,9 +390,20 @@ export function NextAppointmentCard({ initial, timezone, variant, patientId, pat
                   >
                     <span className="shrink-0 font-mono text-sm tabular-nums">{formatTimeInTz(qStart, timezone)}</span>
                     <div className="min-w-0 flex-1">
-                      <Link href={`/dashboard/patients/${q.patientId}`} className="block truncate text-sm font-medium hover:underline">
-                        {q.patient.fullName}
-                      </Link>
+                      {variant === "patient" ? (
+                        // On the patient's own page their name says nothing: show what the visit is for.
+                        <Link
+                          href={`/dashboard/appointments?view=day&date=${dateKeyInTz(qStart, timezone)}`}
+                          className="block truncate text-sm font-medium hover:underline"
+                          title={q.reason ?? KIND_LABEL[q.kind]}
+                        >
+                          {q.reason ?? KIND_LABEL[q.kind]}
+                        </Link>
+                      ) : (
+                        <Link href={`/dashboard/patients/${q.patientId}`} className="block truncate text-sm font-medium hover:underline">
+                          {q.patient.fullName}
+                        </Link>
+                      )}
                       <p className="truncate text-xs text-muted-foreground">
                         {variant === "patient" ? `${dayLabel(qStart)} · ` : ""}
                         {q.doctor?.fullName ?? "No doctor"}

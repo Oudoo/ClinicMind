@@ -192,7 +192,8 @@ export const INTAKE_COPY: Record<IntakeLanguage, IntakeCopy> = {
     personal: {
       fullName: "الاسم بالكامل",
       phone: "رقم الموبايل",
-      phoneHint: "مثال: 010 1234 5678",
+      // The number sits in a left-to-right isolate (U+2066 … U+2069) so it reads 010 1234 5678, not 5678 1234 010.
+      phoneHint: "مثال: \u2066010 1234 5678\u2069",
       whatsappSame: "رقم الواتساب هو نفس الرقم",
       whatsapp: "رقم الواتساب",
       dateOfBirth: "تاريخ الميلاد",

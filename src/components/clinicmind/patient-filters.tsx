@@ -49,6 +49,7 @@ export function PatientFilters({
   tags,
   views,
   canSaveViews,
+  canExport = false,
 }: {
   query: PatientListQuery;
   total: number;
@@ -56,6 +57,8 @@ export function PatientFilters({
   tags: { tag: string; count: number }[];
   views: SavedViewDTO[];
   canSaveViews: boolean;
+  /** Bulk export is an owner action (patients:export). */
+  canExport?: boolean;
 }) {
   const router = useRouter();
   const id = useId();
@@ -134,12 +137,12 @@ export function PatientFilters({
             Filters
             {chips.length ? <Badge tone="accent">{chips.length}</Badge> : null}
           </Button>
-          <Button asChild variant="outline" size="lg">
+          {canExport ? <Button asChild variant="outline" size="lg">
             <a href={exportHref} download title="Export the filtered list as CSV (UTF-8, opens in Excel)">
               <Download className="h-4 w-4" />
               Export CSV
             </a>
-          </Button>
+          </Button> : null}
         </div>
       </div>
 
