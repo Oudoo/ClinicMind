@@ -15,15 +15,26 @@ import { checkInLink, checkInTokenHash, newCheckInToken } from "./tokens";
  *  - PENDING tasks that are due on ACTIVE enrolments go out through
  *    `sendPatientMessage` (WhatsApp when connected, logged on the patient's
  *    conversation otherwise). Check-ins and photo requests carry a fresh
- *    single-use link; only the token's hash is stored.
- *  - A check-in still unanswered 24 h after it went out gets one reminder;
- *    after 48 h it is MISSED, and a missed step that carried a high-risk
- *    question opens a WATCH escalation ("No answer to the day-7 check-in").
+ *    single-use link; only the token's hash is stored. Each task is claimed
+ *    with a conditional update before its message is built, so two schedulers
+ *    (two server processes, or the cron endpoint) never send it twice.
+ *  - A step more than a day late (the enrolment was paused, or the procedure
+ *    signed days after it was performed) is skipped instead of sent: nobody
+ *    wants five old check-ins at once. Staff can still "Send now".
+ *  - A check-in still unanswered 24 h after it went out gets one reminder
+ *    (with a fresh link; the latest link is the valid one); after 48 h it is
+ *    MISSED, and a missed step that carried a high-risk question opens a WATCH
+ *    escalation ("No answer to the day-7 check-in").
  *  - An enrolment whose steps are all done becomes COMPLETED.
- *  - OPEN escalations past their target are re-notified every 30 minutes.
+ *  - OPEN escalations past their target are re-notified (every 30 minutes).
+ *
+ * `attempts` counts the messages of the current send: 1 once sent, 2 once
+ * reminded; while a task is still PENDING it counts failed tries.
  */
 export const REMINDER_AFTER_MS = 24 * 3_600_000;
 export const MISSED_AFTER_MS = 48 * 3_600_000;
+/** A pending step this late is skipped rather than sent. */
+export const STALE_AFTER_MS = 24 * 3_600_000;
 /** Give up on a step after this many failed send attempts. */
 export const MAX_SEND_ATTEMPTS = 5;
 const BATCH = 200;
@@ -45,6 +56,7 @@ export interface SendResult {
   link: string | null;
   messageId: string;
   conversationId: string;
+  delivery: string;
 }
 
 interface SendOptions {
@@ -54,15 +66,13 @@ interface SendOptions {
   clinic?: ClinicInfo;
 }
 
-/** Build and send one task's message, then record the send on the task. */
-async function sendLoaded(task: SendableTask, opts: SendOptions): Promise<SendResult> {
+/** The message for one task, with a fresh link for check-ins and photo requests. */
+async function compose(task: SendableTask, opts: SendOptions) {
   const { enrolment } = task;
-  const steps = parseSteps(enrolment.protocol.steps);
-  const step = steps[task.stepIndex];
+  const step = parseSteps(enrolment.protocol.steps)[task.stepIndex];
   if (!step) throw new ConciergeError("no_steps", "this step no longer exists in the protocol");
   const clinic = opts.clinic ?? (await getClinicInfo(task.tenantId));
   const language = pickLanguage(enrolment.language);
-
   const token = step.kind === "INSTRUCTION" ? null : newCheckInToken();
   const link = token ? checkInLink(token) : null;
   const body = buildStepMessage(step, {
@@ -73,30 +83,28 @@ async function sendLoaded(task: SendableTask, opts: SendOptions): Promise<SendRe
     link,
     reminder: opts.reminder,
   });
-  const sent = await sendPatientMessage(task.tenantId, {
+  return { step, token, link, body };
+}
+
+async function deliver(task: SendableTask, body: string, reminder: boolean) {
+  const { enrolment } = task;
+  return sendPatientMessage(task.tenantId, {
     patientId: enrolment.patientId,
     body,
     channel: enrolment.channel,
     templateKey: `concierge:${enrolment.protocol.treatment.key}:${task.stepIndex}`,
     author: "SYSTEM",
-    meta: { conciergeTaskId: task.id, enrolmentId: enrolment.id, stepIndex: task.stepIndex, kind: task.kind, reminder: opts.reminder },
+    meta: { conciergeTaskId: task.id, enrolmentId: enrolment.id, stepIndex: task.stepIndex, kind: task.kind, reminder },
   });
-  const updated = await db.conciergeTask.update({
-    where: { id: task.id },
-    data: {
-      attempts: { increment: 1 },
-      messageId: sent.messageId,
-      lastError: null,
-      ...(token ? { tokenHash: checkInTokenHash(token) } : {}),
-      ...(opts.reminder ? {} : { status: "SENT", sentAt: opts.now, missedAt: null }),
-    },
-  });
-  return { task: updated, link, messageId: sent.messageId, conversationId: sent.conversationId };
+}
+
+function failedDelivery(delivery: string, reason: string | null | undefined): string | null {
+  return delivery === "FAILED" ? `Delivery failed${reason ? `: ${reason}` : ""}`.slice(0, 500) : null;
 }
 
 // ── Manual re-send ───────────────────────────────────────────────────────────
 
-/** "Re-send this step now": a fresh message (and link) regardless of the schedule. */
+/** "Re-send this step now": a fresh message (and link) regardless of the schedule; the previous link stops working. */
 export async function sendTaskNow(tenantId: string, taskId: string, actor: Actor = {}, now = new Date()): Promise<SendResult> {
   const task = await db.conciergeTask.findFirst({ where: { id: taskId, tenantId }, include: sendInclude });
   if (!task) throw new ConciergeNotFoundError("task", taskId);
@@ -105,7 +113,20 @@ export async function sendTaskNow(tenantId: string, taskId: string, actor: Actor
   }
   if (task.status === "ANSWERED") throw new ConciergeError("already_answered", "this step is already answered");
   if (task.enrolment.patient.deletedAt) throw new ConciergeError("invalid_state", "the patient record is archived");
-  const result = await sendLoaded(task, { now, reminder: false });
+  const { token, link, body } = await compose(task, { now, reminder: false });
+  const sent = await deliver(task, body, false);
+  const updated = await db.conciergeTask.update({
+    where: { id: task.id },
+    data: {
+      status: "SENT",
+      sentAt: now,
+      missedAt: null,
+      attempts: 1,
+      messageId: sent.messageId,
+      lastError: failedDelivery(sent.delivery, null),
+      tokenHash: token ? checkInTokenHash(token) : null,
+    },
+  });
   await audit({
     tenantId,
     actorId: actor.id,
@@ -115,44 +136,74 @@ export async function sendTaskNow(tenantId: string, taskId: string, actor: Actor
     entity: "ConciergeTask",
     entityId: taskId,
     before: { status: task.status, attempts: task.attempts },
-    after: { status: result.task.status, attempts: result.task.attempts, messageId: result.messageId },
+    after: { status: updated.status, attempts: updated.attempts, messageId: sent.messageId, delivery: sent.delivery },
   });
-  return result;
+  return { task: updated, link, messageId: sent.messageId, conversationId: sent.conversationId, delivery: sent.delivery };
 }
 
 // ── The per-minute passes ────────────────────────────────────────────────────
 
-async function recordFailure(task: ConciergeTask, err: unknown): Promise<void> {
-  const message = (err instanceof Error ? err.message : String(err)).slice(0, 500);
-  const giveUp = task.attempts + 1 >= MAX_SEND_ATTEMPTS;
-  await db.conciergeTask
-    .update({ where: { id: task.id }, data: { attempts: { increment: 1 }, lastError: message, ...(giveUp ? { status: "SKIPPED" } : {}) } })
-    .catch(() => undefined);
-  console.error(`[concierge] send failed for task ${task.id}${giveUp ? " (giving up)" : ""}`, err);
-}
-
-/** Send every PENDING task that is due on an ACTIVE enrolment. */
-export async function dispatchDueTasks(tenantId: string, now = new Date()): Promise<{ sent: number; failed: number }> {
+/** Send every PENDING task that is due on an ACTIVE enrolment; skip the ones more than a day late. */
+export async function dispatchDueTasks(tenantId: string, now = new Date()): Promise<{ sent: number; failed: number; skipped: number }> {
+  const stale = await db.conciergeTask.updateMany({
+    where: { tenantId, status: "PENDING", dueAt: { lt: new Date(now.getTime() - STALE_AFTER_MS) }, enrolment: { status: "ACTIVE" } },
+    data: { status: "SKIPPED", lastError: "Not sent: more than a day late (the follow-up was paused or signed late)" },
+  });
   const due = await db.conciergeTask.findMany({
     where: { tenantId, status: "PENDING", dueAt: { lte: now }, enrolment: { status: "ACTIVE", patient: { deletedAt: null } } },
     orderBy: [{ dueAt: "asc" }],
     take: BATCH,
     include: sendInclude,
   });
-  if (!due.length) return { sent: 0, failed: 0 };
+  if (!due.length) return { sent: 0, failed: 0, skipped: stale.count };
   const clinic = await getClinicInfo(tenantId);
   let sent = 0;
   let failed = 0;
   for (const task of due) {
+    let composed: Awaited<ReturnType<typeof compose>>;
     try {
-      await sendLoaded(task, { now, reminder: false, clinic });
-      sent += 1;
+      composed = await compose(task, { now, reminder: false, clinic });
     } catch (err) {
       failed += 1;
       await recordFailure(task, err);
+      continue;
+    }
+    // Claim: only the scheduler that flips PENDING → SENT sends the message.
+    const claimed = await db.conciergeTask.updateMany({
+      where: { id: task.id, status: "PENDING" },
+      data: { status: "SENT", sentAt: now, missedAt: null, attempts: 1, tokenHash: composed.token ? checkInTokenHash(composed.token) : null },
+    });
+    if (!claimed.count) continue;
+    try {
+      const result = await deliver(task, composed.body, false);
+      await db.conciergeTask.update({ where: { id: task.id }, data: { messageId: result.messageId, lastError: failedDelivery(result.delivery, null) } });
+      sent += 1;
+    } catch (err) {
+      failed += 1;
+      // Put it back for the next minute (or give up after five tries).
+      const giveUp = task.attempts + 1 >= MAX_SEND_ATTEMPTS;
+      await db.conciergeTask
+        .update({
+          where: { id: task.id },
+          data: { status: giveUp ? "SKIPPED" : "PENDING", sentAt: null, tokenHash: null, attempts: task.attempts + 1, lastError: errorText(err) },
+        })
+        .catch(() => undefined);
+      console.error(`[concierge] send failed for task ${task.id}${giveUp ? " (giving up)" : ""}`, err);
     }
   }
-  return { sent, failed };
+  return { sent, failed, skipped: stale.count };
+}
+
+function errorText(err: unknown): string {
+  return (err instanceof Error ? err.message : String(err)).slice(0, 500);
+}
+
+async function recordFailure(task: ConciergeTask, err: unknown): Promise<void> {
+  const giveUp = task.attempts + 1 >= MAX_SEND_ATTEMPTS;
+  await db.conciergeTask
+    .updateMany({ where: { id: task.id, status: task.status }, data: { attempts: { increment: 1 }, lastError: errorText(err), ...(giveUp ? { status: "SKIPPED" } : {}) } })
+    .catch(() => undefined);
+  console.error(`[concierge] send failed for task ${task.id}${giveUp ? " (giving up)" : ""}`, err);
 }
 
 /** One reminder for check-ins and photo requests unanswered 24 h after they went out. */
@@ -163,7 +214,7 @@ export async function sendReminders(tenantId: string, now = new Date()): Promise
       status: "SENT",
       kind: { not: "INSTRUCTION" },
       attempts: { lt: 2 },
-      sentAt: { lte: new Date(now.getTime() - REMINDER_AFTER_MS) },
+      sentAt: { lte: new Date(now.getTime() - REMINDER_AFTER_MS), gt: new Date(now.getTime() - MISSED_AFTER_MS) },
       enrolment: { status: "ACTIVE", patient: { deletedAt: null } },
     },
     orderBy: [{ sentAt: "asc" }],
@@ -174,11 +225,27 @@ export async function sendReminders(tenantId: string, now = new Date()): Promise
   const clinic = await getClinicInfo(tenantId);
   let reminded = 0;
   for (const task of stale) {
+    let composed: Awaited<ReturnType<typeof compose>>;
     try {
-      await sendLoaded(task, { now, reminder: true, clinic });
-      reminded += 1;
+      composed = await compose(task, { now, reminder: true, clinic });
     } catch (err) {
       await recordFailure(task, err);
+      continue;
+    }
+    // Claim the reminder (attempts 1 → 2) and switch the link in one step.
+    const claimed = await db.conciergeTask.updateMany({
+      where: { id: task.id, status: "SENT", attempts: { lt: 2 } },
+      data: { attempts: 2, ...(composed.token ? { tokenHash: checkInTokenHash(composed.token) } : {}) },
+    });
+    if (!claimed.count) continue;
+    try {
+      const result = await deliver(task, composed.body, true);
+      await db.conciergeTask.update({ where: { id: task.id }, data: { messageId: result.messageId, lastError: failedDelivery(result.delivery, null) } });
+      reminded += 1;
+    } catch (err) {
+      // The first link is gone; the patient can still be sent a fresh one with "Send now".
+      await db.conciergeTask.update({ where: { id: task.id }, data: { lastError: `Reminder failed: ${errorText(err)}`.slice(0, 500) } }).catch(() => undefined);
+      console.error(`[concierge] reminder failed for task ${task.id}`, err);
     }
   }
   return reminded;
@@ -206,17 +273,21 @@ export async function markMissedTasks(tenantId: string, now = new Date()): Promi
     missed += 1;
     const step = parseSteps(task.enrolment.protocol.steps)[task.stepIndex];
     if (!step || !stepHasHighRisk(step)) continue;
-    await openEscalation(tenantId, {
-      level: "WATCH",
-      summary: missedSummary(step),
-      patientId: task.enrolment.patientId,
-      patientName: task.enrolment.patient.fullName,
-      enrolmentId: task.enrolment.id,
-      details: { reason: "missed", taskId: task.id, stepIndex: task.stepIndex },
-      now,
-      actor: SYSTEM_ACTOR,
-    });
-    escalated += 1;
+    try {
+      await openEscalation(tenantId, {
+        level: "WATCH",
+        summary: missedSummary(step),
+        patientId: task.enrolment.patientId,
+        patientName: task.enrolment.patient.fullName,
+        enrolmentId: task.enrolment.id,
+        details: { reason: "missed", taskId: task.id, stepIndex: task.stepIndex },
+        now,
+        actor: SYSTEM_ACTOR,
+      });
+      escalated += 1;
+    } catch (err) {
+      console.error(`[concierge] missed-step escalation failed for task ${task.id}`, err);
+    }
   }
   return { missed, escalated };
 }
@@ -233,18 +304,27 @@ export async function completeEnrolments(tenantId: string, now = new Date()): Pr
     take: BATCH,
   });
   if (!done.length) return 0;
-  await db.$transaction([
-    db.conciergeEnrolment.updateMany({ where: { id: { in: done.map((e) => e.id) }, status: "ACTIVE" }, data: { status: "COMPLETED", completedAt: now } }),
-    db.timelineEvent.createMany({
-      data: done.map((e) => ({ tenantId, patientId: e.patientId, kind: "CHECK_IN" as const, title: "Concierge follow-up completed", refId: e.id, occurredAt: now })),
-    }),
-  ]);
-  return done.length;
+  const completed = await db.$transaction(async (tx) => {
+    const ids: string[] = [];
+    for (const e of done) {
+      const changed = await tx.conciergeEnrolment.updateMany({ where: { id: e.id, status: "ACTIVE" }, data: { status: "COMPLETED", completedAt: now } });
+      if (changed.count) ids.push(e.id);
+    }
+    const rows = done.filter((e) => ids.includes(e.id));
+    if (rows.length) {
+      await tx.timelineEvent.createMany({
+        data: rows.map((e) => ({ tenantId, patientId: e.patientId, kind: "CHECK_IN" as const, title: "Concierge follow-up completed", refId: e.id, occurredAt: now })),
+      });
+    }
+    return rows.length;
+  });
+  return completed;
 }
 
 export interface DispatchSummary {
   sent: number;
   failed: number;
+  skipped: number;
   reminders: number;
   missed: number;
   escalated: number;
@@ -253,12 +333,12 @@ export interface DispatchSummary {
 
 /** All four passes for one tenant; one audit row when anything changed. */
 export async function runConciergeDispatchForTenant(tenantId: string, now = new Date()): Promise<DispatchSummary> {
-  const { sent, failed } = await dispatchDueTasks(tenantId, now);
+  const { sent, failed, skipped } = await dispatchDueTasks(tenantId, now);
   const reminders = await sendReminders(tenantId, now);
   const { missed, escalated } = await markMissedTasks(tenantId, now);
   const completed = await completeEnrolments(tenantId, now);
-  const summary = { sent, failed, reminders, missed, escalated, completed };
-  if (sent || failed || reminders || missed || completed) {
+  const summary = { sent, failed, skipped, reminders, missed, escalated, completed };
+  if (sent || failed || skipped || reminders || missed || completed) {
     await audit({ tenantId, actorEmail: SYSTEM_ACTOR.email, action: "concierge.dispatch", entity: "ConciergeTask", after: summary });
   }
   return summary;
@@ -271,7 +351,7 @@ async function activeTenantIds(): Promise<string[]> {
 
 /** Job "concierge-dispatch": every active tenant, every minute. */
 export async function runConciergeDispatch(now = new Date()): Promise<string> {
-  const totals: DispatchSummary = { sent: 0, failed: 0, reminders: 0, missed: 0, escalated: 0, completed: 0 };
+  const totals: DispatchSummary = { sent: 0, failed: 0, skipped: 0, reminders: 0, missed: 0, escalated: 0, completed: 0 };
   for (const tenantId of await activeTenantIds()) {
     try {
       const s = await runConciergeDispatchForTenant(tenantId, now);
@@ -280,7 +360,7 @@ export async function runConciergeDispatch(now = new Date()): Promise<string> {
       console.error(`[concierge] dispatch failed for tenant ${tenantId}`, err);
     }
   }
-  return `sent ${totals.sent}, reminders ${totals.reminders}, missed ${totals.missed} (${totals.escalated} escalated), completed ${totals.completed}${totals.failed ? `, failed ${totals.failed}` : ""}`;
+  return `sent ${totals.sent}, reminders ${totals.reminders}, missed ${totals.missed} (${totals.escalated} escalated), completed ${totals.completed}${totals.skipped ? `, skipped ${totals.skipped} late` : ""}${totals.failed ? `, failed ${totals.failed}` : ""}`;
 }
 
 /** Job "concierge-ack-overdue": OPEN escalations past their target, every 5 minutes. */

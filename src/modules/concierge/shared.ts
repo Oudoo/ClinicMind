@@ -117,8 +117,13 @@ export async function nameMapsFor(tenantId: string, escalations: readonly Escala
   return { users, patients };
 }
 
+export function detailsOf(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
+}
+
 export function toEscalationDTO(e: Escalation, names: NameMaps): EscalationDTO {
-  const details = e.details && typeof e.details === "object" && !Array.isArray(e.details) ? (e.details as Record<string, unknown>) : null;
+  const details = detailsOf(e.details);
+  const target = typeof details?.targetMinutes === "number" ? details.targetMinutes : Math.round((e.dueAt.getTime() - e.createdAt.getTime()) / 60_000);
   return {
     id: e.id,
     kind: e.kind,
@@ -134,10 +139,12 @@ export function toEscalationDTO(e: Escalation, names: NameMaps): EscalationDTO {
     assignedToId: e.assignedToId,
     assignedToName: e.assignedToId ? (names.users.get(e.assignedToId) ?? null) : null,
     outOfHours: e.outOfHours,
+    targetMinutes: Number.isFinite(target) ? target : null,
     createdAt: e.createdAt.toISOString(),
     dueAt: e.dueAt.toISOString(),
     acknowledgedAt: iso(e.acknowledgedAt),
     acknowledgedByName: e.acknowledgedById ? (names.users.get(e.acknowledgedById) ?? null) : null,
+    acknowledgedWithinTarget: e.acknowledgedAt ? e.acknowledgedAt.getTime() <= e.dueAt.getTime() : null,
     resolvedAt: iso(e.resolvedAt),
     resolvedByName: e.resolvedById ? (names.users.get(e.resolvedById) ?? null) : null,
     resolution: e.resolution,

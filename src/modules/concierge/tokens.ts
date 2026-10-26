@@ -7,11 +7,10 @@ import { env } from "@/lib/env";
  * Every send (first message, reminder, manual re-send) mints a fresh token, so
  * the latest link is the valid one.
  *
- * "check-in" is not in `TokenPurpose` yet (shared file, owned by the
- * integrator): the cast keeps the HMAC domain separated from sessions and
- * auth links exactly as the type would once it is added.
+ * The "check-in" purpose keeps these hashes in their own HMAC domain,
+ * apart from sessions and invitation or reset links.
  */
-const CHECK_IN_PURPOSE = "check-in" as unknown as TokenPurpose;
+const CHECK_IN_PURPOSE: TokenPurpose = "check-in";
 
 export function newCheckInToken(): string {
   return generateToken();

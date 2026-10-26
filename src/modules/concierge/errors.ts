@@ -10,12 +10,15 @@ export type ConciergeErrorCode =
   | "no_active_protocol"
   | "no_steps"
   | "draft_only"
+  | "draft_exists"
   | "active_only"
   | "token_invalid"
   | "photos_required"
   | "photo_too_large"
   | "photo_type"
   | "too_many_photos"
+  | "payload_too_large"
+  | "invalid_roster"
   | "validation_error";
 
 export class ConciergeError extends Error {
@@ -41,10 +44,13 @@ export class ConciergeNotFoundError extends ConciergeError {
   }
 }
 
-/** Answers that fail the step's own validation: 422 with per-question field errors. */
+/** Answers (or settings) that fail validation: 422 with per-field errors. */
 export class CheckInValidationError extends ConciergeError {
-  constructor(readonly fieldErrors: Record<string, string[]>) {
-    super("validation_error", "Please check the highlighted answers", 422);
+  constructor(
+    readonly fieldErrors: Record<string, string[]>,
+    message = "Please check the highlighted answers",
+  ) {
+    super("validation_error", message, 422);
     this.name = "CheckInValidationError";
   }
 }

@@ -24,8 +24,14 @@ const nextConfig = {
         ],
       },
       {
-        source: "/api/:path*",
+        // Patient photos (concierge/files) set their own private cache header.
+        source: "/api/:path((?!concierge/files/).*)",
         headers: [{ key: "Cache-Control", value: "no-store" }],
+      },
+      {
+        // The public check-in page takes photos with the phone camera.
+        source: "/check-in/:path*",
+        headers: [{ key: "Permissions-Policy", value: "camera=(self), microphone=(self), geolocation=(), payment=(), usb=()" }],
       },
     ];
   },

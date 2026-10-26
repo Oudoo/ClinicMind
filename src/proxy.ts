@@ -135,6 +135,11 @@ function contentSecurityPolicy(frameAncestors: string): string {
 }
 
 function withSecurityHeaders(res: NextResponse, pathname: string, embedFrameAncestors: string | null): NextResponse {
+  // Patient photos set their own, stricter policy (default-src 'none'; sandbox).
+  if (pathname.startsWith("/api/concierge/files/")) {
+    res.headers.set("X-Frame-Options", "DENY");
+    return res;
+  }
   const isEmbed = pathname.startsWith("/embed");
   if (isEmbed) {
     res.headers.set("Content-Security-Policy", contentSecurityPolicy(embedFrameAncestors ?? "'self'"));

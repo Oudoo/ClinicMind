@@ -33,22 +33,36 @@ export const zExpected = z.object({
   value: z.boolean().optional(),
 });
 
-export const zQuestion = z.object({
-  key: z
-    .string()
-    .trim()
-    .min(1)
-    .max(40)
-    .regex(/^[a-z][a-z0-9_-]*$/i, "Keys are letters, digits, _ and -"),
-  label: zLocalized(200),
-  type: z.enum(QUESTION_TYPES),
-  min: z.number().optional(),
-  max: z.number().optional(),
-  expected: zExpected.optional(),
-  /** Numeric answers inside this range are high-risk on their own (e.g. pain `{ min: 8 }`). */
-  danger: z.object({ min: z.number().optional(), max: z.number().optional() }).optional(),
-  highRisk: z.boolean().optional(),
-});
+export const zQuestion = z
+  .object({
+    key: z
+      .string()
+      .trim()
+      .min(1)
+      .max(40)
+      .regex(/^[a-z][a-z0-9_-]*$/i, "Keys are letters, digits, _ and -"),
+    label: zLocalized(200),
+    type: z.enum(QUESTION_TYPES),
+    min: z.number().optional(),
+    max: z.number().optional(),
+    expected: zExpected.optional(),
+    /** Numeric answers inside this range are high-risk on their own (e.g. pain `{ min: 8 }`). */
+    danger: z.object({ min: z.number().optional(), max: z.number().optional() }).optional(),
+    highRisk: z.boolean().optional(),
+  })
+  .superRefine((q, ctx) => {
+    const num = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
+    if (num(q.min) && num(q.max) && q.min > q.max) {
+      ctx.addIssue({ code: "custom", path: ["max"], message: "The maximum must not be below the minimum" });
+    }
+    const e = q.expected;
+    if (e && num(e.min) && num(e.max) && e.min > e.max) {
+      ctx.addIssue({ code: "custom", path: ["expected"], message: "The expected range is empty (minimum above maximum)" });
+    }
+    if (!q.label?.ar?.trim() && !q.label?.en?.trim()) {
+      ctx.addIssue({ code: "custom", path: ["label"], message: "Give the question a label in Arabic or English" });
+    }
+  });
 
 export const zStep = z
   .object({
@@ -63,18 +77,26 @@ export const zStep = z
     photos: z.array(z.string().trim().min(1).max(40)).max(6).optional(),
   })
   .superRefine((step, ctx) => {
+    // zod 4 runs object refinements even when a field failed a check: never trust the shapes here.
+    const questions = Array.isArray(step.questions) ? step.questions : [];
+    const photos = Array.isArray(step.photos) ? step.photos : [];
     const keys = new Set<string>();
-    for (const [i, q] of (step.questions ?? []).entries()) {
-      if (keys.has(q.key)) {
-        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["questions", i, "key"], message: `Duplicate question key "${q.key}"` });
+    for (const [i, q] of questions.entries()) {
+      const key = q && typeof q.key === "string" ? q.key : null;
+      if (!key) continue;
+      if (keys.has(key)) {
+        ctx.addIssue({ code: "custom", path: ["questions", i, "key"], message: `Duplicate question key "${key}"` });
       }
-      keys.add(q.key);
+      keys.add(key);
     }
-    if (step.kind === "CHECK_IN" && !(step.questions?.length || step.satisfaction)) {
-      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["questions"], message: "A check-in needs at least one question or the satisfaction question" });
+    if (step.kind === "CHECK_IN" && !(questions.length || step.satisfaction)) {
+      ctx.addIssue({ code: "custom", path: ["questions"], message: "A check-in needs at least one question or the satisfaction question" });
     }
-    if (step.kind === "PHOTO_REQUEST" && !step.photos?.length) {
-      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["photos"], message: "A photo request names at least one view" });
+    if (step.kind === "PHOTO_REQUEST" && !photos.length) {
+      ctx.addIssue({ code: "custom", path: ["photos"], message: "A photo request names at least one view" });
+    }
+    if (step.kind === "INSTRUCTION" && !(step.body?.ar?.trim() || step.body?.en?.trim())) {
+      ctx.addIssue({ code: "custom", path: ["body"], message: "Instructions need a message in Arabic or English" });
     }
   });
 

@@ -1,4 +1,4 @@
-import type { ProtocolQuestion, StepKind } from "./protocols";
+import type { ProtocolQuestion, ProtocolStep, StepKind } from "./protocols";
 import type { TriageFlag, TriageLevel } from "./triage";
 
 /**
@@ -40,6 +40,7 @@ export interface TaskDTO {
   answeredAt: string | null;
   missedAt: string | null;
   status: TaskStatus;
+  /** Messages of the current send (1 = sent, 2 = sent and reminded); failed tries while pending. */
   attempts: number;
   lastError: string | null;
   hasHighRisk: boolean;
@@ -48,6 +49,8 @@ export interface TaskDTO {
   photos: string[];
   body: { ar: string; en: string } | null;
   checkIn: CheckInDTO | null;
+  /** The last message this step sent, as the patient received it (staff who can act only). */
+  message?: { body: string; delivery: string; sentAt: string; failedReason: string | null } | null;
 }
 
 export interface EscalationDTO {
@@ -65,10 +68,14 @@ export interface EscalationDTO {
   assignedToId: string | null;
   assignedToName: string | null;
   outOfHours: boolean;
+  /** The acknowledgement target in minutes (15 in hours, 30 out of hours for high risk). */
+  targetMinutes: number | null;
   createdAt: string;
   dueAt: string;
   acknowledgedAt: string | null;
   acknowledgedByName: string | null;
+  /** Acknowledged at or before the target; null while nobody has. */
+  acknowledgedWithinTarget: boolean | null;
   resolvedAt: string | null;
   resolvedByName: string | null;
   resolution: string | null;
@@ -93,10 +100,14 @@ export interface EnrolmentSummaryDTO {
     /** Tasks no longer waiting (answered, missed, skipped or an instruction that went out). */
     done: number;
     total: number;
-    /** Day N since the procedure on the clinic clock. */
+    /** Day N since the procedure on the clinic clock (0 = the procedure day). */
     day: number;
+    /** The next step still to go out. */
     nextDueAt: string | null;
     nextTitle: string | null;
+    nextKind: StepKind | null;
+    /** Check-ins and photo requests sent and waiting for the patient. */
+    awaiting: number;
     lastTriage: TriageLevel | null;
     lastCheckInAt: string | null;
     openEscalations: number;
@@ -106,6 +117,15 @@ export interface EnrolmentSummaryDTO {
 export interface EnrolmentDetailDTO extends EnrolmentSummaryDTO {
   tasks: TaskDTO[];
   escalations: EscalationDTO[];
+}
+
+export interface EnrolmentListDTO {
+  enrolments: EnrolmentSummaryDTO[];
+  total: number;
+  page: number;
+  pageSize: number;
+  /** Per status, under the same patient / treatment filters. */
+  counts: Record<EnrolmentStatus, number>;
 }
 
 export interface BoardTaskDTO {
@@ -119,7 +139,12 @@ export interface BoardTaskDTO {
   dueAt: string;
   sentAt: string | null;
   attempts: number;
+  /** The 24-hour reminder went out. */
+  reminded: boolean;
+  /** When an unanswered check-in becomes MISSED (48 h after it went out). */
+  missesAt: string | null;
   hasHighRisk: boolean;
+  lastError: string | null;
 }
 
 export interface BoardCheckInDTO {
@@ -132,18 +157,32 @@ export interface BoardCheckInDTO {
   submittedAt: string;
   source: string;
   flags: TriageFlag[];
+  photos: number;
+}
+
+export interface OnCallDTO {
+  outOfHours: boolean;
+  assigneeName: string | null;
+  backupName: string | null;
+  ackMinutes: number;
+  hours: { days: number[]; start: string; end: string };
 }
 
 export interface BoardDTO {
   timezone: string;
   now: string;
+  windowDays: number;
   kpis: {
-    answerRate: { answered: number; sent: number; pct: number | null };
-    highRiskAck: { within: number; counted: number; pct: number | null; medianMinutes: number | null };
+    answerRate: { answered: number; sent: number; missed: number; afterReminder: number; pct: number | null; target: number };
+    photoRate: { answered: number; sent: number; pct: number | null };
+    highRiskAck: { within: number; counted: number; pct: number | null; medianMinutes: number | null; target: number };
+    satisfaction: { average: number | null; count: number };
     openEscalations: number;
     overdueEscalations: number;
     activeEnrolments: number;
   };
+  onCall: OnCallDTO;
+  /** OPEN (by target) first, then ACKNOWLEDGED. */
   escalations: EscalationDTO[];
   dueToday: BoardTaskDTO[];
   awaiting: BoardTaskDTO[];
@@ -156,7 +195,7 @@ export interface ProtocolDTO {
   name: string;
   version: number;
   status: ProtocolStatus;
-  steps: import("./protocols").ProtocolStep[];
+  steps: ProtocolStep[];
   notes: string | null;
   approvedAt: string | null;
   retiredAt: string | null;
@@ -179,6 +218,9 @@ export interface PublicCheckInDTO {
   language: "ar" | "en";
   patientFirstName: string;
   status: TaskStatus;
+  /** True when the patient answers after the 48-hour window (the step was marked missed). */
+  late: boolean;
+  limits: { maxPhotos: number; maxPhotoBytes: number; maxBodyBytes: number; maxPhotoSide: number };
   step: {
     index: number;
     kind: StepKind;
@@ -198,4 +240,18 @@ export interface PublicCheckInResult {
   clinicPhone: string | null;
   /** Minutes within which a human calls back (high-risk only). */
   callbackMinutes: number | null;
+  outOfHours: boolean;
+}
+
+/** A roster candidate for the settings pickers. */
+export interface RosterUserDTO {
+  id: string;
+  fullName: string;
+  role: string;
+}
+
+export interface ConciergeSettingsDTO {
+  hours: { days: number[]; start: string; end: string };
+  roster: { inHoursUserId: string | null; outOfHoursUserId: string | null; backupUserId: string | null };
+  ackMinutes: { inHours: number; outOfHours: number };
 }

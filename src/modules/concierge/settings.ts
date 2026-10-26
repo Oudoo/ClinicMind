@@ -5,6 +5,7 @@ import { audit } from "@/lib/audit";
 import { readTenantSetting, updateTenantSettings } from "@/lib/tenant-settings";
 import { requireTenantUser } from "@/lib/tenant-scope";
 import { zonedParts, type Weekday } from "@/lib/time";
+import { CheckInValidationError } from "./errors";
 
 /**
  * The concierge roster and hours: who a high-risk reply reaches in hours and
@@ -165,16 +166,41 @@ export async function resolveAssignee(tenantId: string, settings: ConciergeSetti
   };
 }
 
+/** Roles that may hold a roster slot: the people who can act on a clinical reply. */
+export const ROSTER_ROLES: readonly UserRole[] = ["CLINIC_OWNER", "DOCTOR", "NURSE"];
+
+/** Active owners, doctors and nurses of the tenant, for the roster pickers. */
+export async function listRosterCandidates(tenantId: string): Promise<StaffRef[]> {
+  const users = await db.user.findMany({
+    where: { tenantId, ...notDeleted, status: "ACTIVE", role: { in: [...ROSTER_ROLES] } },
+    orderBy: [{ role: "asc" }, { fullName: "asc" }],
+    select: { id: true, fullName: true, email: true, role: true },
+    take: 200,
+  });
+  return users.map((u) => ({ id: u.id, fullName: u.fullName ?? u.email, role: u.role }));
+}
+
 export async function updateConciergeSettings(
   tenantId: string,
   rawInput: unknown,
   actor: { id?: string | null; email?: string | null; ip?: string | null } = {},
 ): Promise<ConciergeSettings> {
   const input = ConciergeSettingsInput.parse(rawInput);
-  // Every user id a request supplies must belong to the tenant (SEC-4).
-  for (const id of [input.roster.inHoursUserId, input.roster.outOfHoursUserId, input.roster.backupUserId]) {
-    if (id) await requireTenantUser(tenantId, id);
+  // Every user id a request supplies must belong to the tenant (SEC-4): a foreign id is a 404.
+  const fieldErrors: Record<string, string[]> = {};
+  for (const [field, id] of [
+    ["inHoursUserId", input.roster.inHoursUserId],
+    ["outOfHoursUserId", input.roster.outOfHoursUserId],
+    ["backupUserId", input.roster.backupUserId],
+  ] as const) {
+    if (!id) continue;
+    const user = await requireTenantUser(tenantId, id);
+    // A slot nobody can act on would silently fall back to the defaults at 3 am: refuse it now.
+    if (user.status !== "ACTIVE" || !ROSTER_ROLES.includes(user.role)) {
+      fieldErrors[field] = ["Choose an active doctor, nurse or the owner"];
+    }
   }
+  if (Object.keys(fieldErrors).length) throw new CheckInValidationError(fieldErrors, "Check the roster");
   const before = await readConciergeSettings(tenantId);
   const next: ConciergeSettings = {
     hours: input.hours,
