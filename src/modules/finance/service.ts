@@ -8,7 +8,8 @@ import { listPayments, type PaymentListQuery } from "./payments";
 
 /**
  * The finance dashboard: revenue (signed procedures by performedAt), money in
- * and out (payments by paidAt), outstanding balances, and the breakdowns by
+ * and out (payments by paidAt; "collected" is everything received, deposits
+ * included, net of refunds), outstanding balances, and the breakdowns by
  * doctor, treatment, day and method. Every figure carries the same figure for
  * the comparison period.
  */
@@ -41,7 +42,8 @@ export interface FinanceSummary {
   deposits: MoneyPair;
   refunds: MoneyPair;
   consultationFees: MoneyPair;
-  outstanding: { amount: number; patients: number; procedures: number };
+  /** Owed now on signed procedures; `previousAmount` is what was owed when the comparison period ended. */
+  outstanding: { amount: number; patients: number; procedures: number; previousAmount: number };
   byDoctor: NamedAmount[];
   byTreatment: NamedAmount[];
   collectedPerBucket: { label: string; value: number; compare: number | undefined }[];
@@ -50,7 +52,10 @@ export interface FinanceSummary {
   outstandingPatients: OutstandingPatient[];
 }
 
-const moneyIn = (kind: string) => kind === "PAYMENT" || kind === "CONSULTATION_FEE";
+/** Money received: payments, deposits and consultation fees. Refunds are money out. */
+const moneyIn = (kind: string) => kind === "PAYMENT" || kind === "DEPOSIT" || kind === "CONSULTATION_FEE";
+/** Net cash of one payment: + money in, − refunds. */
+const netCash = (p: { kind: string; amount: number }) => (moneyIn(p.kind) ? p.amount : p.kind === "REFUND" ? -p.amount : 0);
 
 export async function getFinanceSummary(tenantId: string, period: ResolvedPeriod, timeZone: string): Promise<FinanceSummary> {
   const span = { gte: period.previous.from, lt: period.to };
@@ -71,11 +76,12 @@ export async function getFinanceSummary(tenantId: string, period: ResolvedPeriod
         id: true,
         patientId: true,
         performedAt: true,
+        signedAt: true,
         price: true,
         discount: true,
         patient: { select: { fullName: true } },
         treatment: { select: { name: true } },
-        payments: { where: { deletedAt: null }, select: { kind: true, amount: true } },
+        payments: { where: { deletedAt: null }, select: { kind: true, amount: true, paidAt: true } },
       },
       orderBy: { performedAt: "asc" },
       take: 20_000,
@@ -97,7 +103,8 @@ export async function getFinanceSummary(tenantId: string, period: ResolvedPeriod
 
   const revenue = pair(procRows, (p) => p.net);
   const count = pair(procRows, () => 1);
-  const collected = pair(payRows, (p) => (moneyIn(p.kind) ? p.amount : p.kind === "REFUND" ? -p.amount : 0));
+  // Collected: everything received in the period (deposits included) net of refunds.
+  const collected = pair(payRows, netCash);
   const deposits = pair(payRows, (p) => (p.kind === "DEPOSIT" ? p.amount : 0));
   const refunds = pair(payRows, (p) => (p.kind === "REFUND" ? p.amount : 0));
   const consultationFees = pair(payRows, (p) => (p.kind === "CONSULTATION_FEE" ? p.amount : 0));
@@ -128,19 +135,27 @@ export async function getFinanceSummary(tenantId: string, period: ResolvedPeriod
   // Collected per day (or week) against the previous period, aligned by bucket index.
   const buckets = periodBuckets(period, timeZone);
   const prevBuckets = periodBuckets(period.previous, timeZone);
-  const sumIn = (b: { start: Date; end: Date }) =>
-    payRows.reduce((s, p) => (p.at >= b.start && p.at < b.end ? s + (moneyIn(p.kind) ? p.amount : p.kind === "REFUND" ? -p.amount : 0) : s), 0);
+  const sumIn = (b: { start: Date; end: Date }) => payRows.reduce((s, p) => (p.at >= b.start && p.at < b.end ? s + netCash(p) : s), 0);
   const collectedPerBucket = buckets.map((b, i) => ({ label: b.label, value: sumIn(b), compare: prevBuckets[i] ? sumIn(prevBuckets[i]!) : undefined }));
 
   const methodMix = PAYMENT_METHODS.map((method) => {
-    const rows = payRows.filter((p) => inCurrent(p.at) && p.method === method && (moneyIn(p.kind) || p.kind === "DEPOSIT"));
+    const rows = payRows.filter((p) => inCurrent(p.at) && p.method === method && moneyIn(p.kind));
     return { method, label: METHOD_LABELS[method], amount: rows.reduce((s, p) => s + p.amount, 0), count: rows.length };
   }).filter((m) => m.count > 0);
 
-  // Outstanding balances of signed procedures (all time), grouped by patient.
+  // Outstanding balances of signed procedures (all time), grouped by patient; and the same figure as it
+  // stood when the comparison period ended (procedures signed by then, payments made by then).
   const owing = new Map<string, OutstandingPatient>();
   let outstandingAmount = 0;
   let outstandingProcedures = 0;
+  let previousOutstanding = 0;
+  const cutoff = period.from.getTime();
+  for (const p of signedAll) {
+    if (p.performedAt.getTime() < cutoff && (p.signedAt ?? p.performedAt).getTime() < cutoff) {
+      const then = procedureBalance(p.price, p.discount, p.payments.filter((x) => x.paidAt.getTime() < cutoff));
+      if (then > 0) previousOutstanding += then;
+    }
+  }
   for (const p of signedAll) {
     const balance = procedureBalance(p.price, p.discount, p.payments);
     if (balance <= 0) continue;
@@ -163,7 +178,7 @@ export async function getFinanceSummary(tenantId: string, period: ResolvedPeriod
     deposits,
     refunds,
     consultationFees,
-    outstanding: { amount: outstandingAmount, patients: owing.size, procedures: outstandingProcedures },
+    outstanding: { amount: outstandingAmount, patients: owing.size, procedures: outstandingProcedures, previousAmount: previousOutstanding },
     byDoctor: [...byDoctorMap.values()].sort(byAmount),
     byTreatment: [...byTreatmentMap.values()].sort(byAmount),
     collectedPerBucket,

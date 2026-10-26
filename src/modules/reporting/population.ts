@@ -89,7 +89,7 @@ export async function getPatientPopulation(tenantId: string, period: ResolvedPer
     db.visit.count({ where: { tenantId } }),
     db.procedure.findMany({
       where: { tenantId, ...notDeleted, status: "SIGNED" },
-      select: { id: true, patientId: true, doctorId: true, performedAt: true, treatment: { select: { key: true, name: true } }, patient: { select: { fullName: true } } },
+      select: { id: true, patientId: true, doctorId: true, appointmentId: true, performedAt: true, treatment: { select: { key: true, name: true } }, patient: { select: { fullName: true } } },
       orderBy: { performedAt: "asc" },
       take: 50_000,
     }),
@@ -131,34 +131,38 @@ export async function getPatientPopulation(tenantId: string, period: ResolvedPer
     .sort((a, b) => b.count - a.count)
     .slice(0, 8);
 
-  // Follow-up gap: the last signed procedure in the period per patient with no later (non-cancelled) appointment.
+  // Follow-up gap: patients whose last signed procedure (of all time) falls in the period and who have
+  // nothing booked on a later clinic day (any appointment except cancelled, no-show or waitlisted).
   const lastByPatient = new Map<string, (typeof proceduresAll)[number]>();
-  for (const proc of proceduresAll) if (inPeriod(proc.performedAt)) lastByPatient.set(proc.patientId, proc);
-  const gapCandidates = [...lastByPatient.values()];
+  for (const proc of proceduresAll) lastByPatient.set(proc.patientId, proc); // ascending: the last one wins
+  const gapCandidates = [...lastByPatient.values()].filter((g) => inPeriod(g.performedAt));
   const laterAppointments = gapCandidates.length
     ? await db.appointment.findMany({
         where: {
           tenantId,
           ...notDeleted,
           patientId: { in: gapCandidates.map((g) => g.patientId) },
-          status: { notIn: ["CANCELLED", "NO_SHOW"] },
+          status: { notIn: ["CANCELLED", "NO_SHOW", "WAITLISTED"] },
           startsAt: { gt: new Date(Math.min(...gapCandidates.map((g) => g.performedAt.getTime()))) },
         },
-        select: { patientId: true, startsAt: true },
+        select: { id: true, patientId: true, startsAt: true },
         take: 50_000,
       })
     : [];
-  const laterByPatient = new Map<string, Date[]>();
+  const laterByPatient = new Map<string, { id: string; day: string }[]>();
   for (const a of laterAppointments) {
     const list = laterByPatient.get(a.patientId) ?? [];
-    list.push(a.startsAt);
+    list.push({ id: a.id, day: dateKeyInTz(a.startsAt, timeZone) });
     laterByPatient.set(a.patientId, list);
   }
   const doctorIds = [...new Set(gapCandidates.map((g) => g.doctorId).filter((id): id is string => Boolean(id)))];
   const doctors = doctorIds.length ? await db.user.findMany({ where: { tenantId, id: { in: doctorIds } }, select: { id: true, fullName: true, email: true } }) : [];
   const doctorName = new Map(doctors.map((d) => [d.id, d.fullName ?? d.email]));
   const gaps: FollowUpGap[] = gapCandidates
-    .filter((g) => !(laterByPatient.get(g.patientId) ?? []).some((d) => d.getTime() > g.performedAt.getTime()))
+    .filter((g) => {
+      const procedureDay = dateKeyInTz(g.performedAt, timeZone);
+      return !(laterByPatient.get(g.patientId) ?? []).some((a) => a.id !== g.appointmentId && a.day > procedureDay);
+    })
     .map((g) => ({
       patientId: g.patientId,
       fullName: g.patient.fullName,
@@ -188,7 +192,7 @@ export async function getPatientPopulation(tenantId: string, period: ResolvedPer
     sources: countBy(patients, (x) => x.source ?? "unknown", (k) => SOURCE_LABELS[k as keyof typeof SOURCE_LABELS] ?? k),
     topTreatments,
     repeat,
-    followUpGaps: { count: gaps.length, items: gaps.slice(0, 50) },
+    followUpGaps: { count: gaps.length, items: gaps.slice(0, 100) },
     averageVisits: patients.length ? visits / patients.length : null,
     visits,
   };

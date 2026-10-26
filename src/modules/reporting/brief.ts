@@ -59,6 +59,9 @@ const fmt = (v: number | null, unit: MetricUnit): string => {
   }
 };
 
+/** "1 enquiry", "3 enquiries". */
+const count = (n: number, one: string, many: string) => `${n.toLocaleString("en-US")} ${n === 1 ? one : many}`;
+
 /** The candidate lines (one per metric with a comparison), ranked by the size of the change. */
 export function pickBriefLines(report: Report, limit = 5): BriefLine[] {
   const candidates: Omit<BriefLine, "change" | "good">[] = [];
@@ -69,7 +72,7 @@ export function pickBriefLines(report: Report, limit = 5): BriefLine[] {
     unit: "count",
     current: m1.current.leads,
     previous: m1.previous.leads,
-    driver: m1.current.items[0] ? `${m1.current.items[0].label} led with ${m1.current.items[0].count} enquiries` : "No enquiries this week",
+    driver: m1.current.items[0] ? `${m1.current.items[0].label} led with ${count(m1.current.items[0].count, "enquiry", "enquiries")}` : "No enquiries this week",
     finance: false,
   });
   const m2 = report.m2;
@@ -91,7 +94,7 @@ export function pickBriefLines(report: Report, limit = 5): BriefLine[] {
     unit: "percent",
     current: m3.current.rate,
     previous: m3.previous.rate,
-    driver: topDoc ? `${topDoc.label}: ${topDoc.converted} of ${topDoc.total} consultations led to a procedure` : "No consultations this week",
+    driver: topDoc ? `${topDoc.label}: ${topDoc.converted} of ${count(topDoc.total, "consultation", "consultations")} led to a procedure` : "No consultations this week",
     finance: false,
   });
   if (report.m4) {
@@ -157,7 +160,7 @@ export function pickBriefLines(report: Report, limit = 5): BriefLine[] {
     unit: "score",
     current: m11.current.overall.avg,
     previous: m11.previous.overall.avg,
-    driver: `${m11.current.overall.n} check-ins answered${m11.reviews.latest ? ` · ${m11.reviews.latest.count} public reviews at ${m11.reviews.latest.rating.toFixed(1)}` : ""}`,
+    driver: `${count(m11.current.overall.n, "check-in", "check-ins")} answered${m11.reviews.latest ? ` · ${count(m11.reviews.latest.count, "public review", "public reviews")} at ${m11.reviews.latest.rating.toFixed(1)}` : ""}`,
     finance: false,
   });
   const m13 = report.m13;
@@ -169,7 +172,7 @@ export function pickBriefLines(report: Report, limit = 5): BriefLine[] {
     current: m13.current.totals.procedures,
     previous: m13.previous.totals.procedures,
     driver: topCampaign
-      ? `${topCampaign.label}: ${topCampaign.procedures} procedures${!report.redacted && topCampaign.costPerProcedure !== null ? ` at ${fmt(topCampaign.costPerProcedure, "egp")} each` : ""}`
+      ? `${topCampaign.label}: ${count(topCampaign.procedures, "procedure", "procedures")}${!report.redacted && topCampaign.costPerProcedure !== null ? ` at ${fmt(topCampaign.costPerProcedure, "egp")} each` : ""}`
       : "No campaign leads this week",
     finance: false,
   });

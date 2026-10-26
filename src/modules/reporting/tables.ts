@@ -70,7 +70,8 @@ export function reportTables(report: Report): TableSpec[] {
   t.push(countTable("M1.treatment", "M1", "treatment", "Enquiries by treatment", m1.current.items, m1.previous.items, ["Treatment", "Enquiries"], `${m1.current.leads} new leads · ${m1.current.multiInterest} with more than one interest (counted once per interest)`));
   t.push(rateTable("M2.source", "M2", "source", "Lead to consultation by source", m2.current.bySource, m2.previous.bySource, ["Source", "Leads", "Attended"], "Leads created in the period with an attended consultation within 30 days."));
   t.push(rateTable("M3.doctor", "M3", "doctor", "Consultation to procedure by doctor", m3.current.byDoctor, m3.previous.byDoctor, ["Doctor", "Consultations", "With procedure"], "Attended consultations followed by a signed procedure within 60 days."));
-  t.push(countTable("M3.treatment", "M3", "treatment", "Consultation to procedure by treatment", m3.current.byTreatment, m3.previous.byTreatment, ["Treatment of the procedure", "Converted consultations"]));
+  t.push(rateTable("M3.treatment", "M3", "treatment", "Consultation to procedure by treatment", m3.current.byTreatment, m3.previous.byTreatment, ["Consultation for", "Consultations", "With procedure"], "By the treatment the consultation was booked for (the booking, else the lead's first interest)."));
+  t.push(countTable("M3.procedure", "M3", "procedure", "Converted consultations by procedure", m3.current.byProcedureTreatment, m3.previous.byProcedureTreatment, ["Treatment of the procedure", "Converted consultations"]));
 
   if (m4) {
     const prevDoc = new Map(m4.previous.byDoctor.map((d) => [d.key, d.revenue]));
@@ -165,7 +166,7 @@ export function reportTables(report: Report): TableSpec[] {
     metric: "M8",
     part: "objections",
     title: "Objections: AI tags next to staff confirmations",
-    description: `${m8.current.conversations} tagged conversations · ${m8.current.closedLeads} closed leads`,
+    description: `${m8.current.conversations} conversations opened (${m8.current.taggedConversations} with an AI tag) · ${m8.current.closedLeads} leads closed; shares are of those totals.`,
     columns: [n("text", "Objection"), n("count", "AI (conversations)"), n("percent", "Share", "md"), n("count", "Staff (closed leads)"), n("percent", "Share", "md")],
     rows: m8.current.items.map((o) => ({ key: o.key, cells: [o.label, o.aiCount, o.aiShare, o.staffCount, o.staffShare] })),
   });

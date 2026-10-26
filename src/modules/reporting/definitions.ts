@@ -34,7 +34,7 @@ export const METRIC_DEFINITIONS: readonly MetricDefinition[] = [
     id: "M2",
     name: "Lead to consultation conversion",
     definition:
-      "Leads created in the period that attended a consultation within 30 days (the lead's consultation appointment with status COMPLETED, or any COMPLETED CONSULTATION-kind appointment of the linked patient within 30 days of the lead's creation), divided by leads created.",
+      "Leads created in the period that attended a consultation within 30 days, divided by leads created in the period. Attended means checked in, in progress or completed; the consultation is the lead's own booking, else any CONSULTATION-kind appointment of the linked patient, from the day the lead was created up to 30 days after.",
     source: "Lead, Appointment",
     unit: "percent",
     goodWhen: "up",
@@ -43,7 +43,7 @@ export const METRIC_DEFINITIONS: readonly MetricDefinition[] = [
     id: "M3",
     name: "Consultation to procedure conversion",
     definition:
-      "Attended consultations in the period (COMPLETED appointments of kind CONSULTATION) that were followed by a SIGNED procedure for the same patient within 60 days, divided by attended consultations. Broken down by the consulting doctor and by the procedure's treatment.",
+      "Attended consultations in the period (CONSULTATION-kind appointments checked in, in progress or completed) followed by a SIGNED procedure for the same patient within 60 days (the same day included), divided by attended consultations. Broken down by the consulting doctor, by the treatment the consultation was booked for, and by the treatment of the procedure that followed.",
     source: "Appointment, Procedure",
     unit: "percent",
     goodWhen: "up",
@@ -52,7 +52,7 @@ export const METRIC_DEFINITIONS: readonly MetricDefinition[] = [
     id: "M4",
     name: "Revenue by doctor and treatment",
     definition:
-      "Revenue of SIGNED procedures by the date performed (price minus discount), by doctor and by treatment. Deposits and refunds are shown separately by the date paid; consultation fees are their own line.",
+      "Revenue of SIGNED procedures by the date performed (price minus discount), by doctor and by treatment. Deposits and refunds are shown separately by the date paid; consultation fees are their own line. With a doctor or treatment filter, the money lines count payments linked to a matching procedure or consultation.",
     source: "Procedure, Payment",
     unit: "egp",
     goodWhen: "up",
@@ -62,7 +62,7 @@ export const METRIC_DEFINITIONS: readonly MetricDefinition[] = [
     id: "M5",
     name: "Average first-response time",
     definition:
-      "Median and 90th percentile seconds from an inbound message to the first reply that follows it in the same conversation, split by who replied (AI or a human), by channel and by the hour of day the message arrived (clinic clock).",
+      "Median and 90th percentile seconds from an inbound message to the first reply that follows it in the same conversation, split by who replied (AI or a human), by channel and by the hour of day the message arrived (clinic clock). A run of inbound messages before a reply is one wait, timed from its first message; automated sends (reminders, concierge steps) are not replies.",
     source: "Message (direction, author, createdAt), Conversation (channel)",
     unit: "seconds",
     goodWhen: "down",
@@ -89,7 +89,7 @@ export const METRIC_DEFINITIONS: readonly MetricDefinition[] = [
     id: "M8",
     name: "Most common objections",
     definition:
-      "Objection tags the AI set on conversations opened in the period, next to the objections staff confirmed on leads closed (won or lost) in the period: counts and the share of conversations / closed leads carrying each tag.",
+      "Objection tags the AI set on conversations opened in the period (price, pain, downtime, doubt about results, trust, timing), next to the objections staff confirmed on leads closed (won or lost) in the period: counts and the share of all conversations opened / all leads closed carrying each tag.",
     source: "Conversation (objections), Lead (objections)",
     unit: "count",
     goodWhen: "down",
@@ -106,7 +106,7 @@ export const METRIC_DEFINITIONS: readonly MetricDefinition[] = [
     id: "M10",
     name: "Repeat-patient rate",
     definition:
-      "Patients whose first paid visit (first SIGNED procedure or first CONSULTATION_FEE payment) falls in the period shifted back 12 months, who had a second paid visit on a later day within 12 months of the first, divided by that cohort. Broken down by the first treatment. The cohort window is stated on the screen.",
+      "Patients whose first paid visit (first SIGNED procedure or first CONSULTATION_FEE payment) falls in the period shifted back 12 months, who had a second paid visit on a later day within 12 months of the first, divided by that cohort. Broken down by the first treatment (the procedure of that first day, else consultation only). The cohort window is stated on the screen.",
     source: "Patient, Procedure, Payment",
     unit: "percent",
     goodWhen: "up",
@@ -123,7 +123,8 @@ export const METRIC_DEFINITIONS: readonly MetricDefinition[] = [
   {
     id: "M12",
     name: "Follow-ups overdue",
-    definition: "Open lead follow-ups (not done, due in the past) and open concierge escalations past their due time, by owner or assignee.",
+    definition:
+      "Open lead follow-ups (not done, due in the past) and concierge escalations still unacknowledged past their target time, by owner or assignee, as of now. Escalations raised for an overdue follow-up are not counted twice.",
     source: "LeadFollowUp, Escalation",
     unit: "count",
     goodWhen: "down",
@@ -209,16 +210,19 @@ export const ALERT_METRICS = [
 ] as const;
 export type AlertMetricValue = (typeof ALERT_METRICS)[number];
 
-export const ALERT_METRIC_LABELS: Record<AlertMetricValue, { label: string; unit: string }> = {
-  NO_SHOW_RATE: { label: "No-show rate", unit: "%" },
-  FIRST_RESPONSE_P50: { label: "First response, median", unit: "s" },
-  FIRST_RESPONSE_P90: { label: "First response, 90th percentile", unit: "s" },
-  FOLLOW_UPS_OVERDUE: { label: "Follow-ups overdue", unit: "" },
+export const ALERT_METRIC_LABELS: Record<AlertMetricValue, { label: string; unit: string; metric?: MetricId; finance?: boolean }> = {
+  NO_SHOW_RATE: { label: "No-show rate", unit: "%", metric: "M6" },
+  FIRST_RESPONSE_P50: { label: "First response, median", unit: "s", metric: "M5" },
+  FIRST_RESPONSE_P90: { label: "First response, 90th percentile", unit: "s", metric: "M5" },
+  FOLLOW_UPS_OVERDUE: { label: "Follow-ups and escalations overdue", unit: "", metric: "M12" },
   ESCALATIONS_UNACKNOWLEDGED: { label: "Escalations unacknowledged", unit: "" },
   CHECK_IN_ANSWER_RATE: { label: "Check-in answer rate", unit: "%" },
-  CAMPAIGN_WITHOUT_PROCEDURE: { label: "Campaigns (≥100 leads) without a procedure", unit: "" },
-  REVIEWS_PENDING: { label: "Weeks since the last review snapshot", unit: "wk" },
-  LOST_LEADS_PRICE_SHARE: { label: "Lost leads citing price", unit: "%" },
-  LEAD_TO_CONSULTATION: { label: "Lead to consultation", unit: "%" },
-  REVENUE: { label: "Revenue", unit: "EGP" },
+  CAMPAIGN_WITHOUT_PROCEDURE: { label: "Campaigns (≥100 leads) without a procedure", unit: "", metric: "M13" },
+  REVIEWS_PENDING: { label: "Weeks since the last review snapshot", unit: "wk", metric: "M11" },
+  LOST_LEADS_PRICE_SHARE: { label: "Lost leads citing price", unit: "%", metric: "M7" },
+  LEAD_TO_CONSULTATION: { label: "Lead to consultation", unit: "%", metric: "M2" },
+  REVENUE: { label: "Revenue", unit: "EGP", metric: "M4", finance: true },
 };
+
+/** How an alert rule's comparison window reads ("over 14 days"); FOLLOW_UPS_OVERDUE and REVIEWS_PENDING are as of now. */
+export const ALERT_METRIC_IS_SNAPSHOT: Partial<Record<AlertMetricValue, true>> = { FOLLOW_UPS_OVERDUE: true, REVIEWS_PENDING: true };

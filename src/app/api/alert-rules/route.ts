@@ -1,18 +1,18 @@
 import { getActingContext } from "@/lib/auth/session";
-import { assertCan } from "@/lib/auth/rbac";
+import { assertCan, can } from "@/lib/auth/rbac";
 import { clientIp, crossOriginRejected, isSameOrigin } from "@/lib/auth/request";
 import { handleApiError, ok, unauthorized } from "@/lib/api";
 import { createAlertRule, listAlertRules } from "@/modules/reporting/alerts";
 
 export const dynamic = "force-dynamic";
 
-/** `GET /api/alert-rules` → `{ rules }` (`reports:read`). */
+/** `GET /api/alert-rules` → `{ rules }` (`reports:read`; a revenue rule's figures are blanked without `finance:read`). */
 export async function GET(req: Request) {
   try {
     const ctx = await getActingContext(req);
     if (!ctx) return unauthorized();
     assertCan(ctx.role, "reports:read");
-    return ok({ rules: await listAlertRules(ctx.tenantId) });
+    return ok({ rules: await listAlertRules(ctx.tenantId, { canSeeRevenue: can(ctx.role, "finance:read") }) });
   } catch (err) {
     return handleApiError(err);
   }

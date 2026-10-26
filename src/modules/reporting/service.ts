@@ -1,14 +1,17 @@
 import { db, notDeleted } from "@/lib/db";
 import { getTenantTimezone } from "@/modules/appointments/service";
-import { HAIR_TRANSPLANT_KEY, treatmentNames } from "@/modules/treatments/service";
+import { HAIR_TRANSPLANT_KEY } from "@/modules/treatments/service";
 import {
   campaignToProcedure,
   consultationToProcedure,
   enquiriesByTreatment,
   firstResponseTimes,
   hairTransplantBySource,
+  HELD_STATUSES,
+  indexProcedures,
   leadToConsultation,
   lostLeads,
+  messageAuthor,
   noShowBreakdown,
   objectionsSideBySide,
   overdueByOwner,
@@ -132,7 +135,7 @@ export async function fetchReportRows(tenantId: string, period: ResolvedPeriod, 
     }),
     db.appointment.findMany({
       where: { tenantId, ...notDeleted, startsAt: { gte: minus(spanFrom, 1), lt: plus(spanTo, 31) } },
-      select: { id: true, patientId: true, doctorId: true, kind: true, status: true, startsAt: true, leadId: true, patient: { select: { source: true } } },
+      select: { id: true, patientId: true, doctorId: true, kind: true, status: true, startsAt: true, leadId: true, treatmentId: true, patient: { select: { source: true } } },
       take: ROW_CAP,
     }),
     db.procedure.findMany({
@@ -146,17 +149,28 @@ export async function fetchReportRows(tenantId: string, period: ResolvedPeriod, 
         ...notDeleted,
         OR: [{ paidAt: span }, { kind: "CONSULTATION_FEE" }, { kind: "DEPOSIT", paidAt: { gte: minus(spanFrom, 400), lt: plus(spanTo, 31) } }],
       },
-      select: { id: true, patientId: true, kind: true, method: true, amount: true, paidAt: true, procedureId: true, appointmentId: true },
+      select: {
+        id: true,
+        patientId: true,
+        kind: true,
+        method: true,
+        amount: true,
+        paidAt: true,
+        procedureId: true,
+        appointmentId: true,
+        procedure: { select: { doctorId: true, treatment: { select: { key: true } } } },
+      },
       take: ROW_CAP,
     }),
+    // Two days before the span so a wait that started just before it is timed from its first message.
     db.message.findMany({
-      where: { tenantId, createdAt: { gte: spanFrom, lt: plus(spanTo, 2) } },
-      select: { conversationId: true, direction: true, author: true, createdAt: true, conversation: { select: { channel: true } } },
+      where: { tenantId, createdAt: { gte: minus(spanFrom, 2), lt: plus(spanTo, 2) } },
+      select: { conversationId: true, direction: true, author: true, meta: true, createdAt: true, conversation: { select: { channel: true } } },
       take: ROW_CAP,
     }),
     db.conversation.findMany({
-      where: { tenantId, createdAt: span, objections: { isEmpty: false } },
-      select: { id: true, createdAt: true, objections: true },
+      where: { tenantId, createdAt: span },
+      select: { id: true, createdAt: true, objections: true, lead: { select: { source: true } } },
       take: ROW_CAP,
     }),
     db.checkIn.findMany({
@@ -171,13 +185,15 @@ export async function fetchReportRows(tenantId: string, period: ResolvedPeriod, 
     }),
     db.reviewSnapshot.findMany({ where: { tenantId }, orderBy: { weekStart: "desc" }, take: 40 }),
     db.leadFollowUp.findMany({
-      where: { tenantId, doneAt: null, dueAt: { lt: now } },
+      where: { tenantId, doneAt: null, dueAt: { lt: now }, lead: { deletedAt: null } },
       select: { id: true, ownerId: true, dueAt: true, note: true, leadId: true, lead: { select: { fullName: true, ownerId: true } } },
       orderBy: { dueAt: "asc" },
       take: 2000,
     }),
+    // Concierge escalations past their acknowledgement target. Lead-follow-up escalations are left out:
+    // they mirror an overdue follow-up that is already counted.
     db.escalation.findMany({
-      where: { tenantId, status: { not: "RESOLVED" }, dueAt: { lt: now } },
+      where: { tenantId, status: "OPEN", kind: { not: "LEAD_FOLLOW_UP" }, dueAt: { lt: now } },
       select: { id: true, assignedToId: true, dueAt: true, summary: true, patientId: true, leadId: true },
       orderBy: { dueAt: "asc" },
       take: 2000,
@@ -189,9 +205,10 @@ export async function fetchReportRows(tenantId: string, period: ResolvedPeriod, 
       take: 20_000,
     }),
     db.user.findMany({ where: { tenantId }, select: { id: true, fullName: true, email: true } }),
-    treatmentNames(tenantId),
+    db.treatment.findMany({ where: { tenantId }, select: { id: true, key: true, name: true } }),
   ]);
 
+  const treatmentKeyById = new Map(treatments.map((t) => [t.id, t.key]));
   const appointmentRows: AppointmentRow[] = appointments.map((a) => ({
     id: a.id,
     patientId: a.patientId,
@@ -201,6 +218,7 @@ export async function fetchReportRows(tenantId: string, period: ResolvedPeriod, 
     startsAt: a.startsAt,
     leadId: a.leadId,
     patientSource: a.patient.source,
+    treatmentKey: a.treatmentId ? (treatmentKeyById.get(a.treatmentId) ?? null) : null,
   }));
 
   // Earlier held appointments of the patients in the no-show window (for the "deposit after the previous appointment" rule).
@@ -217,11 +235,11 @@ export async function fetchReportRows(tenantId: string, period: ResolvedPeriod, 
   return {
     leads,
     appointments: appointmentRows,
-    priorAppointments: [...prior, ...appointmentRows.map((a) => ({ patientId: a.patientId, startsAt: a.startsAt }))],
+    priorAppointments: [...prior, ...appointmentRows.filter((a) => HELD_STATUSES.has(a.status)).map((a) => ({ patientId: a.patientId, startsAt: a.startsAt }))],
     procedures: procedures.map((p) => ({ id: p.id, patientId: p.patientId, doctorId: p.doctorId, treatmentKey: p.treatment.key, performedAt: p.performedAt, price: p.price, discount: p.discount })),
-    payments,
-    messages: messages.map((m) => ({ conversationId: m.conversationId, direction: m.direction, author: m.author, createdAt: m.createdAt, channel: m.conversation.channel })),
-    conversations,
+    payments: payments.map(({ procedure, ...p }) => ({ ...p, procedureDoctorId: procedure?.doctorId ?? null, procedureTreatmentKey: procedure?.treatment.key ?? null })),
+    messages: messages.map((m) => ({ conversationId: m.conversationId, direction: m.direction, author: messageAuthor(m.author, m.meta), createdAt: m.createdAt, channel: m.conversation.channel })),
+    conversations: conversations.map((c) => ({ id: c.id, createdAt: c.createdAt, objections: c.objections, leadSource: c.lead?.source ?? null })),
     checkIns: checkIns.map((c) => ({
       satisfaction: c.satisfaction,
       submittedAt: c.submittedAt,
@@ -235,7 +253,7 @@ export async function fetchReportRows(tenantId: string, period: ResolvedPeriod, 
     ],
     campaigns: campaigns.map((c) => ({ id: c.id, name: c.name, platform: c.platform, treatmentKey: c.treatment?.key ?? null })),
     costs,
-    labels: { doctors: userNames, treatments, campaigns: new Map(campaigns.map((c) => [c.id, c.name])) },
+    labels: { doctors: userNames, treatments: new Map(treatments.map((t) => [t.key, t.name])), campaigns: new Map(campaigns.map((c) => [c.id, c.name])) },
     users: userNames,
     hairKey: HAIR_TRANSPLANT_KEY,
   };
@@ -254,14 +272,18 @@ export function computeReport(rows: ReportRows, period: ResolvedPeriod, filters:
   const treatmentFilter = filters.treatmentKey ? { treatmentKey: filters.treatmentKey } : {};
   const sourceFilter = filters.source ? { source: filters.source } : {};
 
+  const appointmentsById = new Map(rows.appointments.map((a) => [a.id, a]));
+  const leadInterests = new Map(rows.leads.map((l) => [l.id, l.interests]));
+  const procedureIndex = indexProcedures(rows.procedures);
+
   const perPeriod = (p: Period) => {
-    const m2 = leadToConsultation(rows.leads, rows.appointments, p, SOURCE_LABELS);
+    const m2 = leadToConsultation(rows.leads, rows.appointments, p, { sourceLabels: SOURCE_LABELS, timeZone });
     const { consultationAt, ...m2View } = m2;
     return {
       m1: enquiriesByTreatment(rows.leads, p, rows.labels, filters.treatmentKey),
       m2: m2View,
-      m3: consultationToProcedure(rows.appointments, rows.procedures, p, rows.labels, { ...doctorFilter, ...treatmentFilter }),
-      m4: revenueBreakdown(rows.procedures, rows.payments, p, rows.labels, { ...doctorFilter, ...treatmentFilter }),
+      m3: consultationToProcedure(rows.appointments, rows.procedures, p, rows.labels, { ...doctorFilter, ...treatmentFilter }, { timeZone, leadInterests, procedureIndex }),
+      m4: revenueBreakdown(rows.procedures, rows.payments, p, rows.labels, { ...doctorFilter, ...treatmentFilter }, appointmentsById),
       m5: firstResponseTimes(rows.messages, p, timeZone),
       m6: noShowBreakdown(rows.appointments, p, now, rows.payments, {
         leadSources,
@@ -277,7 +299,7 @@ export function computeReport(rows: ReportRows, period: ResolvedPeriod, filters:
       m9: hairTransplantBySource(rows.leads, p, rows.hairKey, rows.labels, SOURCE_LABELS, sourceFilter),
       m10: repeatPatientRate(paidVisits, shiftBackOneYear(p, timeZone), timeZone, rows.labels, treatmentFilter),
       m11: satisfactionScores(rows.checkIns, p, rows.hairKey, rows.labels, treatmentFilter),
-      m13: campaignToProcedure(rows.campaigns, rows.leads, consultationAt, rows.procedures, rows.costs, p, timeZone, { ...sourceFilter, ...treatmentFilter }),
+      m13: campaignToProcedure(rows.campaigns, rows.leads, consultationAt, rows.procedures, rows.costs, p, timeZone, { ...sourceFilter, ...treatmentFilter }, undefined, procedureIndex),
     };
   };
   const cur = perPeriod(current);

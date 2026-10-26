@@ -367,7 +367,11 @@ export const ImportConfirmInput = z.object({
 });
 export type ImportConfirmInput = z.infer<typeof ImportConfirmInput>;
 
-/** Create the confirmed rows as payments under one batch id. All or nothing. */
+/**
+ * Create the confirmed rows as payments under one batch id. All or nothing.
+ * A row whose reference is already on file (or repeats one earlier in the
+ * batch) is skipped, so a retried or double-submitted import adds nothing twice.
+ */
 export async function confirmImport(tenantId: string, rawInput: unknown, actor: Actor = {}) {
   const input = ImportConfirmInput.parse(rawInput);
   const patientIds = [...new Set(input.rows.map((r) => r.patientId))];
@@ -375,10 +379,24 @@ export async function confirmImport(tenantId: string, rawInput: unknown, actor: 
   const allowed = new Set(patients.map((p) => p.id));
   for (const id of patientIds) if (!allowed.has(id)) throw new TenantScopeError("patient", id);
 
+  const references = [...new Set(input.rows.map((r) => r.reference).filter((r): r is string => Boolean(r)))];
+  const onFile = references.length
+    ? new Set((await db.payment.findMany({ where: { tenantId, ...notDeleted, reference: { in: references } }, select: { reference: true } })).map((p) => p.reference))
+    : new Set<string | null>();
+  const seen = new Set<string>();
+  const rows = input.rows.filter((r) => {
+    if (!r.reference) return true;
+    if (onFile.has(r.reference) || seen.has(r.reference)) return false;
+    seen.add(r.reference);
+    return true;
+  });
+  const skipped = input.rows.length - rows.length;
   const importBatchId = randomUUID();
+  if (!rows.length) return { importBatchId, created: 0, skipped };
+
   const now = new Date();
   const created = await db.$transaction(async (tx) => {
-    const data = input.rows.map((r) => ({
+    const data = rows.map((r) => ({
       tenantId,
       patientId: r.patientId,
       kind: r.kind,
@@ -392,9 +410,9 @@ export async function confirmImport(tenantId: string, rawInput: unknown, actor: 
       createdAt: now,
     }));
     const result = await tx.payment.createMany({ data });
-    const rows = await tx.payment.findMany({ where: { tenantId, importBatchId }, select: { id: true, patientId: true, kind: true, amount: true, method: true, paidAt: true, reference: true } });
+    const createdRows = await tx.payment.findMany({ where: { tenantId, importBatchId }, select: { id: true, patientId: true, kind: true, amount: true, method: true, paidAt: true, reference: true } });
     await tx.timelineEvent.createMany({
-      data: rows.map((p) => ({
+      data: createdRows.map((p) => ({
         tenantId,
         patientId: p.patientId,
         kind: "PAYMENT" as const,
@@ -415,7 +433,7 @@ export async function confirmImport(tenantId: string, rawInput: unknown, actor: 
     action: "payment.import",
     entity: "PaymentImport",
     entityId: importBatchId,
-    after: { count: created, amount: input.rows.reduce((s, r) => s + r.amount, 0), patients: patientIds.length },
+    after: { count: created, skipped, amount: rows.reduce((s, r) => s + r.amount, 0), patients: new Set(rows.map((r) => r.patientId)).size },
   });
-  return { importBatchId, created };
+  return { importBatchId, created, skipped };
 }

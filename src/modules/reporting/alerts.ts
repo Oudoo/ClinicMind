@@ -36,8 +36,10 @@ export type AlertRuleInput = z.infer<typeof AlertRuleInput>;
 
 export const AlertRuleUpdateInput = AlertRuleInput.partial();
 
-export async function listAlertRules(tenantId: string) {
-  return db.alertRule.findMany({ where: { tenantId }, orderBy: [{ enabled: "desc" }, { createdAt: "asc" }] });
+export async function listAlertRules(tenantId: string, opts: { canSeeRevenue?: boolean } = {}) {
+  const rules = await db.alertRule.findMany({ where: { tenantId }, orderBy: [{ enabled: "desc" }, { createdAt: "asc" }] });
+  // A revenue rule's threshold and last value are revenue figures: owner only.
+  return opts.canSeeRevenue === false ? rules.map((r) => (ALERT_METRIC_LABELS[r.metric as AlertMetricValue]?.finance ? { ...r, threshold: 0, lastValue: null } : r)) : rules;
 }
 
 export async function createAlertRule(tenantId: string, rawInput: unknown, actor: Actor = {}) {
@@ -93,8 +95,14 @@ export async function metricValue(tenantId: string, metric: AlertMetricValue, wi
       return (await reportFor(tenantId, windowDays, now, cache)).m5.current.p50;
     case "FIRST_RESPONSE_P90":
       return (await reportFor(tenantId, windowDays, now, cache)).m5.current.p90;
-    case "FOLLOW_UPS_OVERDUE":
-      return db.leadFollowUp.count({ where: { tenantId, doneAt: null, dueAt: { lt: now } } });
+    case "FOLLOW_UPS_OVERDUE": {
+      // M12: open lead follow-ups and concierge escalations past their target.
+      const [followUps, escalations] = await Promise.all([
+        db.leadFollowUp.count({ where: { tenantId, doneAt: null, dueAt: { lt: now }, lead: { deletedAt: null } } }),
+        db.escalation.count({ where: { tenantId, status: "OPEN", kind: { not: "LEAD_FOLLOW_UP" }, dueAt: { lt: now } } }),
+      ]);
+      return followUps + escalations;
+    }
     case "ESCALATIONS_UNACKNOWLEDGED":
       return db.escalation.count({ where: { tenantId, status: "OPEN", createdAt: { gte: new Date(now.getTime() - windowDays * 86_400_000) } } });
     case "CHECK_IN_ANSWER_RATE": {

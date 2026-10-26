@@ -8,8 +8,8 @@ export const dynamic = "force-dynamic";
 
 /**
  * `POST /api/payments/import/confirm` `{ rows: [{ patientId, paidAt, amount, kind, method?, reference?, note? }] }`
- * — create the confirmed rows as payments under one `importBatchId` (audited).
- * 201 `{ importBatchId, created }`.
+ * — create the confirmed rows as payments under one `importBatchId` (audited); rows whose reference is
+ * already on file are skipped. 201 `{ importBatchId, created, skipped }`.
  */
 export async function POST(req: Request) {
   try {

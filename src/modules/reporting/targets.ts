@@ -92,12 +92,18 @@ export interface TargetView {
   finance: boolean;
 }
 
+/**
+ * One row per metric: the stored baseline and target next to the current
+ * value in `report`. A revenue metric's figures are blanked for a viewer
+ * without finance:read (the report is redacted then).
+ */
 export function targetRows(targets: { metric: string; baseline: number | null; target: number | null; unit: string | null; dueAt: Date | null }[], report: Report): TargetView[] {
   const byMetric = new Map(targets.map((t) => [t.metric, t]));
   const values = headlineValues(report);
   return METRIC_DEFINITIONS.map((d) => {
-    const row = byMetric.get(d.id);
-    const current = values[d.id];
+    const hidden = report.redacted && Boolean(d.finance);
+    const row = hidden ? undefined : byMetric.get(d.id);
+    const current = hidden ? null : values[d.id];
     const target = row?.target ?? null;
     const onTrack = current === null || target === null ? null : d.goodWhen === "up" ? current >= target : current <= target;
     return {
