@@ -10,7 +10,10 @@ export const dynamic = "force-dynamic";
 
 type Params = { params: Promise<{ id: string }> };
 
-/** `GET /api/appointments/[id]` → `{ appointment }`; a foreign tenant's id is a 404. */
+/**
+ * `GET /api/appointments/[id]` → `{ appointment }` with its live dictated notes
+ * (`dictatedNotes`, authors attached) and `notesCount`; a foreign tenant's id is a 404.
+ */
 export async function GET(req: Request, { params }: Params) {
   try {
     const { id } = await params;
@@ -29,8 +32,10 @@ export async function GET(req: Request, { params }: Params) {
 
 /**
  * `PATCH /api/appointments/[id]` — reschedule (startsAt/endsAt, doctorId, room)
- * and/or edit reason/notes. 409 `conflict` when the new slot is taken unless
- * `allowWaitlist` is set; 409 `not_reschedulable` once the visit has started.
+ * and/or edit kind/reason/notes. 409 `conflict` when the new slot is taken unless
+ * `allowWaitlist` is set; 409 `patient_conflict` when the patient already holds
+ * an overlapping booking unless `allowPatientOverlap` is set; 409
+ * `not_reschedulable` once the visit has started.
  */
 export async function PATCH(req: Request, { params }: Params) {
   try {

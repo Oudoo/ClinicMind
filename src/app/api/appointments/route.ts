@@ -11,7 +11,7 @@ import { appointmentErrorResponse } from "./_lib/errors";
 
 export const dynamic = "force-dynamic";
 
-/** `GET /api/appointments?from&to&doctorId&status&patientId` → `{ appointments }`. */
+/** `GET /api/appointments?from&to&doctorId&status&kind&patientId` → `{ appointments }` (each with `notesCount`). */
 export async function GET(req: Request) {
   try {
     const ctx = await getActingContext(req);
@@ -25,8 +25,13 @@ export async function GET(req: Request) {
 }
 
 /**
- * Book an appointment. 201 `{ appointment, conflicts }`; 409 `{ error: "conflict",
- * conflicts }` when the slot is taken unless the body sets `allowWaitlist`.
+ * Book an appointment (`kind`, `room`, `reason`, `notes` optional). 201
+ * `{ appointment, conflicts }`; 409 `{ error: "conflict", conflicts }` when the
+ * doctor or the room is taken unless the body sets `allowWaitlist`; 409
+ * `{ error: "patient_conflict", conflicts }` when the patient already holds an
+ * overlapping live booking unless the body sets `allowPatientOverlap`. The
+ * database's exclusion constraints back the check; a violation is answered the
+ * same way.
  */
 export async function POST(req: Request) {
   try {

@@ -7,13 +7,16 @@ import { Alert, Field } from "@/components/ui/field";
 import { Input, Select } from "@/components/ui/input";
 import { apiFetch } from "@/lib/http";
 import { fromLocalInput, minutesBetween, toLocalInput } from "@/lib/time";
-import type { AppointmentConflictDTO, AppointmentDTO } from "@/modules/appointments/dto";
+import type { AppointmentDTO, FreeSlotsDTO, SlotSuggestionDTO } from "@/modules/appointments/dto";
 import { MAX_DURATION_MINUTES, MIN_DURATION_MINUTES } from "@/modules/appointments/transitions";
-import { ConflictNotice, conflictsFrom, describeApiError, useDoctors } from "./appointment-shared";
+import { SlotPicker } from "./appointment-slot-picker";
+import { ConflictNotice, conflictInfo, describeApiError, freeSlotsUrl, useDoctors, type ConflictInfo } from "./appointment-shared";
 
 /**
- * Move an appointment: new start/end on the clinic clock, doctor and room.
- * A 409 lists the bookings in the way and offers the waitlist instead.
+ * Move an appointment: new start/end on the clinic clock, doctor and room,
+ * with the target day's free slots for the chosen doctor. A 409 lists the
+ * bookings in the way, offers the next three free slots and the waitlist; a
+ * patient overlap can be kept on purpose.
  */
 export function RescheduleAppointmentDialog({
   appointment,
@@ -32,12 +35,18 @@ export function RescheduleAppointmentDialog({
   const [end, setEnd] = useState(() => toLocalInput(new Date(appointment.endsAt), timezone));
   const [doctorId, setDoctorId] = useState(appointment.doctorId ?? "");
   const [room, setRoom] = useState(appointment.room ?? "");
-  const [conflicts, setConflicts] = useState<AppointmentConflictDTO[] | null>(null);
+  const [conflict, setConflict] = useState<ConflictInfo | null>(null);
+  const [suggestions, setSuggestions] = useState<SlotSuggestionDTO[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
+  const startsAt = fromLocalInput(start, timezone);
+  const endsAt = fromLocalInput(end, timezone);
+  const durationMinutes = startsAt && endsAt && endsAt > startsAt ? Math.round(minutesBetween(startsAt, endsAt)) : 30;
+  const dayKey = start.slice(0, 10);
+
   /** Moving the start keeps the appointment's length. */
-  function onStartChange(value: string) {
+  function moveStart(value: string) {
     const prevStart = fromLocalInput(start, timezone);
     const prevEnd = fromLocalInput(end, timezone);
     const next = fromLocalInput(value, timezone);
@@ -47,50 +56,87 @@ export function RescheduleAppointmentDialog({
     }
   }
 
-  async function submit(allowWaitlist: boolean) {
+  async function loadSuggestions(after: Date) {
+    setSuggestions(null);
+    try {
+      const res = await apiFetch<FreeSlotsDTO>(
+        freeSlotsUrl({
+          doctorId: doctorId || undefined,
+          room: room.trim() || undefined,
+          date: dayKey,
+          duration: durationMinutes,
+          excludeId: appointment.id,
+          after: after.toISOString(),
+        }),
+      );
+      setSuggestions(res.suggestions);
+    } catch {
+      setSuggestions([]);
+    }
+  }
+
+  async function submit(opts: { allowWaitlist?: boolean; allowPatientOverlap?: boolean; startsAt?: Date } = {}) {
     if (busy) return;
-    const startsAt = fromLocalInput(start, timezone);
-    const endsAt = fromLocalInput(end, timezone);
-    if (!startsAt || !endsAt) {
+    const from = opts.startsAt ?? fromLocalInput(start, timezone);
+    const to = opts.startsAt ? new Date(opts.startsAt.getTime() + durationMinutes * 60_000) : fromLocalInput(end, timezone);
+    if (!from || !to) {
       setError("Enter a valid start and end time.");
       return;
     }
-    if (endsAt.getTime() <= startsAt.getTime()) {
+    if (to.getTime() <= from.getTime()) {
       setError("The end must be after the start.");
       return;
     }
-    const minutes = minutesBetween(startsAt, endsAt);
+    const minutes = minutesBetween(from, to);
     if (minutes < MIN_DURATION_MINUTES || minutes > MAX_DURATION_MINUTES) {
       setError(`Appointments last between ${MIN_DURATION_MINUTES} and ${MAX_DURATION_MINUTES} minutes.`);
       return;
     }
     setBusy(true);
     setError(null);
-    setConflicts(null);
+    setConflict(null);
     try {
       const res = await apiFetch<{ appointment: AppointmentDTO }>(`/api/appointments/${appointment.id}`, {
         method: "PATCH",
         body: {
-          startsAt: startsAt.toISOString(),
-          endsAt: endsAt.toISOString(),
+          startsAt: from.toISOString(),
+          endsAt: to.toISOString(),
           doctorId: doctorId || null,
           room: room.trim() || null,
-          allowWaitlist,
+          allowWaitlist: Boolean(opts.allowWaitlist),
+          allowPatientOverlap: Boolean(opts.allowPatientOverlap),
         },
       });
       onDone(res.appointment, res.appointment.status === "WAITLISTED");
     } catch (err) {
-      const found = conflictsFrom(err);
-      if (found) setConflicts(found);
-      else setError(describeApiError(err));
+      const found = conflictInfo(err);
+      if (found) {
+        setConflict(found);
+        void loadSuggestions(from);
+      } else {
+        setError(describeApiError(err));
+      }
     } finally {
       setBusy(false);
     }
   }
 
+  function pickSlot(startsAtIso: string) {
+    moveStart(toLocalInput(new Date(startsAtIso), timezone));
+    setConflict(null);
+  }
+
+  function pickSuggestion(s: SlotSuggestionDTO) {
+    const d = new Date(s.startsAt);
+    moveStart(toLocalInput(d, timezone));
+    setConflict(null);
+    setSuggestions(null);
+    void submit({ startsAt: d });
+  }
+
   function onSubmit(e: FormEvent) {
     e.preventDefault();
-    void submit(false);
+    void submit();
   }
 
   // The current doctor stays selectable even when they are not in the DOCTOR
@@ -103,26 +149,25 @@ export function RescheduleAppointmentDialog({
       <DialogContent
         title="Reschedule appointment"
         description={`${appointment.patient.fullName} · times on the clinic clock (${timezone})`}
+        className="max-w-xl"
       >
         <form onSubmit={onSubmit} className="space-y-4" noValidate>
           {error ? <Alert>{error}</Alert> : null}
-          {conflicts ? (
+          {conflict ? (
             <ConflictNotice
-              conflicts={conflicts}
+              conflict={conflict}
               timezone={timezone}
+              dayKey={dayKey}
+              suggestions={suggestions}
+              onPickSuggestion={pickSuggestion}
+              onWaitlist={conflict.kind === "slot" ? () => void submit({ allowWaitlist: true }) : undefined}
+              onOverride={conflict.kind === "patient" ? () => void submit({ allowPatientOverlap: true }) : undefined}
               busy={busy}
-              onWaitlist={() => void submit(true)}
             />
           ) : null}
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <Field label="Starts" htmlFor={`${id}-start`}>
-              <Input
-                id={`${id}-start`}
-                type="datetime-local"
-                value={start}
-                onChange={(e) => onStartChange(e.target.value)}
-                required
-              />
+              <Input id={`${id}-start`} type="datetime-local" value={start} onChange={(e) => moveStart(e.target.value)} required />
             </Field>
             <Field label="Ends" htmlFor={`${id}-end`}>
               <Input id={`${id}-end`} type="datetime-local" value={end} onChange={(e) => setEnd(e.target.value)} required />
@@ -130,12 +175,7 @@ export function RescheduleAppointmentDialog({
           </div>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <Field label="Doctor" htmlFor={`${id}-doctor`} hint={doctorsError ?? undefined}>
-              <Select
-                id={`${id}-doctor`}
-                value={doctorId}
-                onChange={(e) => setDoctorId(e.target.value)}
-                disabled={doctors === null}
-              >
+              <Select id={`${id}-doctor`} value={doctorId} onChange={(e) => setDoctorId(e.target.value)} disabled={doctors === null}>
                 {doctors === null ? (
                   <option value={doctorId}>Loading…</option>
                 ) : (
@@ -154,15 +194,25 @@ export function RescheduleAppointmentDialog({
               </Select>
             </Field>
             <Field label="Room" htmlFor={`${id}-room`} hint="Optional">
-              <Input
-                id={`${id}-room`}
-                value={room}
-                onChange={(e) => setRoom(e.target.value)}
-                maxLength={60}
-                placeholder="e.g. Room 2"
-              />
+              <Input id={`${id}-room`} value={room} onChange={(e) => setRoom(e.target.value)} maxLength={60} placeholder="e.g. Room 2" />
             </Field>
           </div>
+
+          <section aria-label="Free slots" className="rounded-lg border border-border p-3">
+            <p className="mb-3 text-sm font-medium">Free slots on {dayKey}</p>
+            <SlotPicker
+              doctorId={doctorId}
+              room={room.trim() || undefined}
+              date={dayKey}
+              durationMinutes={durationMinutes}
+              excludeId={appointment.id}
+              selectedStart={startsAt}
+              onPick={pickSlot}
+              timezone={timezone}
+              disabled={busy}
+            />
+          </section>
+
           <DialogFooter>
             <DialogClose asChild>
               <Button type="button" variant="outline" disabled={busy}>

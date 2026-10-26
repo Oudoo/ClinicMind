@@ -1,6 +1,8 @@
 import { getActingContext } from "@/lib/auth/session";
 import { can } from "@/lib/auth/rbac";
 import { db } from "@/lib/db";
+import { getAppointment, getTenantTimezone } from "@/modules/appointments/service";
+import { toAppointmentDTO } from "@/modules/appointments/dto";
 import { countPendingReview, listConsultations } from "@/modules/consultations/service";
 import { ConsultationsWorkspace } from "@/components/clinicmind/consultation-workspace";
 import { Badge, Card, EmptyState, SectionTitle } from "@/components/ui/primitives";
@@ -10,14 +12,16 @@ export const dynamic = "force-dynamic";
 /**
  * Consultation Intelligence: recent consultations (drafts awaiting review
  * first) beside the capture / review / sign panel. `?id=` opens a
- * consultation; `?patientId=` preselects a patient for a new capture.
+ * consultation; `?patientId=` preselects a patient for a new capture;
+ * `?appointmentId=` (from "Start consultation") preselects that booking's
+ * patient and shows the notes dictated at booking beside the capture form.
  */
 export default async function ConsultationsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ id?: string; patientId?: string }>;
+  searchParams: Promise<{ id?: string; patientId?: string; appointmentId?: string }>;
 }) {
-  const { id, patientId } = await searchParams;
+  const { id, patientId, appointmentId } = await searchParams;
   const ctx = await getActingContext();
   if (!ctx) return null;
 
@@ -35,7 +39,7 @@ export default async function ConsultationsPage({
     );
   }
 
-  const [initial, pending, presetPatient] = await Promise.all([
+  const [initial, pending, patientPreset, appointment, timezone] = await Promise.all([
     listConsultations(ctx.tenantId, { page: 1, pageSize: 30 }),
     countPendingReview(ctx.tenantId),
     patientId
@@ -44,7 +48,11 @@ export default async function ConsultationsPage({
           select: { id: true, fullName: true, phone: true },
         })
       : Promise.resolve(null),
+    // Tenant-scoped: another tenant's id (or a missing one) is simply ignored.
+    appointmentId ? getAppointment(ctx.tenantId, appointmentId.slice(0, 64)) : Promise.resolve(null),
+    getTenantTimezone(ctx.tenantId),
   ]);
+  const presetPatient = appointment ? { id: appointment.patient.id, fullName: appointment.patient.fullName } : patientPreset;
 
   return (
     <div className="space-y-6">
@@ -63,6 +71,8 @@ export default async function ConsultationsPage({
         userId={ctx.userId}
         openId={id}
         presetPatient={presetPatient}
+        presetAppointment={appointment ? toAppointmentDTO(appointment) : null}
+        timezone={timezone}
       />
     </div>
   );

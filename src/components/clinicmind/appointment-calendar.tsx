@@ -16,6 +16,7 @@ import { STATUS_LABEL, type AppointmentStatus } from "@/modules/appointments/tra
 import { AppointmentCard } from "./appointment-card";
 import { CancelAppointmentDialog } from "./appointment-cancel-dialog";
 import { NewAppointmentDialog } from "./appointment-new-dialog";
+import { AppointmentNotesDialog } from "./appointment-notes-dialog";
 import { RescheduleAppointmentDialog } from "./appointment-reschedule-dialog";
 import { describeApiError, type StaffOption } from "./appointment-shared";
 
@@ -43,6 +44,9 @@ export interface AppointmentCalendarProps {
   doctorId: string;
   nav: { prev: string; next: string; today: string };
   canWrite: boolean;
+  /** May remove other people's dictated notes (users:manage). */
+  canManage?: boolean;
+  userId?: string | null;
 }
 
 /** The schedule page's client tree; mounts its own toast provider. */
@@ -66,12 +70,15 @@ function Calendar({
   doctorId,
   nav,
   canWrite,
+  canManage = false,
+  userId = null,
 }: AppointmentCalendarProps) {
   const router = useRouter();
   const { toast } = useToast();
   const [newOpen, setNewOpen] = useState(false);
   const [cancelTarget, setCancelTarget] = useState<AppointmentDTO | null>(null);
   const [rescheduleTarget, setRescheduleTarget] = useState<AppointmentDTO | null>(null);
+  const [notesTarget, setNotesTarget] = useState<AppointmentDTO | null>(null);
   const [pendingId, setPendingId] = useState<string | null>(null);
 
   const href = (overrides: Partial<{ view: CalendarView; date: string; doctorId: string }>) => {
@@ -104,6 +111,7 @@ function Calendar({
     onTransition: (a: AppointmentDTO, status: AppointmentStatus) => void transition(a, status),
     onCancel: setCancelTarget,
     onReschedule: setRescheduleTarget,
+    onNotes: setNotesTarget,
   };
 
   const byDay = new Map<string, AppointmentDTO[]>();
@@ -115,7 +123,7 @@ function Calendar({
     <div className="space-y-6">
       <SectionTitle
         title="Appointments"
-        description={`Schedule on the clinic clock (${timezone}). Conflicts are detected per doctor and room.`}
+        description={`Schedule on the clinic clock (${timezone}). No double bookings: conflicts are refused per doctor, room and patient.`}
         action={
           canWrite ? (
             <Button type="button" onClick={() => setNewOpen(true)}>
@@ -277,6 +285,21 @@ function Calendar({
             toast({ title: `${appointment.patient.fullName} · Cancelled`, tone: "success" });
             router.refresh();
           }}
+        />
+      ) : null}
+
+      {notesTarget ? (
+        <AppointmentNotesDialog
+          key={notesTarget.id}
+          appointment={notesTarget}
+          timezone={timezone}
+          canWrite={canWrite}
+          canManage={canManage}
+          userId={userId}
+          onOpenChange={(open) => {
+            if (!open) setNotesTarget(null);
+          }}
+          onChanged={() => router.refresh()}
         />
       ) : null}
 

@@ -77,6 +77,8 @@ export default async function AppointmentsPage({
         today: dateKeyInTz(now, timezone),
       }}
       canWrite={can(ctx.role, "appointments:write")}
+      canManage={can(ctx.role, "users:manage")}
+      userId={ctx.userId}
     />
   );
 }

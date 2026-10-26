@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
-import { CalendarClock, Loader2, MoreHorizontal } from "lucide-react";
+import { CalendarClock, Loader2, Mic, MoreHorizontal } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { formatTimeInTz } from "@/lib/time";
 import { cn } from "@/lib/utils";
@@ -13,20 +13,23 @@ import {
   transitionLabel,
   type AppointmentStatus,
 } from "@/modules/appointments/transitions";
-import { AppointmentStatusBadge } from "./appointment-status";
+import { AppointmentKindBadge, AppointmentStatusBadge } from "./appointment-status";
 
 export interface AppointmentActions {
   onTransition: (appointment: AppointmentDTO, status: AppointmentStatus) => void;
   onCancel: (appointment: AppointmentDTO) => void;
   onReschedule: (appointment: AppointmentDTO) => void;
+  /** Open the dictated notes of the booking (dictate, read, remove). */
+  onNotes?: (appointment: AppointmentDTO) => void;
 }
 
 const DESTRUCTIVE: readonly AppointmentStatus[] = ["CANCELLED", "NO_SHOW"];
 
 /**
  * One booking on the schedule: time range, patient (linked to their record),
- * doctor, reason, status and — for writers — a menu with exactly the moves
- * the state machine allows from its current status.
+ * doctor, reason, kind, status, the count of dictated notes and — for
+ * writers — a menu with exactly the moves the state machine allows from its
+ * current status, plus "Dictate a note".
  */
 export function AppointmentCard({
   appointment,
@@ -47,12 +50,27 @@ export function AppointmentCard({
   const end = new Date(appointment.endsAt);
   const time = `${formatTimeInTz(start, timezone)}–${formatTimeInTz(end, timezone)}`;
   const transitions = allowedTransitions(appointment.status);
-  const showMenu = canWrite && (transitions.length > 0 || isReschedulable(appointment.status));
+  const showMenu = canWrite && (transitions.length > 0 || isReschedulable(appointment.status) || Boolean(actions.onNotes));
   const muted = appointment.status === "CANCELLED" || appointment.status === "NO_SHOW";
 
   const menu = showMenu ? (
     <AppointmentActionsMenu appointment={appointment} pending={pending} actions={actions} />
   ) : null;
+
+  const notesBadge =
+    appointment.notesCount > 0 ? (
+      <button
+        type="button"
+        onClick={actions.onNotes ? () => actions.onNotes?.(appointment) : undefined}
+        disabled={!actions.onNotes}
+        aria-label={`${appointment.notesCount} dictated ${appointment.notesCount === 1 ? "note" : "notes"} on this appointment`}
+        title={`${appointment.notesCount} dictated ${appointment.notesCount === 1 ? "note" : "notes"}`}
+        className="inline-flex h-5 items-center gap-0.5 rounded-md bg-accent-muted px-1.5 font-mono text-[10px] text-accent hover:bg-accent/15 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default"
+      >
+        <Mic className="h-3 w-3" aria-hidden="true" />
+        {appointment.notesCount}
+      </button>
+    ) : null;
 
   const details = (
     <>
@@ -90,7 +108,9 @@ export function AppointmentCard({
       >
         <span className="w-28 shrink-0 font-mono text-xs tabular-nums text-foreground">{time}</span>
         <div className="min-w-0 flex-1">{details}</div>
-        <div className="flex items-center justify-between gap-2 sm:justify-end">
+        <div className="flex flex-wrap items-center justify-between gap-2 sm:justify-end">
+          {notesBadge}
+          <AppointmentKindBadge kind={appointment.kind} />
           <AppointmentStatusBadge status={appointment.status} />
           {menu}
         </div>
@@ -103,15 +123,21 @@ export function AppointmentCard({
       aria-label={`${time} ${appointment.patient.fullName}`}
       className={cn("rounded-md border border-border bg-card p-2.5", pending && "opacity-60")}
     >
-      {/* Wraps in narrow week columns: the badge and menu drop to a second line instead of overflowing the card. */}
+      {/* Wraps in narrow week columns: the badges and menu drop to a second line instead of overflowing the card. */}
       <div className="flex flex-wrap items-center justify-between gap-x-1 gap-y-1">
-        <span className="whitespace-nowrap font-mono text-xs tabular-nums">{time}</span>
+        <span className="flex items-center gap-1.5 whitespace-nowrap font-mono text-xs tabular-nums">
+          {time}
+          {notesBadge}
+        </span>
         <div className="ml-auto flex shrink-0 items-center gap-1">
           <AppointmentStatusBadge status={appointment.status} />
           {menu}
         </div>
       </div>
       <div className="mt-1 space-y-0.5">{details}</div>
+      <div className="mt-1.5">
+        <AppointmentKindBadge kind={appointment.kind} />
+      </div>
     </article>
   );
 }
@@ -166,7 +192,13 @@ function AppointmentActionsMenu({
               Reschedule
             </MenuItem>
           ) : null}
-          {destructive.length && (regular.length || reschedulable) ? (
+          {actions.onNotes ? (
+            <MenuItem onSelect={() => actions.onNotes?.(appointment)}>
+              <Mic className="h-4 w-4" />
+              {appointment.notesCount ? `Notes · ${appointment.notesCount}` : "Dictate a note"}
+            </MenuItem>
+          ) : null}
+          {destructive.length && (regular.length || reschedulable || actions.onNotes) ? (
             <DropdownMenu.Separator className="my-1 h-px bg-border" />
           ) : null}
           {destructive.map((status) => (

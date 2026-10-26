@@ -4,6 +4,20 @@ import { db, notDeleted } from "@/lib/db";
 import { audit } from "@/lib/audit";
 import { ingestInBackground } from "@/modules/knowledge/ingest";
 import { parsePaging, zDate, zOptionalText, zPhone, zText } from "@/lib/validation";
+import { endOfDayInTz, fromDateKey, startOfWeekInTz, zonedParts, zonedTimeToUtc } from "@/lib/time";
+import {
+  AGE_BANDS,
+  DEFAULT_SORT,
+  type AgeBandKey,
+  type GenderKey,
+  type LanguageKey,
+  type PatientListQuery,
+  type SortKey,
+  type SourceKey,
+  type UpcomingKey,
+  type VisitWindowKey,
+} from "@/modules/patients/filters";
+import { digitsOnly, isNumericQuery, normalizeDigits, normalizeNationalId, phoneVariants } from "@/modules/patients/search";
 
 /**
  * Patient module: registry CRUD, soft archive, medical history and the
@@ -33,6 +47,12 @@ const blankToNull = (v: unknown) => (typeof v === "string" && v.trim() === "" ? 
 const zDateOfBirth = zDate.refine((d) => d.getTime() <= Date.now(), "Date of birth cannot be in the future");
 
 const zEmail = z.string().trim().toLowerCase().max(254).email("Invalid e-mail address");
+
+/** Phones may be typed with Arabic-Indic digits; they are converted before the E.164-ish check. */
+const zPhoneAnyDigits = z.preprocess((v) => (typeof v === "string" ? normalizeDigits(v) : v), zPhone);
+/** National id or passport number, digits normalised, at most 40 characters. */
+const zNationalId = z.preprocess((v) => (typeof v === "string" ? normalizeNationalId(v) : v), zText(40));
+const zCity = zText(80);
 
 /**
  * Trim, drop blanks and de-duplicate (case-insensitively, keeping the first
@@ -67,9 +87,11 @@ export const PatientInput = z.object({
   fullName: zFullName,
   gender: z.enum(GENDERS).default("UNDISCLOSED"),
   dateOfBirth: z.preprocess(blankToUndefined, zDateOfBirth.optional()),
-  phone: z.preprocess(blankToUndefined, zPhone.optional()),
-  whatsapp: z.preprocess(blankToUndefined, zPhone.optional()),
+  phone: z.preprocess(blankToUndefined, zPhoneAnyDigits.optional()),
+  whatsapp: z.preprocess(blankToUndefined, zPhoneAnyDigits.optional()),
   email: z.preprocess(blankToUndefined, zEmail.optional()),
+  nationalId: z.preprocess(blankToUndefined, zNationalId.optional()),
+  city: z.preprocess(blankToUndefined, zCity.optional()),
   emergencyContact: zOptionalText(200),
   address: zOptionalText(300),
   language: z.enum(LANGUAGES).default("ar"),
@@ -82,9 +104,11 @@ export const PatientUpdateInput = z.object({
   fullName: zFullName.optional(),
   gender: z.enum(GENDERS).optional(),
   dateOfBirth: clearable(zDateOfBirth),
-  phone: clearable(zPhone),
-  whatsapp: clearable(zPhone),
+  phone: clearable(zPhoneAnyDigits),
+  whatsapp: clearable(zPhoneAnyDigits),
   email: clearable(zEmail),
+  nationalId: clearable(zNationalId),
+  city: clearable(zCity),
   emergencyContact: clearable(zText(200)),
   address: clearable(zText(300)),
   language: z.enum(LANGUAGES).optional(),
@@ -127,6 +151,8 @@ const PROFILE_KEYS = [
   "phone",
   "whatsapp",
   "email",
+  "nationalId",
+  "city",
   "emergencyContact",
   "address",
   "language",
@@ -157,64 +183,312 @@ function isNotFound(err: unknown): boolean {
 
 // ── Listing & search ──────────────────────────────────────────────────────────
 
+export type ArchivedMode = "active" | "include" | "only";
+
 export interface ListPatientsOptions {
-  /** Case-insensitive match on name or e-mail; digits also match phone / WhatsApp. */
+  /** Case-insensitive match on name or e-mail; digits (Arabic-Indic too) also match phone, WhatsApp and national id. */
   q?: string;
   page?: number;
   pageSize?: number;
   /** Only patients carrying this tag. */
   tag?: string;
-  /** Include archived (soft-deleted) patients alongside active ones. */
+  /** Legacy switch; prefer `archived: "include"`. */
   includeArchived?: boolean;
+  archived?: ArchivedMode;
+  gender?: GenderKey;
+  ageBand?: AgeBandKey;
+  /** Patients with an upcoming appointment or a past visit with this doctor. */
+  doctorId?: string;
+  upcoming?: UpcomingKey;
+  lastVisit?: VisitWindowKey;
+  registeredFrom?: Date;
+  registeredTo?: Date;
+  language?: LanguageKey;
+  source?: SourceKey;
+  sort?: SortKey;
+  /** The clock the relative windows (age, "within 30 days", "upcoming") are measured against. */
+  now?: Date;
 }
 
-function patientsWhere(tenantId: string, opts: ListPatientsOptions): Prisma.PatientWhereInput {
-  const q = opts.q?.trim().slice(0, 100);
-  const digits = q?.replace(/[\s()+-]/g, "");
-  const tag = opts.tag?.trim().slice(0, 30);
-  const search: Prisma.PatientWhereInput[] = [];
-  if (q) {
-    search.push(
-      { fullName: { contains: q, mode: "insensitive" } },
-      { email: { contains: q, mode: "insensitive" } },
-    );
-    if (digits && /^\d{3,}$/.test(digits)) {
-      search.push({ phone: { contains: digits } }, { whatsapp: { contains: digits } });
-    }
-  }
+const DAY_MS = 86_400_000;
+/** The whole result is ordered in memory for the aggregate sorts and the exact-match-first rule; beyond this many rows the count is estimated separately. */
+const SORT_SCAN_CAP = 5000;
+const EXPORT_CAP = 5000;
+
+const listInclude = {
+  medicalHistory: true,
+  _count: { select: { appointments: true, visits: true } },
+} satisfies Prisma.PatientInclude;
+
+export type PatientListItem = Prisma.PatientGetPayload<{ include: typeof listInclude }>;
+
+/** A list row with the per-patient activity the registry shows and sorts by. */
+export interface PatientListRow extends PatientListItem {
+  lastVisitAt: Date | null;
+  nextAppointmentAt: Date | null;
+  upcomingCount: number;
+  /** The search text matched this row's phone, WhatsApp or national id exactly. */
+  exact: boolean;
+}
+
+export interface PatientPage {
+  patients: PatientListRow[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
+/** Live bookings from `now` on (optionally before `until`); cancelled and no-show ones do not count. */
+function upcomingAppointmentWhere(tenantId: string, now: Date, until?: Date): Prisma.AppointmentWhereInput {
   return {
     tenantId,
-    ...(opts.includeArchived ? {} : notDeleted),
-    ...(tag ? { tags: { has: tag } } : {}),
-    ...(search.length ? { OR: search } : {}),
+    ...notDeleted,
+    startsAt: until ? { gte: now, lt: until } : { gte: now },
+    status: { notIn: ["CANCELLED", "NO_SHOW"] },
   };
 }
 
-async function queryPatients(tenantId: string, opts: ListPatientsOptions) {
+/** Midnight UTC `years` before `now` (dates of birth are stored at UTC midnight). */
+function yearsBefore(now: Date, years: number): Date {
+  return new Date(Date.UTC(now.getUTCFullYear() - years, now.getUTCMonth(), now.getUTCDate()));
+}
+
+/** age ≥ min ⇔ dob ≤ now − min years; age ≤ max ⇔ dob > now − (max + 1) years. */
+function ageBandWhere(band: AgeBandKey, now: Date): Prisma.DateTimeNullableFilter {
+  const def = AGE_BANDS.find((b) => b.key === band) ?? AGE_BANDS[0];
+  return {
+    lte: yearsBefore(now, def.min),
+    ...(def.max !== null ? { gt: yearsBefore(now, def.max + 1) } : {}),
+  };
+}
+
+interface SearchClauses {
+  /** Broad `contains` matches, OR-ed together. */
+  search: Prisma.PatientWhereInput[];
+  /** Exact phone / WhatsApp / national id matches that are listed first. */
+  exact: Prisma.PatientWhereInput | null;
+}
+
+function searchClauses(raw: string | undefined): SearchClauses {
+  const q = normalizeDigits(raw?.trim() ?? "").slice(0, 100);
+  if (!q) return { search: [], exact: null };
+  const search: Prisma.PatientWhereInput[] = [
+    { fullName: { contains: q, mode: "insensitive" } },
+    { email: { contains: q, mode: "insensitive" } },
+  ];
+  const exact: Prisma.PatientWhereInput[] = [];
+  if (isNumericQuery(q)) {
+    const digits = digitsOnly(q);
+    search.push({ phone: { contains: digits } }, { whatsapp: { contains: digits } }, { nationalId: { contains: digits } });
+    const variants = phoneVariants(q);
+    if (variants.length) exact.push({ phone: { in: variants } }, { whatsapp: { in: variants } });
+    if (digits.length >= 6) exact.push({ nationalId: digits });
+  } else {
+    search.push({ nationalId: { contains: q, mode: "insensitive" } });
+    if (/^[A-Za-z0-9/-]{6,40}$/.test(q)) exact.push({ nationalId: { equals: q, mode: "insensitive" } });
+  }
+  return { search, exact: exact.length ? { OR: exact } : null };
+}
+
+function patientsWhere(
+  tenantId: string,
+  opts: ListPatientsOptions,
+): { where: Prisma.PatientWhereInput; exact: Prisma.PatientWhereInput | null } {
+  const now = opts.now ?? new Date();
+  const archived: ArchivedMode = opts.archived ?? (opts.includeArchived ? "include" : "active");
+  const { search, exact } = searchClauses(opts.q);
+  const and: Prisma.PatientWhereInput[] = [];
+  if (search.length) and.push({ OR: search });
+
+  const tag = opts.tag?.trim().slice(0, 30);
+  if (tag) and.push({ tags: { has: tag } });
+  if (opts.gender) and.push({ gender: opts.gender });
+  if (opts.language) and.push({ language: opts.language });
+  if (opts.source) and.push({ source: opts.source });
+  if (opts.ageBand) and.push({ dateOfBirth: ageBandWhere(opts.ageBand, now) });
+
+  const doctorId = opts.doctorId?.trim().slice(0, 64);
+  if (doctorId) {
+    and.push({
+      OR: [
+        { appointments: { some: { ...upcomingAppointmentWhere(tenantId, now), doctorId } } },
+        { visits: { some: { tenantId, doctorId } } },
+      ],
+    });
+  }
+
+  if (opts.upcoming === "yes") and.push({ appointments: { some: upcomingAppointmentWhere(tenantId, now) } });
+  if (opts.upcoming === "no") and.push({ appointments: { none: upcomingAppointmentWhere(tenantId, now) } });
+  if (opts.upcoming === "week") {
+    and.push({ appointments: { some: upcomingAppointmentWhere(tenantId, now, new Date(now.getTime() + 7 * DAY_MS)) } });
+  }
+
+  if (opts.lastVisit) {
+    const since = (days: number) => new Date(now.getTime() - days * DAY_MS);
+    switch (opts.lastVisit) {
+      case "30":
+      case "90":
+      case "180":
+        and.push({ visits: { some: { tenantId, createdAt: { gte: since(Number(opts.lastVisit)) } } } });
+        break;
+      case "over180":
+        and.push({ visits: { some: { tenantId } } }, { visits: { none: { tenantId, createdAt: { gte: since(180) } } } });
+        break;
+      case "never":
+        and.push({ visits: { none: { tenantId } } });
+        break;
+    }
+  }
+
+  if (opts.registeredFrom || opts.registeredTo) {
+    and.push({
+      createdAt: {
+        ...(opts.registeredFrom ? { gte: opts.registeredFrom } : {}),
+        ...(opts.registeredTo ? { lte: opts.registeredTo } : {}),
+      },
+    });
+  }
+
+  const where: Prisma.PatientWhereInput = {
+    tenantId,
+    ...(archived === "active" ? notDeleted : archived === "only" ? { deletedAt: { not: null } } : {}),
+    ...(and.length ? { AND: and } : {}),
+  };
+  return { where, exact };
+}
+
+function orderFor(sort: SortKey): Prisma.PatientOrderByWithRelationInput[] {
+  switch (sort) {
+    case "oldest":
+      return [{ createdAt: "asc" }, { id: "asc" }];
+    case "name_asc":
+      return [{ fullName: "asc" }, { id: "asc" }];
+    case "name_desc":
+      return [{ fullName: "desc" }, { id: "desc" }];
+    case "age_desc":
+      return [{ dateOfBirth: { sort: "asc", nulls: "last" } }, { id: "asc" }];
+    case "age_asc":
+      return [{ dateOfBirth: { sort: "desc", nulls: "last" } }, { id: "asc" }];
+    default:
+      return [{ createdAt: "desc" }, { id: "desc" }];
+  }
+}
+
+/** Most recent visit per patient. */
+async function lastVisitByPatient(tenantId: string, ids: readonly string[]): Promise<Map<string, Date>> {
+  if (!ids.length) return new Map();
+  const rows = await db.visit.groupBy({
+    by: ["patientId"],
+    where: { tenantId, patientId: { in: [...ids] } },
+    _max: { createdAt: true },
+  });
+  return new Map(rows.flatMap((r) => (r._max.createdAt ? [[r.patientId, r._max.createdAt] as const] : [])));
+}
+
+/** Soonest upcoming appointment and how many are booked, per patient. */
+async function upcomingByPatient(
+  tenantId: string,
+  ids: readonly string[],
+  now: Date,
+): Promise<Map<string, { next: Date; count: number }>> {
+  if (!ids.length) return new Map();
+  const rows = await db.appointment.groupBy({
+    by: ["patientId"],
+    where: { patientId: { in: [...ids] }, ...upcomingAppointmentWhere(tenantId, now) },
+    _min: { startsAt: true },
+    _count: { _all: true },
+  });
+  return new Map(
+    rows.flatMap((r) => (r._min.startsAt ? [[r.patientId, { next: r._min.startsAt, count: r._count._all }] as const] : [])),
+  );
+}
+
+/** Stable sort of ids by a per-id instant: present values first in the given direction, missing ones keep their order at the end. */
+function sortIdsBy(ids: string[], at: (id: string) => Date | undefined, direction: "asc" | "desc"): string[] {
+  const indexed = ids.map((id, index) => ({ id, index, t: at(id)?.getTime() }));
+  indexed.sort((a, b) => {
+    if (a.t === undefined && b.t === undefined) return a.index - b.index;
+    if (a.t === undefined) return 1;
+    if (b.t === undefined) return -1;
+    if (a.t !== b.t) return direction === "asc" ? a.t - b.t : b.t - a.t;
+    return a.index - b.index;
+  });
+  return indexed.map((x) => x.id);
+}
+
+async function queryPatients(
+  tenantId: string,
+  opts: ListPatientsOptions,
+  limits = { pageSize: 25, maxPageSize: 100 },
+): Promise<PatientPage> {
   // Reuse the request-level paging bounds (default 25, max 100) whoever calls.
   const params = new URLSearchParams();
   if (opts.page !== undefined) params.set("page", String(opts.page));
   if (opts.pageSize !== undefined) params.set("pageSize", String(opts.pageSize));
-  const { page, pageSize, skip, take } = parsePaging(params);
-  const where = patientsWhere(tenantId, opts);
-  const [patients, total] = await db.$transaction([
-    db.patient.findMany({
+  const { page, pageSize, skip, take } = parsePaging(params, limits);
+  const now = opts.now ?? new Date();
+  const sort: SortKey = opts.sort ?? DEFAULT_SORT;
+  const { where, exact } = patientsWhere(tenantId, opts);
+  const aggregateSort = sort === "last_visit" || sort === "next_appointment";
+
+  let rows: PatientListItem[];
+  let total: number;
+  let exactIds = new Set<string>();
+
+  if (!exact && !aggregateSort) {
+    [rows, total] = await db.$transaction([
+      db.patient.findMany({ where, orderBy: orderFor(sort), skip, take, include: listInclude }),
+      db.patient.count({ where }),
+    ]);
+  } else {
+    // Order the ids of the whole result (exact matches first, aggregate sorts
+    // in memory), then fetch just the page. Clinic registries are thousands
+    // of rows at most, so the id scan is cheap and the count stays exact.
+    const idRows = await db.patient.findMany({
       where,
-      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-      skip,
-      take,
-      include: {
-        medicalHistory: true,
-        _count: { select: { appointments: true, visits: true } },
-      },
-    }),
-    db.patient.count({ where }),
+      select: { id: true },
+      orderBy: orderFor(aggregateSort ? DEFAULT_SORT : sort),
+      take: SORT_SCAN_CAP,
+    });
+    let ids = idRows.map((r) => r.id);
+    total = ids.length < SORT_SCAN_CAP ? ids.length : await db.patient.count({ where });
+    if (sort === "last_visit") {
+      const lastVisits = await lastVisitByPatient(tenantId, ids);
+      ids = sortIdsBy(ids, (id) => lastVisits.get(id), "desc");
+    } else if (sort === "next_appointment") {
+      const upcoming = await upcomingByPatient(tenantId, ids, now);
+      ids = sortIdsBy(ids, (id) => upcoming.get(id)?.next, "asc");
+    }
+    if (exact) {
+      const hits = await db.patient.findMany({ where: { AND: [where, exact] }, select: { id: true }, take: 100 });
+      exactIds = new Set(hits.map((h) => h.id));
+      if (exactIds.size) ids = [...ids.filter((id) => exactIds.has(id)), ...ids.filter((id) => !exactIds.has(id))];
+    }
+    const pageIds = ids.slice(skip, skip + take);
+    const fetched = pageIds.length
+      ? await db.patient.findMany({ where: { tenantId, id: { in: pageIds } }, include: listInclude })
+      : [];
+    const byId = new Map(fetched.map((p) => [p.id, p]));
+    rows = pageIds.flatMap((id) => {
+      const p = byId.get(id);
+      return p ? [p] : [];
+    });
+  }
+
+  const pageIds = rows.map((r) => r.id);
+  const [lastVisits, upcoming] = await Promise.all([
+    lastVisitByPatient(tenantId, pageIds),
+    upcomingByPatient(tenantId, pageIds, now),
   ]);
+  const patients: PatientListRow[] = rows.map((p) => ({
+    ...p,
+    lastVisitAt: lastVisits.get(p.id) ?? null,
+    nextAppointmentAt: upcoming.get(p.id)?.next ?? null,
+    upcomingCount: upcoming.get(p.id)?.count ?? 0,
+    exact: exactIds.has(p.id),
+  }));
   return { patients, total, page, pageSize };
 }
-
-export type PatientPage = Awaited<ReturnType<typeof queryPatients>>;
-export type PatientListItem = PatientPage["patients"][number];
 
 /**
  * Paginated, searchable registry of the tenant's patients, newest first.
@@ -234,6 +508,74 @@ export async function listPatients(
     return patients;
   }
   return queryPatients(tenantId, arg);
+}
+
+/** The whole filtered set (up to 5,000 rows) for the CSV export. */
+export async function listPatientsForExport(tenantId: string, opts: ListPatientsOptions): Promise<PatientPage> {
+  return queryPatients(
+    tenantId,
+    { ...opts, page: 1, pageSize: EXPORT_CAP },
+    { pageSize: EXPORT_CAP, maxPageSize: EXPORT_CAP },
+  );
+}
+
+/** Start of the clinic's current week / month / quarter, or the custom bounds, as instants. */
+function registeredRange(query: PatientListQuery, timezone: string, now: Date): { from?: Date; to?: Date } | null {
+  switch (query.reg) {
+    case "week":
+      return { from: startOfWeekInTz(now, timezone), to: now };
+    case "month": {
+      const p = zonedParts(now, timezone);
+      return { from: zonedTimeToUtc({ year: p.year, month: p.month, day: 1 }, timezone), to: now };
+    }
+    case "quarter": {
+      const p = zonedParts(now, timezone);
+      const month = Math.floor((p.month - 1) / 3) * 3 + 1;
+      return { from: zonedTimeToUtc({ year: p.year, month, day: 1 }, timezone), to: now };
+    }
+    case "custom": {
+      const from = query.from ? fromDateKey(query.from, timezone) : null;
+      const to = query.to ? fromDateKey(query.to, timezone) : null;
+      if (!from && !to) return null;
+      return { from: from ?? undefined, to: to ? endOfDayInTz(to, timezone) : undefined };
+    }
+    default:
+      return null;
+  }
+}
+
+/** Translate a validated URL query into service options on the clinic clock. */
+export function listOptionsFromQuery(query: PatientListQuery, timezone: string, now = new Date()): ListPatientsOptions {
+  const range = registeredRange(query, timezone, now);
+  return {
+    q: query.q,
+    tag: query.tag,
+    gender: query.gender,
+    ageBand: query.age,
+    doctorId: query.doctor,
+    upcoming: query.upcoming,
+    lastVisit: query.visit,
+    registeredFrom: range?.from,
+    registeredTo: range?.to,
+    language: query.lang,
+    source: query.source,
+    archived: query.archived === "only" ? "only" : query.archived === "1" ? "include" : "active",
+    sort: query.sort,
+    page: query.page,
+    now,
+  };
+}
+
+/** The tenant's tags in use (active patients), most common first, for the tag picker. */
+export async function listPatientTags(tenantId: string): Promise<{ tag: string; count: number }[]> {
+  const rows = await db.$queryRaw<{ tag: string; n: number }[]>`
+    SELECT t AS tag, count(*)::int AS n
+    FROM "patients" p, unnest(p."tags") AS t
+    WHERE p."tenantId" = ${tenantId} AND p."deletedAt" IS NULL
+    GROUP BY t
+    ORDER BY n DESC, t ASC
+    LIMIT 50`;
+  return rows.map((r) => ({ tag: r.tag, count: Number(r.n) }));
 }
 
 // ── Patient record ────────────────────────────────────────────────────────────
@@ -333,6 +675,8 @@ export async function createPatient(tenantId: string, input: unknown, actor: Act
       phone: data.phone ?? null,
       whatsapp: data.whatsapp ?? null,
       email: data.email ?? null,
+      nationalId: data.nationalId ?? null,
+      city: data.city ?? null,
       emergencyContact: data.emergencyContact ?? null,
       address: data.address ?? null,
       language: data.language,

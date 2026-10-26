@@ -3,14 +3,24 @@ import { assertCan } from "@/lib/auth/rbac";
 import { clientIp, crossOriginRejected, isSameOrigin } from "@/lib/auth/request";
 import { handleApiError, ok, unauthorized } from "@/lib/api";
 import { parsePaging } from "@/lib/validation";
-import { createPatient, listPatients } from "@/modules/patients/service";
+import { getTenantTimezone } from "@/modules/appointments/service";
+import { parsePatientListQuery } from "@/modules/patients/filters";
+import { createPatient, listOptionsFromQuery, listPatients } from "@/modules/patients/service";
 
 export const dynamic = "force-dynamic";
 
 /**
  * Paginated patient registry of the acting tenant.
- * Query: `q` (name / phone / e-mail), `page`, `pageSize`, `tag`, `archived=1`.
- * Responds `{ patients, total, page, pageSize }`.
+ *
+ * Query: `q` (name / phone / national id / e-mail, Arabic digits accepted),
+ * `gender`, `age` (u18 | 18-30 | 31-45 | 46-60 | 60p), `tag`, `doctor`,
+ * `upcoming` (yes | no | week), `visit` (30 | 90 | 180 | over180 | never),
+ * `reg` (week | month | quarter | custom with `from` / `to`), `lang`, `source`,
+ * `archived` (1 = include, only), `sort` (newest | oldest | name_asc |
+ * name_desc | last_visit | next_appointment | age_desc | age_asc), `page`,
+ * `pageSize`. Unknown values are ignored. Responds `{ patients, total, page,
+ * pageSize }`; each patient carries `lastVisitAt`, `nextAppointmentAt`,
+ * `upcomingCount` and `exact` (the search matched a phone / id exactly).
  */
 export async function GET(req: Request) {
   try {
@@ -20,10 +30,10 @@ export async function GET(req: Request) {
 
     const params = new URL(req.url).searchParams;
     const { page, pageSize } = parsePaging(params);
+    const query = parsePatientListQuery(params);
+    const timezone = await getTenantTimezone(ctx.tenantId);
     const result = await listPatients(ctx.tenantId, {
-      q: params.get("q") ?? undefined,
-      tag: params.get("tag") ?? undefined,
-      includeArchived: params.get("archived") === "1",
+      ...listOptionsFromQuery(query, timezone),
       page,
       pageSize,
     });

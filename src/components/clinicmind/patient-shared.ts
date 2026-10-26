@@ -41,6 +41,8 @@ export interface PatientFormValues {
   phone: string;
   whatsapp: string;
   email: string;
+  nationalId: string;
+  city: string;
   language: PatientLanguage;
   emergencyContact: string;
   address: string;
@@ -55,6 +57,8 @@ export const EMPTY_PATIENT_FORM: PatientFormValues = {
   phone: "",
   whatsapp: "",
   email: "",
+  nationalId: "",
+  city: "",
   language: "ar",
   emergencyContact: "",
   address: "",
@@ -77,6 +81,8 @@ export function patientFormValues(patient: {
   phone: string | null;
   whatsapp: string | null;
   email: string | null;
+  nationalId?: string | null;
+  city?: string | null;
   language: string;
   emergencyContact: string | null;
   address: string | null;
@@ -90,6 +96,8 @@ export function patientFormValues(patient: {
     phone: patient.phone ?? "",
     whatsapp: patient.whatsapp ?? "",
     email: patient.email ?? "",
+    nationalId: patient.nationalId ?? "",
+    city: patient.city ?? "",
     language: isPatientLanguage(patient.language) ? patient.language : "ar",
     emergencyContact: patient.emergencyContact ?? "",
     address: patient.address ?? "",

@@ -219,6 +219,35 @@ function PatientForm({
           />
         </FormField>
 
+        <FormField
+          id="patient-nationalId"
+          label="National ID"
+          hint="ID or passport number · Arabic digits accepted"
+          error={errors.nationalId}
+        >
+          <Input
+            id="patient-nationalId"
+            inputMode="numeric"
+            value={values.nationalId}
+            onChange={(e) => set("nationalId", e.target.value)}
+            maxLength={40}
+            autoComplete="off"
+            aria-invalid={errors.nationalId ? true : undefined}
+          />
+        </FormField>
+
+        <FormField id="patient-city" label="City" error={errors.city}>
+          <Input
+            id="patient-city"
+            value={values.city}
+            onChange={(e) => set("city", e.target.value)}
+            maxLength={80}
+            autoComplete="off"
+            placeholder="e.g. Cairo"
+            aria-invalid={errors.city ? true : undefined}
+          />
+        </FormField>
+
         <FormField id="patient-language" label="Preferred language" error={errors.language}>
           <Select
             id="patient-language"

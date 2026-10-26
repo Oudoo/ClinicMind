@@ -1,5 +1,5 @@
 import { Badge } from "@/components/ui/primitives";
-import { STATUS_LABEL, type AppointmentStatus } from "@/modules/appointments/transitions";
+import { KIND_LABEL, STATUS_LABEL, type AppointmentKind, type AppointmentStatus } from "@/modules/appointments/transitions";
 
 type Tone = "default" | "accent" | "success" | "warning" | "danger";
 
@@ -18,6 +18,15 @@ export function AppointmentStatusBadge({ status, className }: { status: Appointm
   return (
     <Badge tone={STATUS_TONE[status]} className={className}>
       {STATUS_LABEL[status]}
+    </Badge>
+  );
+}
+
+/** The booking's kind (consultation, follow-up, procedure, check-up) as a quiet badge. */
+export function AppointmentKindBadge({ kind, className }: { kind: AppointmentKind; className?: string }) {
+  return (
+    <Badge tone="default" className={className} title="Appointment kind">
+      {KIND_LABEL[kind]}
     </Badge>
   );
 }

@@ -95,3 +95,51 @@ export function transitionLabel(from: AppointmentStatus, to: AppointmentStatus):
       return "Waitlist";
   }
 }
+
+// ── Kinds ────────────────────────────────────────────────────────────────────
+
+export const APPOINTMENT_KINDS = ["CONSULTATION", "FOLLOW_UP", "PROCEDURE", "CHECK_UP"] as const;
+export type AppointmentKind = (typeof APPOINTMENT_KINDS)[number];
+
+export const KIND_LABEL: Record<AppointmentKind, string> = {
+  CONSULTATION: "Consultation",
+  FOLLOW_UP: "Follow-up",
+  PROCEDURE: "Procedure",
+  CHECK_UP: "Check-up",
+};
+
+// ── Live bookings, lateness and the slot grid ────────────────────────────────
+
+/** Statuses of a booking that is still ahead or under way (what the "next appointment" button shows). */
+export const LIVE_STATUSES = ["SCHEDULED", "CONFIRMED", "CHECKED_IN", "IN_PROGRESS"] as const satisfies readonly AppointmentStatus[];
+
+export function isLive(status: AppointmentStatus): boolean {
+  return (LIVE_STATUSES as readonly AppointmentStatus[]).includes(status);
+}
+
+/** A checked-in patient still waiting this many minutes past the start is "running late". */
+export const LATE_AFTER_MINUTES = 10;
+/** A booking with no check-in this many minutes past its start is flagged to reception once. */
+export const NO_SHOW_FLAG_AFTER_MINUTES = 20;
+/** Free slots are offered on this grid. */
+export const SLOT_STEP_MINUTES = 15;
+
+/** Tenant setting `hours`: open weekdays (0 = Sunday … 6 = Saturday) and the daily opening span. */
+export interface WorkingHours {
+  days: number[];
+  /** `HH:mm` on the clinic clock. */
+  start: string;
+  end: string;
+}
+
+/** Saturday to Thursday, 10:00–20:00; Friday closed. */
+export const DEFAULT_WORKING_HOURS: WorkingHours = { days: [6, 0, 1, 2, 3, 4], start: "10:00", end: "20:00" };
+
+// ── Dictated notes ───────────────────────────────────────────────────────────
+
+export const APPOINTMENT_NOTE_KINDS = ["DICTATION", "TEXT"] as const;
+export type AppointmentNoteKind = (typeof APPOINTMENT_NOTE_KINDS)[number];
+export const MAX_NOTE_LENGTH = 5000;
+export const NOTE_LANGUAGES = ["auto", "ar", "en"] as const;
+export type NoteLanguage = (typeof NOTE_LANGUAGES)[number];
+export const LANGUAGE_LABEL: Record<string, string> = { ar: "Arabic", en: "English", auto: "Auto" };
