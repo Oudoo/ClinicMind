@@ -52,12 +52,17 @@ function zoned(y: number, m: number, d: number, h: number, min: number): Date {
   }
   return new Date(guess);
 }
+/**
+ * Today's date on the clinic clock, `offsetDays` calendar days on. Steps the
+ * date, not the instant: a day is 23 or 25 hours long when daylight saving
+ * starts or ends, and adding 24 hours to "now" then lands on the same day
+ * twice (two schedules for one day, double-booking the doctors) or skips one.
+ */
 function calendarDay(offsetDays: number): { y: number; m: number; d: number; weekday: number } {
-  const now = new Date(Date.now() + offsetDays * 86_400_000);
-  const parts = new Intl.DateTimeFormat("en-GB", { timeZone: TZ, year: "numeric", month: "2-digit", day: "2-digit", weekday: "short" }).formatToParts(now);
-  const get = (t: string) => parts.find((p) => p.type === t)?.value ?? "";
-  const weekday = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].indexOf(get("weekday"));
-  return { y: Number(get("year")), m: Number(get("month")), d: Number(get("day")), weekday };
+  const parts = new Intl.DateTimeFormat("en-GB", { timeZone: TZ, year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(new Date());
+  const get = (t: string) => Number(parts.find((p) => p.type === t)?.value ?? 0);
+  const date = new Date(Date.UTC(get("year"), get("month") - 1, get("day") + offsetDays));
+  return { y: date.getUTCFullYear(), m: date.getUTCMonth() + 1, d: date.getUTCDate(), weekday: date.getUTCDay() };
 }
 
 // ── Clinical vocabulary ──────────────────────────────────────────────────────
