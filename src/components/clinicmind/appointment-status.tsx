@@ -14,7 +14,27 @@ export const STATUS_TONE: Record<AppointmentStatus, Tone> = {
   NO_SHOW: "danger",
 };
 
-export function AppointmentStatusBadge({ status, className }: { status: AppointmentStatus; className?: string }) {
+/**
+ * The booking's status. A scheduled booking whose patient was asked to
+ * confirm a new time (`awaitingSince`, the request) reads "Awaiting patient"
+ * until they answer.
+ */
+export function AppointmentStatusBadge({
+  status,
+  awaitingSince,
+  className,
+}: {
+  status: AppointmentStatus;
+  awaitingSince?: string | null;
+  className?: string;
+}) {
+  if (status === "SCHEDULED" && awaitingSince) {
+    return (
+      <Badge tone="warning" className={className} title="Asked to confirm the new time on WhatsApp: no answer yet">
+        Awaiting patient
+      </Badge>
+    );
+  }
   return (
     <Badge tone={STATUS_TONE[status]} className={className}>
       {STATUS_LABEL[status]}

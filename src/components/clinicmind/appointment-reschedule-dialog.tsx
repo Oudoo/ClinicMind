@@ -4,10 +4,10 @@ import { useEffect, useId, useRef, useState, type FormEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogClose, DialogContent, DialogFooter } from "@/components/ui/dialog";
 import { Alert, Field } from "@/components/ui/field";
-import { Input, Select } from "@/components/ui/input";
+import { Checkbox, Input, Select } from "@/components/ui/input";
 import { apiFetch } from "@/lib/http";
 import { fromLocalInput, minutesBetween, toLocalInput } from "@/lib/time";
-import type { AppointmentDTO, FreeSlotsDTO, SlotSuggestionDTO } from "@/modules/appointments/dto";
+import type { AppointmentDTO, ConfirmationRequestDTO, FreeSlotsDTO, SlotSuggestionDTO } from "@/modules/appointments/dto";
 import { DEFAULT_WORKING_HOURS, MAX_DURATION_MINUTES, MIN_DURATION_MINUTES, type WorkingHours } from "@/modules/appointments/transitions";
 import { SlotPicker } from "./appointment-slot-picker";
 import {
@@ -29,7 +29,9 @@ import {
  * with the target day's free slots for the chosen doctor. A 409 lists the
  * bookings in the way, offers the next three free slots and the waitlist; a
  * patient overlap can be kept on purpose. A new time in the past or outside
- * the opening hours is refused with the reason (the owner may override).
+ * the opening hours is refused with the reason (the owner may override). A new
+ * time asks the patient to confirm it on WhatsApp unless the desk unticks it
+ * (they already agreed on the phone or at the desk).
  */
 export function RescheduleAppointmentDialog({
   appointment,
@@ -46,7 +48,8 @@ export function RescheduleAppointmentDialog({
   /** The viewer may move a booking into the past or outside the hours on purpose (users:manage). */
   canOverride?: boolean;
   onOpenChange: (open: boolean) => void;
-  onDone: (appointment: AppointmentDTO, waitlisted: boolean) => void;
+  /** `confirmation`: what became of the request that the patient confirm the new time (null when none was asked). */
+  onDone: (appointment: AppointmentDTO, waitlisted: boolean, confirmation: ConfirmationRequestDTO | null) => void;
 }) {
   const id = useId();
   const { doctors, error: doctorsError } = useDoctors(true, appointment.kind);
@@ -59,6 +62,7 @@ export function RescheduleAppointmentDialog({
   // Owner overrides asked for on purpose; moving the start again drops them.
   const [overrides, setOverrides] = useState({ allowPast: false, allowOutsideHours: false });
   const [suggestions, setSuggestions] = useState<SlotSuggestionDTO[] | null>(null);
+  const [askToConfirm, setAskToConfirm] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   // The form scrolls inside the dialog and the refusal (with its suggestions) is
@@ -75,6 +79,10 @@ export function RescheduleAppointmentDialog({
   const endsAt = fromLocalInput(end, timezone);
   const durationMinutes = startsAt && endsAt && endsAt > startsAt ? Math.round(minutesBetween(startsAt, endsAt)) : 30;
   const dayKey = start.slice(0, 10);
+  // Compared to the minute the form shows, so an untouched time never reads as a move.
+  const sameMinute = (d: Date | null, iso: string) => d !== null && toLocalInput(d, timezone) === toLocalInput(new Date(iso), timezone);
+  const timeChanged = !(sameMinute(startsAt, appointment.startsAt) && sameMinute(endsAt, appointment.endsAt));
+  const firstName = appointment.patient.fullName.trim().split(/\s+/)[0] || appointment.patient.fullName;
 
   /** Moving the start keeps the appointment's length. */
   function moveStart(value: string) {
@@ -127,6 +135,8 @@ export function RescheduleAppointmentDialog({
       setError(`Appointments last between ${MIN_DURATION_MINUTES} and ${MAX_DURATION_MINUTES} minutes.`);
       return;
     }
+    // An unchanged time goes back exactly as booked (to the second), so the server sees no move.
+    const keepsTime = sameMinute(from, appointment.startsAt) && sameMinute(to, appointment.endsAt);
     const allowPast = opts.allowPast ?? overrides.allowPast;
     const allowOutsideHours = opts.allowOutsideHours ?? overrides.allowOutsideHours;
     setBusy(true);
@@ -134,20 +144,21 @@ export function RescheduleAppointmentDialog({
     setConflict(null);
     setTimeRule(null);
     try {
-      const res = await apiFetch<{ appointment: AppointmentDTO }>(`/api/appointments/${appointment.id}`, {
+      const res = await apiFetch<{ appointment: AppointmentDTO; confirmation?: ConfirmationRequestDTO | null }>(`/api/appointments/${appointment.id}`, {
         method: "PATCH",
         body: {
-          startsAt: from.toISOString(),
-          endsAt: to.toISOString(),
+          startsAt: keepsTime ? appointment.startsAt : from.toISOString(),
+          endsAt: keepsTime ? appointment.endsAt : to.toISOString(),
           doctorId: doctorId || null,
           room: room.trim() || null,
           allowWaitlist: Boolean(opts.allowWaitlist),
           allowPatientOverlap: Boolean(opts.allowPatientOverlap),
           ...(allowPast ? { allowPast: true } : {}),
           ...(allowOutsideHours ? { allowOutsideHours: true } : {}),
+          askPatientToConfirm: askToConfirm,
         },
       });
-      onDone(res.appointment, res.appointment.status === "WAITLISTED");
+      onDone(res.appointment, res.appointment.status === "WAITLISTED", res.confirmation ?? null);
     } catch (err) {
       const found = conflictInfo(err);
       const rule = timeRuleInfo(err);
@@ -265,6 +276,18 @@ export function RescheduleAppointmentDialog({
               disabled={busy}
             />
           </section>
+
+          {timeChanged ? (
+            <label className="flex items-start gap-2.5 rounded-lg border border-border p-3 text-sm">
+              <Checkbox checked={askToConfirm} onChange={(e) => setAskToConfirm(e.target.checked)} className="mt-0.5 shrink-0" disabled={busy} />
+              <span>
+                Ask {firstName} to confirm the new time on WhatsApp
+                <span className="mt-0.5 block text-xs text-muted-foreground">
+                  They reply 1 to confirm or 2 for another time. Untick if they have already agreed to it.
+                </span>
+              </span>
+            </label>
+          ) : null}
 
           <DialogFooter>
             <DialogClose asChild>

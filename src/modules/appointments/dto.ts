@@ -38,6 +38,8 @@ export interface AppointmentDTO {
   cancelReason: string | null;
   source: string;
   confirmedAt: string | null;
+  /** The patient was asked to confirm a moved time and has not answered yet (status stays SCHEDULED). */
+  confirmationRequestedAt: string | null;
   checkedInAt: string | null;
   /** Live (not removed) dictated or typed notes on the booking. */
   notesCount: number;
@@ -45,6 +47,16 @@ export interface AppointmentDTO {
   doctor: PersonSummaryDTO | null;
   /** Present when one appointment is read (`GET /api/appointments/[id]`). */
   dictatedNotes?: AppointmentNoteDTO[];
+}
+
+/** What happened to the request that the patient confirm a moved time (PATCH /api/appointments/[id]). */
+export interface ConfirmationRequestDTO {
+  requested: boolean;
+  /** SENT, LOGGED (no channel connected: on the conversation for the desk to send), FAILED or null (nothing sent). */
+  delivery: "QUEUED" | "SENT" | "DELIVERED" | "READ" | "FAILED" | "LOGGED" | null;
+  /** `no_phone`, `error`, or the channel's failure reason. */
+  reason: string | null;
+  conversationId: string | null;
 }
 
 export interface AppointmentConflictDTO {
@@ -139,6 +151,7 @@ interface AppointmentRowLike {
   cancelReason: string | null;
   source: string;
   confirmedAt?: Date | null;
+  confirmationRequestedAt?: Date | null;
   checkedInAt?: Date | null;
   notesCount?: number;
   patient: PersonSummaryDTO;
@@ -176,6 +189,7 @@ export function toAppointmentDTO(a: AppointmentRowLike): AppointmentDTO {
     cancelReason: a.cancelReason,
     source: a.source,
     confirmedAt: a.confirmedAt ? a.confirmedAt.toISOString() : null,
+    confirmationRequestedAt: a.status === "SCHEDULED" && a.confirmationRequestedAt ? a.confirmationRequestedAt.toISOString() : null,
     checkedInAt: a.checkedInAt ? a.checkedInAt.toISOString() : null,
     notesCount: a.notesCount ?? a.dictatedNotes?.length ?? 0,
     patient: a.patient,

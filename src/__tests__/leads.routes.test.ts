@@ -8,6 +8,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 // Tests seed and inspect across clinics: the system connection, outside row-level security.
 import { systemDb as db } from "@/lib/db";
+import { endOfDayInTz } from "@/lib/time";
 import { GET as listRoute, POST as createRoute } from "@/app/api/leads/route";
 import { GET as getRoute, PATCH as patchRoute } from "@/app/api/leads/[id]/route";
 import { POST as stageRoute } from "@/app/api/leads/[id]/stage/route";
@@ -322,7 +323,8 @@ describe.skipIf(!dbTestsEnabled)("leads", () => {
   describe("follow-ups", () => {
     it("creates (owner defaults to the lead owner), lists by scope, completes with an outcome and stamps the lead", async () => {
       const l = await lead({ fullName: "Follow Up", ownerId: receptionA.id });
-      const soon = new Date(Date.now() + 5 * 60_000);
+      // Due today on the clinic clock (the "due" list is today's), even in the day's last minutes.
+      const soon = new Date(Math.min(Date.now() + 5 * 60_000, endOfDayInTz(new Date(), "Africa/Cairo").getTime() - 60_000));
       const createdFu = await post("/api/leads/x/follow-ups", createFollowUpRoute, l.id, { dueAt: soon.toISOString(), note: "Send prices", channel: "WHATSAPP" });
       expect(createdFu.res.status).toBe(201);
       expect(createdFu.json.followUp).toMatchObject({ leadId: l.id, owner: { id: receptionA.id }, note: "Send prices", channel: "WHATSAPP", doneAt: null });

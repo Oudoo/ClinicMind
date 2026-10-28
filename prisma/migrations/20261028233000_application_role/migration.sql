@@ -23,8 +23,15 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO clinicmin
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO clinicmind_app;
 
 -- Sessions, one-time tokens and sign-in history are read across clinics, by
--- the owner connection only; the migration history is not the app's either.
-REVOKE ALL ON "sessions", "auth_tokens", "login_events", "_prisma_migrations" FROM clinicmind_app;
+-- the owner connection only; the migration history is not the app's either
+-- (absent from the shadow database `prisma migrate dev` replays into).
+REVOKE ALL ON "sessions", "auth_tokens", "login_events" FROM clinicmind_app;
+DO $$
+BEGIN
+  IF to_regclass('public._prisma_migrations') IS NOT NULL THEN
+    REVOKE ALL ON "_prisma_migrations" FROM clinicmind_app;
+  END IF;
+END $$;
 
 -- Tables and sequences added by later migrations get the same grants.
 ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO clinicmind_app;

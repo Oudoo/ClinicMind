@@ -16,7 +16,7 @@ embedded in the clinic's website or portal.
 | Area | What it does |
 |---|---|
 | **Patients** | Registry with search (name, phone, e-mail), pagination, archive/restore, medical history (conditions, allergies, diagnoses, surgeries), medications, documents and a unified chronological timeline. |
-| **Appointments** | Week and day views on the clinic's clock, booking with per-doctor and per-room conflict detection, reschedule, cancel with reason, and the full lifecycle: scheduled → confirmed → checked in → in progress → completed, or no-show. |
+| **Appointments** | Week and day views on the clinic's clock, booking with per-doctor and per-room conflict detection, reschedule (the patient is asked on WhatsApp to confirm the new time; a reply of 1 confirms it), cancel with reason, and the full lifecycle: scheduled → confirmed → checked in → in progress → completed, or no-show. |
 | **Consultation intelligence** | Transcript → structured extraction (symptoms, diagnoses, tests, follow-ups, medications) → editable review → **sign**. Nothing reaches the patient record until a clinician signs; signing reconciles medications, creates the visit and writes the timeline. |
 | **AI assistant** | Retrieval-augmented chat over the clinic's records (pgvector + lexical match), optionally focused on one patient. Every answer states whether it is grounded and cites the records it came from; when nothing matches it says so. |
 | **Team and access** | Password sign-in, server-side sessions, invitations and password reset, lockout and rate limits, six roles enforced at every API boundary. |

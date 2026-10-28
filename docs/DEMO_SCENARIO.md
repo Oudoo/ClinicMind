@@ -78,6 +78,12 @@ minute, qualify, book a real slot, re-engage quiet leads, hand over to staff.
 appointment**: pick a patient, **Dr. Omar Fahmy**, today, a time already taken
 on his column. ClinicMind refuses the overlap and names the clash, with a
 waitlist option. Move it to a free slot and book; from the **⋯** menu confirm it.
+Then **Reschedule** it to a later time: the booking goes back to unconfirmed
+and reads **Awaiting patient**, and the patient's WhatsApp thread holds the
+request in their language ("reply 1 to confirm, or 2 for another time"). A
+reply of 1 confirms the booking and thanks them without bothering reception;
+2 tells reception to find another time. In the demo no WhatsApp number is
+connected, so the request is logged on the thread for the desk to send.
 Then open **Conversations**: the seeded WhatsApp threads show where channel
 traffic lands in the record.
 

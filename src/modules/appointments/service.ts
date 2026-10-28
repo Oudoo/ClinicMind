@@ -19,6 +19,7 @@ import {
 } from "@/lib/time";
 import { TenantScopeError, requireTenantClinic, requireTenantPatient, requireTenantUser } from "@/lib/tenant-scope";
 import { zDateTime, zOptionalText, zText } from "@/lib/validation";
+import { requestConfirmation, type ConfirmationRequest } from "./confirmation";
 import { toAppointmentDTO, type FreeSlotsDTO, type NextAppointmentDTO, type SlotCellDTO } from "./dto";
 import { buildSlotGrid, freeCellsAfter, initialsOf, normaliseHours, type SlotCell, type TakenRange } from "./slots";
 import { clinicDayLabel, hoursViolation, isInThePast, transitionTimeBlock, type TransitionTimeCode } from "./rules";
@@ -416,6 +417,8 @@ export const AppointmentUpdateInput = z
     allowPast: z.boolean().default(false),
     /** Owner only: move the booking outside the opening hours. Audited. */
     allowOutsideHours: z.boolean().default(false),
+    /** A new time asks the patient to confirm it on WhatsApp (appointments/confirmation.ts); false when they already agreed (on the phone, at the desk). */
+    askPatientToConfirm: z.boolean().default(true),
   })
   .superRefine((v, ctx) => {
     if ((v.startsAt === undefined) !== (v.endsAt === undefined)) {
@@ -911,7 +914,7 @@ export async function rescheduleAppointment(
   } catch (err) {
     throw await conflictFromError(tenantId, actor, err, seen.slot ?? { startsAt: input.startsAt ?? new Date(), endsAt: input.endsAt ?? new Date(), excludeId: id });
   }
-  const { before, after, conflicts, slotChanged, overrides } = outcome;
+  const { before, after, conflicts, slotChanged, timeChanged, overrides } = outcome;
 
   await audit({
     tenantId,
@@ -927,7 +930,20 @@ export async function rescheduleAppointment(
   // The patient profile document lists upcoming appointments; refresh it.
   ingestInBackground({ kind: "patient", tenantId, id: before.patientId });
 
-  return { appointment: await attachDoctor(tenantId, after), conflicts };
+  // A live booking at a new time ahead asks the patient to confirm it (unless the desk says they already did).
+  let confirmation: ConfirmationRequest | null = null;
+  const now = new Date();
+  if (timeChanged && after.status === "SCHEDULED" && after.startsAt > now && input.askPatientToConfirm) {
+    try {
+      confirmation = await requestConfirmation(tenantId, after, { timezone: clock.timezone, actor, now });
+    } catch (err) {
+      console.error("[appointments] could not ask the patient to confirm the new time", err);
+      confirmation = { requested: false, delivery: null, reason: "error", conversationId: null };
+    }
+  }
+  const moved = confirmation?.requested ? { ...after, confirmationRequestedAt: now } : after;
+
+  return { appointment: await attachDoctor(tenantId, moved), conflicts, confirmation };
 }
 
 async function applyReschedule(
@@ -996,6 +1012,8 @@ async function applyReschedule(
       statusChangedAt: status === before.status ? undefined : now,
       // A moved booking is a new promise: the old confirmation no longer stands.
       confirmedAt: status !== before.status && status === "SCHEDULED" ? null : undefined,
+      // Nor does a request to confirm the old time.
+      confirmationRequestedAt: timeChanged ? null : undefined,
     },
     include: appointmentInclude,
   });
@@ -1010,7 +1028,7 @@ async function applyReschedule(
     if (event) await tx.timelineEvent.update({ where: { id: event.id }, data: { occurredAt: startsAt } });
   }
 
-  return { before: shape(before), after: shape(after), conflicts, slotChanged, overrides };
+  return { before: shape(before), after: shape(after), conflicts, slotChanged, timeChanged, overrides };
 }
 
 const TIMELINE_FOR_STATUS: Partial<Record<AppointmentStatus, string>> = {
@@ -1073,6 +1091,8 @@ export async function transitionAppointment(
           statusChangedAt: now,
           cancelReason: keepsReason ? (input.reason ?? null) : null,
           confirmedAt: input.status === "CONFIRMED" ? now : input.status === "SCHEDULED" ? null : undefined,
+          // Any change of status settles a pending request to confirm a new time.
+          confirmationRequestedAt: null,
           checkedInAt: input.status === "CHECKED_IN" ? now : input.status === "SCHEDULED" ? null : undefined,
         },
         include: appointmentInclude,

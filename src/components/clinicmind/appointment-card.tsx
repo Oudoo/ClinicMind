@@ -115,7 +115,7 @@ export function AppointmentCard({
         <div className="flex flex-wrap items-center justify-between gap-2 sm:justify-end">
           {notesBadge}
           <AppointmentKindBadge kind={appointment.kind} />
-          <AppointmentStatusBadge status={appointment.status} />
+          <AppointmentStatusBadge status={appointment.status} awaitingSince={appointment.confirmationRequestedAt} />
           {menu}
         </div>
       </article>
@@ -134,7 +134,7 @@ export function AppointmentCard({
           {notesBadge}
         </span>
         <div className="ml-auto flex shrink-0 items-center gap-1">
-          <AppointmentStatusBadge status={appointment.status} />
+          <AppointmentStatusBadge status={appointment.status} awaitingSince={appointment.confirmationRequestedAt} />
           {menu}
         </div>
       </div>

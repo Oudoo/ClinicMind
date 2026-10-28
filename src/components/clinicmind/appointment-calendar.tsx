@@ -19,7 +19,7 @@ import { NewAppointmentDialog } from "./appointment-new-dialog";
 import { NoShowDialog } from "./appointment-no-show-dialog";
 import { AppointmentNotesDialog } from "./appointment-notes-dialog";
 import { RescheduleAppointmentDialog } from "./appointment-reschedule-dialog";
-import { describeApiError, staffLabel, type StaffOption } from "./appointment-shared";
+import { describeApiError, describeConfirmation, staffLabel, type StaffOption } from "./appointment-shared";
 
 export type CalendarView = "week" | "day";
 
@@ -338,12 +338,12 @@ function Calendar({
           onOpenChange={(open) => {
             if (!open) setRescheduleTarget(null);
           }}
-          onDone={(appointment, waitlisted) => {
+          onDone={(appointment, waitlisted, confirmation) => {
             setRescheduleTarget(null);
             toast({
               title: waitlisted ? "Moved to the waitlist" : "Appointment rescheduled",
-              description: appointment.patient.fullName,
-              tone: "success",
+              description: describeConfirmation(confirmation, appointment.patient.fullName) ?? appointment.patient.fullName,
+              tone: confirmation && !confirmation.requested ? "info" : "success",
             });
             router.refresh();
           }}

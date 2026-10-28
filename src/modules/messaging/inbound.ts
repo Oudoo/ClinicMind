@@ -6,6 +6,8 @@ import { zOptionalText, zText } from "@/lib/validation";
 import { notify } from "@/modules/notifications/service";
 import { createLead } from "@/modules/crm/service";
 import { CHANNELS, channelToSource, normalisePhone, type LeadSourceKey } from "@/modules/crm/shared";
+import { claimConfirmationReply, finishConfirmationReply } from "@/modules/appointments/confirmation";
+import { getTenantTimezone } from "@/modules/appointments/service";
 import { tagObjections } from "./tagger";
 
 /**
@@ -114,6 +116,8 @@ export interface InboundResult {
   createdLead: boolean;
   duplicate: boolean;
   objections: ObjectionTag[];
+  /** The message answered a request to confirm a moved appointment (1 or 2), and changed it. */
+  appointmentReply: { answer: "confirm" | "decline"; appointmentId: string } | null;
 }
 
 /** Store an inbound message for the tenant (see module doc). */
@@ -144,6 +148,7 @@ export async function handleInbound(tenantId: string, msg: InboundMessage): Prom
           createdLead: false,
           duplicate: true,
           objections: existing.conversation.objections,
+          appointmentReply: null,
         };
         return { duplicate: true as const, result };
       }
@@ -204,12 +209,18 @@ export async function handleInbound(tenantId: string, msg: InboundMessage): Prom
     const suggested = tagObjections(msg.body) as ObjectionTag[];
     const objections = conversation.objectionsConfirmedAt ? conversation.objections : ([...new Set([...conversation.objections, ...suggested])] as ObjectionTag[]);
 
+    // "1" or "2" to a request to confirm a moved appointment (appointments/confirmation.ts).
+    const patientId = conversation.patientId ?? patient?.id ?? null;
+    const reply = patientId ? await claimConfirmationReply(tx, tenantId, patientId, msg.body, now) : null;
+    // A confirmation answers itself: the thread keeps the turn it had.
+    const settled = reply?.applied === true && reply.answer === "confirm";
+
     const updated = await tx.conversation.update({
       where: { id: conversation.id },
       data: {
         lastInboundAt: now,
-        status: "WAITING_ON_CLINIC",
-        closedAt: null,
+        status: settled ? conversation.status : "WAITING_ON_CLINIC",
+        closedAt: settled ? conversation.closedAt : null,
         objections,
         patientId: conversation.patientId ?? patient?.id ?? null,
         leadId: conversation.leadId ?? lead?.id ?? null,
@@ -219,11 +230,11 @@ export async function handleInbound(tenantId: string, msg: InboundMessage): Prom
         updatedAt: now,
       },
     });
-    return { duplicate: false as const, conversation: updated, messageId: message.id, patient, lead, createdConversation, objections };
+    return { duplicate: false as const, conversation: updated, messageId: message.id, patient, lead, createdConversation, objections, reply };
   });
 
   if (stored.duplicate) return stored.result;
-  const { conversation, messageId, patient, lead, createdConversation, objections } = stored;
+  const { conversation, messageId, patient, lead, createdConversation, objections, reply } = stored;
 
   // Unknown contact: a lead opens itself so nobody falls through the cracks.
   let leadId = conversation.leadId;
@@ -250,21 +261,35 @@ export async function handleInbound(tenantId: string, msg: InboundMessage): Prom
     createdLead = true;
   }
 
+  // The answer to a confirmation request: audited and the patient thanked. A
+  // confirmation needs nobody; a request for another time tells reception.
+  const settled = reply?.applied === true && reply.answer === "confirm";
+  let replyNotice: { title: string; body: string } | null = null;
+  if (reply?.applied) {
+    try {
+      replyNotice = await finishConfirmationReply(tenantId, reply, { messageId, conversationId: conversation.id, timezone: await getTenantTimezone(tenantId) });
+    } catch (err) {
+      console.error("[messaging] could not finish a confirmation reply", err);
+    }
+  }
+
   // Awaited so the desk is told before the webhook is answered; a failure is logged, never fatal.
-  const displayName = patient?.fullName ?? lead?.fullName ?? msg.name ?? phone;
-  try {
-    await notify(tenantId, {
-      kind: "MESSAGE_INBOUND",
-      title: `New message from ${displayName}`,
-      body: msg.body.length > 140 ? `${msg.body.slice(0, 137)}…` : msg.body,
-      href: `/dashboard/conversations?c=${conversation.id}`,
-      entity: "Conversation",
-      entityId: conversation.id,
-      userIds: conversation.assignedToId ? [conversation.assignedToId] : [],
-      roles: conversation.assignedToId ? [] : ["RECEPTIONIST"],
-    });
-  } catch (err) {
-    console.error("[messaging] MESSAGE_INBOUND notification failed", err);
+  if (!settled) {
+    const displayName = patient?.fullName ?? lead?.fullName ?? msg.name ?? phone;
+    try {
+      await notify(tenantId, {
+        kind: "MESSAGE_INBOUND",
+        title: replyNotice?.title ?? `New message from ${displayName}`,
+        body: replyNotice?.body ?? (msg.body.length > 140 ? `${msg.body.slice(0, 137)}…` : msg.body),
+        href: `/dashboard/conversations?c=${conversation.id}`,
+        entity: "Conversation",
+        entityId: conversation.id,
+        userIds: conversation.assignedToId ? [conversation.assignedToId] : [],
+        roles: conversation.assignedToId ? [] : ["RECEPTIONIST"],
+      });
+    } catch (err) {
+      console.error("[messaging] MESSAGE_INBOUND notification failed", err);
+    }
   }
 
   try {
@@ -292,6 +317,7 @@ export async function handleInbound(tenantId: string, msg: InboundMessage): Prom
     createdLead,
     duplicate: false,
     objections,
+    appointmentReply: reply?.applied ? { answer: reply.answer, appointmentId: reply.appointmentId } : null,
   };
 }
 

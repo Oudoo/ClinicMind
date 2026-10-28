@@ -32,7 +32,7 @@ import { NewAppointmentDialog } from "./appointment-new-dialog";
 import { NoShowDialog } from "./appointment-no-show-dialog";
 import { AppointmentNotesDialog } from "./appointment-notes-dialog";
 import { RescheduleAppointmentDialog } from "./appointment-reschedule-dialog";
-import { describeApiError, shortDayLabel } from "./appointment-shared";
+import { describeApiError, describeConfirmation, shortDayLabel } from "./appointment-shared";
 import { AppointmentKindBadge, AppointmentStatusBadge } from "./appointment-status";
 
 /** The card asks the server for a fresh answer this often (while the tab is visible). */
@@ -148,9 +148,9 @@ export function NextAppointmentCard({ initial, timezone, variant, patientId, pat
     void transition(a, "IN_PROGRESS", () => router.push(`/dashboard/consultations?appointmentId=${encodeURIComponent(a.id)}`));
   }
 
-  function afterDialog(message: string) {
+  function afterDialog(message: string, description?: string | null, tone: "success" | "info" = "success") {
     setDialog(null);
-    toast({ title: message, tone: "success" });
+    toast({ title: message, ...(description ? { description } : {}), tone });
     void refresh();
     router.refresh();
   }
@@ -216,7 +216,13 @@ export function NextAppointmentCard({ initial, timezone, variant, patientId, pat
           onOpenChange={(open) => {
             if (!open) setDialog(null);
           }}
-          onDone={(moved, waitlisted) => afterDialog(waitlisted ? "Moved to the waitlist" : `Rescheduled · ${moved.patient.fullName}`)}
+          onDone={(moved, waitlisted, confirmation) =>
+            afterDialog(
+              waitlisted ? "Moved to the waitlist" : `Rescheduled · ${moved.patient.fullName}`,
+              describeConfirmation(confirmation, moved.patient.fullName),
+              confirmation && !confirmation.requested ? "info" : "success",
+            )
+          }
         />
       ) : null}
       {dialog?.kind === "book" ? (
@@ -318,7 +324,7 @@ export function NextAppointmentCard({ initial, timezone, variant, patientId, pat
                 {countdown.label}
               </span>
               <AppointmentKindBadge kind={a.kind} />
-              <AppointmentStatusBadge status={a.status} />
+              <AppointmentStatusBadge status={a.status} awaitingSince={a.confirmationRequestedAt} />
               {a.notesCount ? (
                 <button
                   type="button"
@@ -439,7 +445,7 @@ export function NextAppointmentCard({ initial, timezone, variant, patientId, pat
                     </div>
                     <div className="flex shrink-0 flex-col items-end gap-1">
                       {late ? <Badge tone="danger">late</Badge> : null}
-                      <AppointmentStatusBadge status={q.status} />
+                      <AppointmentStatusBadge status={q.status} awaitingSince={q.confirmationRequestedAt} />
                     </div>
                   </li>
                 );

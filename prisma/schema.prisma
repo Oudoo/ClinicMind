@@ -430,34 +430,36 @@ model Medication {
 // ── Appointments ─────────────────────────────────────────────────────────────
 
 model Appointment {
-  id              String            @id @default(cuid())
-  tenantId        String
-  tenant          Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  clinicId        String?
-  clinic          Clinic?           @relation(fields: [clinicId], references: [id])
-  patientId       String
-  patient         Patient           @relation(fields: [patientId], references: [id], onDelete: Cascade)
-  doctorId        String?
-  room            String?
-  startsAt        DateTime
-  endsAt          DateTime
-  status          AppointmentStatus @default(SCHEDULED)
-  reason          String?
-  notes           String?
-  source          ChannelType       @default(IN_PERSON)
+  id                      String            @id @default(cuid())
+  tenantId                String
+  tenant                  Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  clinicId                String?
+  clinic                  Clinic?           @relation(fields: [clinicId], references: [id])
+  patientId               String
+  patient                 Patient           @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  doctorId                String?
+  room                    String?
+  startsAt                DateTime
+  endsAt                  DateTime
+  status                  AppointmentStatus @default(SCHEDULED)
+  reason                  String?
+  notes                   String?
+  source                  ChannelType       @default(IN_PERSON)
   /// Why the appointment was cancelled or marked a no-show.
-  cancelReason    String?
-  statusChangedAt DateTime?
-  createdById     String?
-  kind            AppointmentKind   @default(CONSULTATION)
-  treatmentId     String?
+  cancelReason            String?
+  statusChangedAt         DateTime?
+  createdById             String?
+  kind                    AppointmentKind   @default(CONSULTATION)
+  treatmentId             String?
   /// The CRM lead this booking came from, when it did.
-  leadId          String?
-  confirmedAt     DateTime?
-  checkedInAt     DateTime?
-  reminderSentAt  DateTime?
+  leadId                  String?
+  confirmedAt             DateTime?
+  /// When the patient was last asked to confirm a moved time (WhatsApp, reply 1 or 2); cleared once they answer or the booking changes status.
+  confirmationRequestedAt DateTime?
+  checkedInAt             DateTime?
+  reminderSentAt          DateTime?
   /// Set once when reception was told the patient has not checked in (appointments-late-flag job).
-  lateFlaggedAt   DateTime?
+  lateFlaggedAt           DateTime?
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt

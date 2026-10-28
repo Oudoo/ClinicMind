@@ -6,7 +6,7 @@ import { Alert } from "@/components/ui/field";
 import { ApiError, apiFetch } from "@/lib/http";
 import { formatDateInTz, formatTimeInTz, fromDateKey } from "@/lib/time";
 import { cn } from "@/lib/utils";
-import type { AppointmentConflictDTO, FreeSlotsDTO, SlotSuggestionDTO } from "@/modules/appointments/dto";
+import type { AppointmentConflictDTO, ConfirmationRequestDTO, FreeSlotsDTO, SlotSuggestionDTO } from "@/modules/appointments/dto";
 import { clinicDayLabel, closedDaysLabel, describeHours, isClosedDay } from "@/modules/appointments/rules";
 import { STATUS_LABEL, type AppointmentKind, type AppointmentStatus, type WorkingHours } from "@/modules/appointments/transitions";
 
@@ -197,6 +197,22 @@ export function OpeningHoursHint({ date, hours, timezone, className }: { date: s
       {closedLabel ? ` · ${closedLabel}` : ""}
     </span>
   );
+}
+
+/**
+ * One line for the toast after a move: whether the patient was asked to
+ * confirm the new time, and what reception does when they could not be.
+ */
+export function describeConfirmation(confirmation: ConfirmationRequestDTO | null | undefined, patientName: string): string | null {
+  if (!confirmation) return null;
+  const first = patientName.trim().split(/\s+/)[0] || patientName;
+  if (confirmation.requested) {
+    return confirmation.delivery === "LOGGED"
+      ? `The request to confirm is on ${first}'s conversation: no WhatsApp channel is connected, so send it from the clinic's phone.`
+      : `${first} was asked on WhatsApp to confirm the new time.`;
+  }
+  if (confirmation.reason === "no_phone") return `No mobile number on file: call ${first} to confirm the new time.`;
+  return `WhatsApp could not deliver the request${confirmation.reason && confirmation.reason !== "error" ? ` (${confirmation.reason})` : ""}: call ${first} to confirm the new time.`;
 }
 
 export function describeApiError(err: unknown): string {
