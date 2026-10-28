@@ -205,6 +205,23 @@ describe.skipIf(!dbTestsEnabled)("invoice routes", () => {
       expect((await read(later.json.invoice.id)).json.invoice).toMatchObject({ status: "PART_PAID", paid: 500, due: 700 });
     });
 
+    it("matches a payment to the invoice it is for, by hand", async () => {
+      const p = await patient("Hand Matched");
+      await charge(p, 1_000);
+      const older = (await issue((await draft({ patientId: p })).json.invoice.id)).json.invoice.id as string;
+      await charge(p, 800);
+      const newer = (await issue((await draft({ patientId: p })).json.invoice.id)).json.invoice.id as string;
+      const paid = await pay({ patientId: p, kind: "PAYMENT", method: "CARD", amount: 800, invoiceId: newer });
+      expect(paid.res.status).toBe(201);
+      expect((await read(newer)).json.invoice).toMatchObject({ status: "PAID", paid: 800 });
+      expect((await read(older)).json.invoice).toMatchObject({ status: "ISSUED", paid: 0 });
+      // Only a payment, only an invoice with something to pay, only the patient's own.
+      expect((await pay({ patientId: p, kind: "DEPOSIT", method: "CASH", amount: 100, invoiceId: older })).res.status).toBe(422);
+      expect((await pay({ patientId: p, kind: "PAYMENT", method: "CASH", amount: 100, invoiceId: newer })).res.status).toBe(409);
+      const other = await patient("Someone Else");
+      expect((await pay({ patientId: other, kind: "PAYMENT", method: "CASH", amount: 100, invoiceId: older })).res.status).toBe(404);
+    });
+
     it("holds a deposit for a procedure until the invoice that bills it", async () => {
       const p = await patient("Deposit Holder");
       const procedure = await db.procedure.create({ data: { tenantId: a, patientId: p, treatmentId: acne, performedAt: new Date(), price: 2_000 } });

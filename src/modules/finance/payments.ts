@@ -10,7 +10,7 @@ import { KIND_LABELS, LARGE_PAYMENT_THRESHOLD, MAX_AMOUNT, METHOD_LABELS, PAYMEN
 import { FinanceError, PaymentNotFoundError } from "./errors";
 import { requireTenantAppointment, type Actor } from "./procedures";
 import { clinicForPayment, takeNumber } from "./documents";
-import { allocateCredit, CREDITING_KINDS, patientCredit, releasePayment } from "./allocations";
+import { allocateCredit, CREDITING_KINDS, patientCredit, refreshInvoiceStatus, releasePayment } from "./allocations";
 
 /**
  * Payments: money in or out, whole EGP. Deposits and payments are linked to a
@@ -34,11 +34,14 @@ export const PaymentInput = z
     paidAt: zDateTime.optional(),
     procedureId: zOptionalText(64),
     appointmentId: zOptionalText(64),
+    /** Put it towards this invoice first (matched by hand); otherwise the oldest open invoice is paid first. */
+    invoiceId: zOptionalText(64),
     reference: zOptionalText(120),
     note: zOptionalText(1000),
   })
   .superRefine((v, ctx) => {
     if (v.kind === "REFUND" && !v.note) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["note"], message: "Say why the money is refunded" });
+    if (v.invoiceId && v.kind !== "PAYMENT") ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["invoiceId"], message: "Only a payment goes towards an invoice" });
   });
 export type PaymentInput = z.infer<typeof PaymentInput>;
 
@@ -113,6 +116,13 @@ export async function recordPayment(tenantId: string, rawInput: unknown, actor: 
         });
       }
     }
+    const invoice = input.invoiceId
+      ? await tx.invoice.findFirst({ where: { id: input.invoiceId, tenantId, patientId: input.patientId }, select: { id: true, status: true, total: true, number: true } })
+      : null;
+    if (input.invoiceId && !invoice) throw new TenantScopeError("invoice", input.invoiceId);
+    if (invoice && invoice.status !== "ISSUED" && invoice.status !== "PART_PAID") {
+      throw new FinanceError(409, "invalid_state", "the invoice has nothing to pay", { status: invoice.status, action: "paid", message: `Invoice ${invoice.number ?? ""} has nothing left to pay.` });
+    }
     const clinicId = await clinicForPayment(tx, tenantId, input);
     const receipt = clinicId ? await takeNumber(tx, tenantId, clinicId, input.kind === "REFUND" ? "REFUND" : "RECEIPT") : null;
     const payment = await tx.payment.create({
@@ -145,7 +155,18 @@ export async function recordPayment(tenantId: string, rawInput: unknown, actor: 
         occurredAt: paidAt,
       },
     });
-    const allocated = (CREDITING_KINDS as readonly string[]).includes(payment.kind) ? await allocateCredit(tx, tenantId, payment.patientId, actor.id ?? null) : 0;
+    let allocated = 0;
+    if (invoice) {
+      // Matched by hand: this invoice first, up to what it still needs.
+      const paid = (await tx.paymentAllocation.aggregate({ where: { tenantId, invoiceId: invoice.id }, _sum: { amount: true } }))._sum.amount ?? 0;
+      const amount = Math.min(payment.amount, invoice.total - paid);
+      if (amount > 0) {
+        await tx.paymentAllocation.create({ data: { tenantId, paymentId: payment.id, invoiceId: invoice.id, amount, createdById: actor.id ?? null } });
+        await refreshInvoiceStatus(tx, tenantId, invoice.id);
+        allocated += amount;
+      }
+    }
+    if ((CREDITING_KINDS as readonly string[]).includes(payment.kind)) allocated += await allocateCredit(tx, tenantId, payment.patientId, actor.id ?? null);
     return { payment, allocated };
   });
   const { payment } = created;

@@ -54,6 +54,9 @@ export function RecordPaymentDialog({
   const [reference, setReference] = useState("");
   const [note, setNote] = useState("");
   const [choices, setChoices] = useState<ProcedureChoice[] | null>(presetProcedures ?? null);
+  // The patient's invoices still to be paid: a payment can be matched to one by hand.
+  const [openInvoices, setOpenInvoices] = useState<{ id: string; number: string | null; due: number }[]>([]);
+  const [invoiceId, setInvoiceId] = useState("");
   const [issues, setIssues] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -83,7 +86,21 @@ export function RecordPaymentDialog({
     };
   }, [patient, presetProcedures, timezone]);
 
+  useEffect(() => {
+    if (!patient) return;
+    let cancelled = false;
+    apiFetch<{ invoices: { id: string; number: string | null; total: number; paid: number }[] }>(`/api/invoices?patientId=${encodeURIComponent(patient.id)}&status=OPEN&pageSize=50`)
+      .then((res) => {
+        if (!cancelled) setOpenInvoices(res.invoices.map((i) => ({ id: i.id, number: i.number, due: i.total - i.paid })).filter((i) => i.due > 0));
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [patient]);
+
   const chosen = choices?.find((c) => c.id === procedureId) ?? null;
+  const chosenInvoice = openInvoices.find((i) => i.id === invoiceId) ?? null;
 
   async function submit(e: FormEvent) {
     e.preventDefault();
@@ -110,6 +127,7 @@ export function RecordPaymentDialog({
           amount: value,
           paidAt: paidAt.toISOString(),
           procedureId: procedureId || undefined,
+          invoiceId: kind === "PAYMENT" && invoiceId ? invoiceId : undefined,
           reference: reference.trim() || undefined,
           note: note.trim() || undefined,
         },
@@ -189,6 +207,25 @@ export function RecordPaymentDialog({
             </Field>
           </div>
 
+          {patient && kind === "PAYMENT" && openInvoices.length ? (
+            <Field label="Towards an invoice" htmlFor={`${id}-invoice`} hint={issue("invoiceId") ?? (chosenInvoice ? `To pay on it: ${formatNumber(chosenInvoice.due)} EGP` : "Otherwise the oldest open invoice is paid first")}>
+              <div className="flex gap-2">
+                <Select id={`${id}-invoice`} value={invoiceId} onChange={(e) => setInvoiceId(e.target.value)}>
+                  <option value="">Oldest open invoice first</option>
+                  {openInvoices.map((i) => (
+                    <option key={i.id} value={i.id}>
+                      {i.number} · {formatNumber(i.due)} EGP to pay
+                    </option>
+                  ))}
+                </Select>
+                {chosenInvoice ? (
+                  <Button type="button" variant="outline" size="sm" className="h-10 shrink-0" onClick={() => setAmount(String(chosenInvoice.due))}>
+                    What is due
+                  </Button>
+                ) : null}
+              </div>
+            </Field>
+          ) : null}
           {patient ? (
             <Field
               label="Towards a procedure"

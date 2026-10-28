@@ -25,6 +25,7 @@ export type TenantScopedEntity =
   | "conversation"
   | "procedure"
   | "price_item"
+  | "invoice"
   | "protocol"
   | "enrolment"
   | "intake_link"
