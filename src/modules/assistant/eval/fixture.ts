@@ -223,8 +223,9 @@ export async function buildEvalClinic(
   const at = (base: Date, hours: number) => new Date(base.getTime() + hours * 3_600_000);
   await db.appointment.createMany({
     data: [
-      // today (early morning on the clinic clock, so it is "today" whatever the time of the run)
-      { tenantId: tenant.id, patientId: ids.camilia!, doctorId: mariam.id, startsAt: at(today0, 0.5), endsAt: at(today0, 1), status: "CONFIRMED", reason: "Melasma follow-up" },
+      // today, starting at midnight on the clinic clock: "today" and already begun whatever the
+      // time of the run, so never "upcoming" (00:30 was still ahead in the first half hour of the day)
+      { tenantId: tenant.id, patientId: ids.camilia!, doctorId: mariam.id, startsAt: today0, endsAt: at(today0, 0.5), status: "CONFIRMED", reason: "Melasma follow-up" },
       // upcoming
       { tenantId: tenant.id, patientId: ids.jana!, doctorId: mariam.id, startsAt: at(addDays(today0, 3, FIXTURE_TIMEZONE), 11), endsAt: at(addDays(today0, 3, FIXTURE_TIMEZONE), 11.5), status: "SCHEDULED", reason: "Acne review" },
       { tenantId: tenant.id, patientId: ids.tarek!, doctorId: omar.id, startsAt: at(addDays(today0, 5, FIXTURE_TIMEZONE), 12), endsAt: at(addDays(today0, 5, FIXTURE_TIMEZONE), 12.5), status: "CONFIRMED", reason: "Melasma follow-up" },
