@@ -22,6 +22,7 @@ import {
   ScrollText,
   Menu,
   X,
+  Tags,
 } from "lucide-react";
 import { BRAND } from "@/lib/brand";
 import { onAuthChange } from "@/lib/auth/browser-session";
@@ -52,6 +53,7 @@ const NAV: NavItem[] = [
   { href: "/dashboard/consultations", label: "Consultations", icon: Stethoscope },
   { href: "/dashboard/concierge", label: "Concierge", icon: HeartPulse, permission: "concierge:read" },
   { href: "/dashboard/finance", label: "Finance", icon: Banknote, permission: "finance:read" },
+  { href: "/dashboard/finance/prices", label: "Price list", icon: Tags, permission: "patients:write" },
   { href: "/dashboard/reports", label: "Reports", icon: ChartColumn, permission: "reports:read" },
   { href: "/dashboard/assistant", label: "AI Assistant", icon: Sparkles, badge: "RAG", permission: "ai:assistant" },
   { href: "/dashboard/clinic-ai", label: "Clinic AI", icon: Workflow, badge: "module" },
@@ -97,7 +99,8 @@ export function DashboardShell({
   const pathname = usePathname() ?? "/dashboard";
   const visible = NAV.filter((n) => !n.permission || can(user.role as UserRole, n.permission));
   const items = platform ? [PLATFORM_NAV, ...visible] : visible;
-  const current = items.find((n) => isActive(pathname, n.href));
+  // The most specific match wins (the price list sits under Finance).
+  const current = items.filter((n) => isActive(pathname, n.href)).sort((a, b) => b.href.length - a.href.length)[0];
   const title = current?.label ?? PAGE_TITLES.find(([prefix]) => pathname.startsWith(prefix))?.[1] ?? "Overview";
   const [open, setOpen] = useState(false);
 
@@ -119,7 +122,7 @@ export function DashboardShell({
   const nav = (
     <nav className="flex-1 space-y-0.5 p-3" aria-label="Main">
       {items.map((item) => {
-        const active = isActive(pathname, item.href);
+        const active = item === current;
         const Icon = item.icon;
         return (
           <Link

@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useState, type FormEvent } from "react";
+import { useEffect, useId, useRef, useState, type FormEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogClose, DialogContent, DialogFooter } from "@/components/ui/dialog";
 import { Alert, Field } from "@/components/ui/field";
@@ -8,20 +8,22 @@ import { Checkbox, Input, Select, Textarea } from "@/components/ui/input";
 import { DictationField } from "@/components/clinicmind/dictate-field";
 import { PatientPicker, type PatientOption } from "@/components/clinicmind/appointment-patient-picker";
 import { apiFetch, fieldErrors } from "@/lib/http";
-import { dateKeyInTz, fromLocalInput } from "@/lib/time";
+import { dateKeyInTz, formatDateInTz, fromDateKey, fromLocalInput } from "@/lib/time";
 import { formatNumber } from "@/lib/utils";
-import { METHOD_LABELS, PAYMENT_METHODS, type PaymentMethodValue } from "@/modules/finance/constants";
-import { financeErrorMessage, type DoctorOption, type TreatmentOption } from "./finance-shared";
+import { CATEGORY_LABELS, METHOD_LABELS, PAYMENT_METHODS, PRICE_CATEGORIES, unitPhrase, type PaymentMethodValue } from "@/modules/finance/constants";
+import { financeErrorMessage, toPriceOptions, type DoctorOption, type PriceOption, type TreatmentOption } from "./finance-shared";
 
 /**
- * Record a procedure (planned until a clinician signs it): the treatment with
- * its catalogue price prefilled, the doctor, the date and time on the clinic
- * clock, price, discount, notes and, for roles that take money, a deposit in
- * the same step.
+ * Record a procedure (planned until a clinician signs it): the price-list item
+ * and how many of its unit, priced from the list for the chosen day (the
+ * treatment's catalogue range when the clinic has no price list yet), the
+ * doctor, the date and time on the clinic clock, price, discount, notes and,
+ * for roles that take money, a deposit in the same step.
  */
 export function RecordProcedureDialog({
   timezone,
   treatments,
+  priceItems = [],
   doctors,
   canDeposit,
   patient: presetPatient = null,
@@ -31,6 +33,8 @@ export function RecordProcedureDialog({
 }: {
   timezone: string;
   treatments: TreatmentOption[];
+  /** The price list as of today; refreshed for another day when the date changes. */
+  priceItems?: PriceOption[];
   doctors: DoctorOption[];
   canDeposit: boolean;
   patient?: PatientOption | null;
@@ -55,8 +59,35 @@ export function RecordProcedureDialog({
   const [issues, setIssues] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // The price list, as of the chosen day (a change scheduled for that day applies).
+  const usesList = priceItems.length > 0;
+  const [options, setOptions] = useState<PriceOption[]>(priceItems);
+  // No item until one is chosen: a default would be charged by anyone who did not look.
+  const [itemId, setItemId] = useState("");
+  const [quantity, setQuantity] = useState("1");
+  const [priceEdited, setPriceEdited] = useState(false);
+  const item = options.find((o) => o.id === itemId) ?? null;
+  const counted = item !== null && item.unit !== "VISIT" && item.unit !== "PACKAGE";
+  const qty = counted ? Math.max(1, Math.floor(Number(quantity) || 1)) : 1;
+  const listPrice = item?.price !== null && item?.price !== undefined ? item.price * qty : null;
+  const shownPrice = usesList && !priceEdited ? (listPrice === null ? "" : String(listPrice)) : price;
+  const loadedDay = useRef(dateKeyInTz(new Date(), timezone));
+  useEffect(() => {
+    if (!usesList || !/^\d{4}-\d{2}-\d{2}$/.test(date) || date === loadedDay.current) return;
+    let live = true;
+    apiFetch<{ items: Parameters<typeof toPriceOptions>[0] }>(`/api/prices?at=${date}`)
+      .then((res) => {
+        if (!live) return;
+        loadedDay.current = date;
+        setOptions(toPriceOptions(res.items));
+      })
+      .catch(() => undefined);
+    return () => {
+      live = false;
+    };
+  }, [date, usesList]);
 
-  const treatment = treatments.find((t) => t.id === treatmentId) ?? null;
+  const treatment = treatments.find((t) => t.id === (usesList ? item?.treatmentId : treatmentId)) ?? null;
   const range =
     treatment && treatment.priceFrom !== null
       ? treatment.priceTo && treatment.priceTo !== treatment.priceFrom
@@ -71,16 +102,26 @@ export function RecordProcedureDialog({
     setDepositAmount(t?.depositAmount ? String(t.depositAmount) : "");
   }
 
+  function pickItem(nextId: string) {
+    setItemId(nextId);
+    const next = options.find((o) => o.id === nextId);
+    const t = treatments.find((x) => x.id === next?.treatmentId);
+    setDepositAmount(t?.depositAmount ? String(t.depositAmount) : "");
+    // A count belongs to its item: 2,400 grafts are not 2,400 laser sessions.
+    setQuantity("1");
+    setPriceEdited(false);
+  }
+
   const toInt = (s: string) => Number(s.replace(/[,\s]/g, ""));
-  const net = Math.max(0, (Number.isFinite(toInt(price)) ? toInt(price) : 0) - (Number.isFinite(toInt(discount)) ? toInt(discount) : 0));
+  const net = Math.max(0, (Number.isFinite(toInt(shownPrice)) ? toInt(shownPrice) : 0) - (Number.isFinite(toInt(discount)) ? toInt(discount) : 0));
 
   async function submit(e: FormEvent) {
     e.preventDefault();
     if (busy) return;
     const next: Record<string, string> = {};
     if (!patient) next.patientId = "Choose a patient.";
-    if (!treatmentId) next.treatmentId = "Choose a treatment.";
-    const p = toInt(price);
+    if (usesList ? !itemId : !treatmentId) next[usesList ? "priceItemId" : "treatmentId"] = usesList ? "Choose an item." : "Choose a treatment.";
+    const p = toInt(shownPrice);
     const d = toInt(discount || "0");
     if (!Number.isInteger(p) || p < 0) next.price = "Whole EGP.";
     if (!Number.isInteger(d) || d < 0) next.discount = "Whole EGP.";
@@ -98,10 +139,10 @@ export function RecordProcedureDialog({
         method: "POST",
         body: {
           patientId: patient.id,
-          treatmentId,
+          // From the price list the server prices the day itself, unless the price was changed by hand.
+          ...(usesList ? { priceItemId: itemId, quantity: qty, ...(priceEdited ? { price: p } : {}) } : { treatmentId, price: p }),
           doctorId: doctorId || undefined,
           performedAt: performedAt.toISOString(),
-          price: p,
           discount: d,
           notes: notes.trim() || undefined,
           deposit: takeDeposit ? { amount: dep, method: depositMethod, reference: depositReference.trim() || undefined } : undefined,
@@ -133,16 +174,45 @@ export function RecordProcedureDialog({
             <PatientPicker value={patient} onChange={setPatient} error={issues.patientId} />
           )}
 
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <Field label="Treatment" htmlFor={`${id}-treatment`} hint={issue("treatmentId")}>
-              <Select id={`${id}-treatment`} value={treatmentId} onChange={(e) => pickTreatment(e.target.value)}>
-                {treatments.map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.name}
+          {usesList ? (
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_7rem]">
+              <Field label="Item" htmlFor={`${id}-item`} hint={issue("priceItemId") ?? (treatment ? `Treatment: ${treatment.name}` : undefined)}>
+                <Select id={`${id}-item`} value={itemId} onChange={(e) => pickItem(e.target.value)} aria-invalid={issues.priceItemId ? true : undefined}>
+                  <option value="" disabled>
+                    Choose an item…
                   </option>
-                ))}
-              </Select>
-            </Field>
+                  {PRICE_CATEGORIES.filter((c) => options.some((o) => o.category === c)).map((c) => (
+                    <optgroup key={c} label={CATEGORY_LABELS[c]}>
+                      {options
+                        .filter((o) => o.category === c)
+                        .map((o) => (
+                          <option key={o.id} value={o.id}>
+                            {o.name} · {o.price === null ? "no price that day" : `${formatNumber(o.price)} EGP`} {unitPhrase(o.unit, o.unitLabel, o.sessions)}
+                          </option>
+                        ))}
+                    </optgroup>
+                  ))}
+                </Select>
+              </Field>
+              {counted && item ? (
+                <Field label={item.unit === "UNIT" && item.unitLabel ? `${item.unitLabel[0]!.toUpperCase()}${item.unitLabel.slice(1)}s` : item.unit === "AREA" ? "Areas" : item.unit === "SESSION" ? "Sessions" : "Quantity"} htmlFor={`${id}-qty`}>
+                  <Input id={`${id}-qty`} inputMode="numeric" value={quantity} onChange={(e) => setQuantity(e.target.value)} />
+                </Field>
+              ) : null}
+            </div>
+          ) : null}
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            {usesList ? null : (
+              <Field label="Treatment" htmlFor={`${id}-treatment`} hint={issue("treatmentId")}>
+                <Select id={`${id}-treatment`} value={treatmentId} onChange={(e) => pickTreatment(e.target.value)}>
+                  {treatments.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.name}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+            )}
             <Field label="Doctor" htmlFor={`${id}-doctor`} hint={issue("doctorId") ?? "The signer when left empty"}>
               <Select id={`${id}-doctor`} value={doctorId} onChange={(e) => setDoctorId(e.target.value)}>
                 <option value="">Not set</option>
@@ -165,14 +235,37 @@ export function RecordProcedureDialog({
           </div>
           <div className="grid grid-cols-2 gap-3">
             <Field label="Price (EGP)" htmlFor={`${id}-price`} hint={issue("price")}>
-              <Input id={`${id}-price`} inputMode="numeric" value={price} onChange={(e) => setPrice(e.target.value)} aria-invalid={issues.price ? true : undefined} />
+              <Input
+                id={`${id}-price`}
+                inputMode="numeric"
+                value={shownPrice}
+                onChange={(e) => {
+                  setPrice(e.target.value);
+                  setPriceEdited(true);
+                }}
+                aria-invalid={issues.price ? true : undefined}
+              />
             </Field>
             <Field label="Discount (EGP)" htmlFor={`${id}-discount`} hint={issue("discount")}>
               <Input id={`${id}-discount`} inputMode="numeric" value={discount} onChange={(e) => setDiscount(e.target.value)} aria-invalid={issues.discount ? true : undefined} />
             </Field>
           </div>
           <p className="-mt-2 text-xs text-muted-foreground">
-            {range} · to pay: <span className="font-mono tabular-nums text-foreground">{formatNumber(net)} EGP</span>
+            {usesList
+              ? !item
+                ? "Choose an item for its list price"
+                : priceEdited
+                ? listPrice !== null
+                  ? `List price ${formatNumber(listPrice)} EGP, changed by hand`
+                  : "Price set by hand"
+                : `List price on ${formatDateInTz(fromDateKey(date, timezone) ?? new Date(), timezone, { day: "numeric", month: "short", year: "numeric" })}`
+              : range}{" "}
+            · to pay: <span className="font-mono tabular-nums text-foreground">{formatNumber(net)} EGP</span>
+            {usesList && priceEdited ? (
+              <button type="button" className="ml-2 underline underline-offset-2 hover:text-foreground" onClick={() => setPriceEdited(false)}>
+                Use the list price
+              </button>
+            ) : null}
           </p>
 
           <Field label="Notes" htmlFor={`${id}-notes`} hint={issue("notes") ?? "Optional · e.g. graft count, areas, package"}>
@@ -217,7 +310,7 @@ export function RecordProcedureDialog({
                 Close
               </Button>
             </DialogClose>
-            <Button type="submit" disabled={busy || !treatments.length}>
+            <Button type="submit" disabled={busy || (usesList ? !itemId : !treatments.length)}>
               {busy ? "Saving…" : "Record procedure"}
             </Button>
           </DialogFooter>

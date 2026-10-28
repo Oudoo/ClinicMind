@@ -9,7 +9,7 @@ import type { PatientOption } from "@/components/clinicmind/appointment-patient-
 import { RecordPaymentDialog } from "./payment-record-dialog";
 import { RecordProcedureDialog } from "./procedure-record-dialog";
 import { ImportPosDialog } from "./payment-import-dialog";
-import type { DoctorOption, ProcedureChoice, TreatmentOption } from "./finance-shared";
+import type { DoctorOption, PriceOption, ProcedureChoice, TreatmentOption } from "./finance-shared";
 
 type Open = null | "payment" | "procedure" | "import";
 
@@ -20,12 +20,14 @@ type Open = null | "payment" | "procedure" | "import";
 export function FinanceActions({
   timezone,
   treatments,
+  priceItems = [],
   doctors,
   canPay,
   canRecordProcedure,
 }: {
   timezone: string;
   treatments: TreatmentOption[];
+  priceItems?: PriceOption[];
   doctors: DoctorOption[];
   canPay: boolean;
   canRecordProcedure: boolean;
@@ -65,7 +67,7 @@ export function FinanceActions({
       ) : null}
       {open === "payment" ? <RecordPaymentDialog timezone={timezone} onOpenChange={close} onDone={() => done("Payment recorded")} /> : null}
       {open === "procedure" ? (
-        <RecordProcedureDialog timezone={timezone} treatments={treatments} doctors={doctors} canDeposit={canPay} onOpenChange={close} onDone={() => done("Procedure recorded", "Planned until a clinician signs it.")} />
+        <RecordProcedureDialog timezone={timezone} treatments={treatments} priceItems={priceItems} doctors={doctors} canDeposit={canPay} onOpenChange={close} onDone={() => done("Procedure recorded", "Planned until a clinician signs it.")} />
       ) : null}
       {open === "import" ? (
         <ImportPosDialog

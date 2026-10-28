@@ -184,6 +184,8 @@ model Tenant {
   reviewSnapshots         ReviewSnapshot[]
   fileBlobs               FileBlob[]
   safetyOverrides         SafetyOverride[]
+  priceItems              PriceItem[]
+  priceItemPrices         PriceItemPrice[]
 
   @@index([status])
   @@map("tenants")
@@ -231,6 +233,7 @@ model Clinic {
 
   users        User[]
   appointments Appointment[]
+  prices       PriceItemPrice[]
 
   @@index([tenantId])
   @@map("clinics")
@@ -949,6 +952,7 @@ model Treatment {
   procedures Procedure[]
   protocols  Protocol[]
   campaigns  Campaign[]
+  priceItems PriceItem[]
 
   @@unique([tenantId, key])
   @@index([tenantId])
@@ -1116,6 +1120,10 @@ model Procedure {
   patient        Patient         @relation(fields: [patientId], references: [id], onDelete: Cascade)
   treatmentId    String
   treatment      Treatment       @relation(fields: [treatmentId], references: [id])
+  /// The price-list item billed, and how many of its unit (sessions, areas, grafts…); `price` is what that came to on the day.
+  priceItemId    String?
+  priceItem      PriceItem?      @relation(fields: [priceItemId], references: [id])
+  quantity       Int             @default(1)
   doctorId       String?
   appointmentId  String?
   visitId        String?
@@ -1555,4 +1563,71 @@ model SafetyOverride {
   @@index([tenantId, patientId])
   @@index([tenantId, userId, createdAt])
   @@map("safety_overrides")
+}
+
+// ── Phase 2: finance ─────────────────────────────────────────────────────────
+
+/// How a price-list item is counted: per visit, session, area treated, unit (grafts, syringes: `unitLabel`), tooth or arch, or a course package.
+enum PriceUnit {
+  VISIT
+  SESSION
+  AREA
+  UNIT
+  TOOTH
+  ARCH
+  PACKAGE
+}
+
+/// The clinic's price list: one row per billable item. The code is fixed once created (it is printed on invoices).
+model PriceItem {
+  id            String      @id @default(cuid())
+  tenantId      String
+  tenant        Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  code          String
+  name          String
+  /// hair | skin | laser | injectables | general (the treatment categories)
+  category      String
+  unit          PriceUnit   @default(SESSION)
+  /// What one unit is called when the unit is UNIT ("graft", "syringe").
+  unitLabel     String?
+  /// The treatment it bills for: procedures, concierge protocols and the reports group by it.
+  treatmentId   String
+  /// NoAction: checked at the end of the statement, so removing a whole tenant (which cascades to both) works.
+  treatment     Treatment   @relation(fields: [treatmentId], references: [id], onDelete: NoAction)
+  /// A course package: this many sessions of `sessionItem`, sold together at the package price.
+  sessions      Int?
+  sessionItemId String?
+  sessionItem   PriceItem?  @relation("PackageSessions", fields: [sessionItemId], references: [id])
+  packages      PriceItem[] @relation("PackageSessions")
+  active        Boolean     @default(true)
+  sortOrder     Int         @default(0)
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  prices     PriceItemPrice[]
+  procedures Procedure[]
+
+  @@unique([tenantId, code])
+  @@index([tenantId, category])
+  @@map("price_items")
+}
+
+/// A price from a day on. The newest one on or before a date applies, a branch's own before the clinic-wide one. Rows are never edited once in force (a change is a new row), so whatever was charged keeps its price.
+model PriceItemPrice {
+  id            String    @id @default(cuid())
+  tenantId      String
+  tenant        Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  priceItemId   String
+  priceItem     PriceItem @relation(fields: [priceItemId], references: [id], onDelete: Cascade)
+  /// One of the clinic's locations (a branch); null: every branch without a price of its own.
+  clinicId      String?
+  clinic        Clinic?   @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  amount        Int
+  /// The first day it applies: that day's start on the clinic clock.
+  effectiveFrom DateTime
+  createdById   String?
+  createdAt     DateTime  @default(now())
+
+  @@index([tenantId, priceItemId, effectiveFrom])
+  @@map("price_item_prices")
 }

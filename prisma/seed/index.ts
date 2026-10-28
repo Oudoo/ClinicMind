@@ -1,5 +1,6 @@
 import type { Gender, PrismaClient, UserRole } from "@prisma/client";
 import { seedTreatments } from "./treatments";
+import { seedPrices } from "./prices";
 import { seedCrm } from "./crm";
 import { seedFinance } from "./finance";
 import { seedConcierge } from "./concierge";
@@ -11,7 +12,7 @@ import { seedSafety } from "./safety";
 
 /**
  * The second half of the demo seed: everything the PM round-2 modules need
- * (CRM leads and conversations, procedures and payments, concierge
+ * (the price list, CRM leads and conversations, procedures and payments, concierge
  * enrolments, intake links, dictated appointment notes, campaign costs,
  * review snapshots, alert rules, prescribing-safety overrides, notifications).
  * Runs after the core clinic
@@ -55,6 +56,7 @@ export interface SeedContext {
 export async function seedRound2(ctx: SeedContext): Promise<void> {
   const steps: [string, (c: SeedContext) => Promise<void>][] = [
     ["treatments", seedTreatments],
+    ["price list", seedPrices],
     ["crm", seedCrm],
     ["finance", seedFinance],
     ["concierge", seedConcierge],

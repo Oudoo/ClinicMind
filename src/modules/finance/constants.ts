@@ -33,6 +33,39 @@ export const PROCEDURE_STATUS_LABELS: Record<ProcedureStatusValue, string> = {
   CANCELLED: "Cancelled",
 };
 
+/** How a price-list item is counted (Phase 2 price list). */
+export const PRICE_UNITS = ["VISIT", "SESSION", "AREA", "UNIT", "TOOTH", "ARCH", "PACKAGE"] as const;
+export type PriceUnitValue = (typeof PRICE_UNITS)[number];
+
+export const UNIT_LABELS: Record<PriceUnitValue, string> = {
+  VISIT: "Per visit",
+  SESSION: "Per session",
+  AREA: "Per area",
+  UNIT: "Per unit",
+  TOOTH: "Per tooth",
+  ARCH: "Per arch",
+  PACKAGE: "Course package",
+};
+
+/** The treatment categories, which group the price list too. */
+export const PRICE_CATEGORIES = ["hair", "skin", "laser", "injectables", "general"] as const;
+export type PriceCategoryValue = (typeof PRICE_CATEGORIES)[number];
+
+export const CATEGORY_LABELS: Record<PriceCategoryValue, string> = {
+  hair: "Hair",
+  skin: "Skin",
+  laser: "Laser",
+  injectables: "Injectables",
+  general: "General dermatology",
+};
+
+/** "per session", "per graft", "6-session course" … for one item. */
+export function unitPhrase(unit: PriceUnitValue, unitLabel: string | null, sessions: number | null): string {
+  if (unit === "UNIT" && unitLabel) return `per ${unitLabel}`;
+  if (unit === "PACKAGE") return sessions ? `${sessions}-session course` : "course package";
+  return UNIT_LABELS[unit].toLowerCase();
+}
+
 /** Whole EGP; nothing in a clinic costs more than this. */
 export const MAX_AMOUNT = 10_000_000;
 

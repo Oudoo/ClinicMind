@@ -35,6 +35,7 @@ export type Permission =
   | "conversations:write" // reply from the reception inbox
   | "payments:write" // record deposits, payments and refunds
   | "finance:read" // the finance dashboard (revenue by doctor is owner-only)
+  | "prices:manage" // edit the price list (codes, units, prices from a date)
   | "concierge:read"
   | "concierge:write"; // answer check-ins, acknowledge and resolve escalations
 
@@ -61,6 +62,7 @@ const ALL: Permission[] = [
   "conversations:write",
   "payments:write",
   "finance:read",
+  "prices:manage",
   "concierge:read",
   "concierge:write",
 ];
@@ -92,6 +94,7 @@ const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
     "conversations:write",
     "payments:write",
     "finance:read",
+    "prices:manage",
     "concierge:read",
     "concierge:write",
   ],

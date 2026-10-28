@@ -13,12 +13,13 @@ import { periodQuery } from "@/modules/reporting/period";
 import { parseReportQuery, periodFromQuery } from "@/modules/reporting/query";
 import { listReportDoctors } from "@/modules/reporting/service";
 import { listTreatments } from "@/modules/treatments/service";
+import { listPriceList } from "@/modules/finance/prices";
 import { Badge, Card, EmptyState, SectionTitle } from "@/components/ui/primitives";
 import { Columns, DeltaChip, HBars, Kpi } from "@/components/ui/kpi";
 import { Pagination } from "@/components/ui/pagination";
 import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/table";
 import { FinanceActions, RecordPaymentForPatient } from "@/components/clinicmind/finance-actions";
-import { KIND_TONE } from "@/components/clinicmind/finance-shared";
+import { KIND_TONE, toPriceOptions } from "@/components/clinicmind/finance-shared";
 import { PaymentVoidButton } from "@/components/clinicmind/payment-void-button";
 import { PeriodPicker } from "@/components/clinicmind/report-period-picker";
 import { CsvLink, NotForRole, fmtEgp, fmtPct } from "@/components/clinicmind/report-shared";
@@ -63,13 +64,14 @@ export default async function FinancePage({ searchParams }: { searchParams: Prom
   const canRecordProcedure = can(ctx.role, "patients:write");
   const canVoid = can(ctx.role, "tenant:manage");
 
-  const [summary, recent, treatments, doctors, owingPatient, owingRows] = await Promise.all([
+  const [summary, recent, treatments, doctors, owingPatient, owingRows, prices] = await Promise.all([
     getFinanceSummary(ctx.tenantId, period, timezone),
     listPayments(ctx.tenantId, { from: period.from, to: period.to, includeVoided: false, page, pageSize: PAGE_SIZE }),
     listTreatments(ctx.tenantId),
     listReportDoctors(ctx.tenantId),
     owingId ? db.patient.findFirst({ where: { id: owingId, tenantId: ctx.tenantId, ...notDeleted }, select: { id: true, fullName: true, phone: true } }) : Promise.resolve(null),
     owingId ? getPatientOutstanding(ctx.tenantId, owingId) : Promise.resolve([]),
+    listPriceList(ctx.tenantId),
   ]);
 
   const pq = periodQuery(period);
@@ -90,6 +92,7 @@ export default async function FinancePage({ searchParams }: { searchParams: Prom
           <FinanceActions
             timezone={timezone}
             treatments={treatments.map((t) => ({ id: t.id, key: t.key, name: t.name, priceFrom: t.priceFrom, priceTo: t.priceTo, depositAmount: t.depositAmount }))}
+            priceItems={toPriceOptions(prices.items)}
             doctors={doctors}
             canPay={canPay}
             canRecordProcedure={canRecordProcedure}

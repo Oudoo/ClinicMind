@@ -7,7 +7,8 @@ import { zDateTime, zOptionalText, zText } from "@/lib/validation";
 import { requireTenantTreatment } from "@/modules/treatments/service";
 import { enrolOnSignedProcedure } from "@/modules/concierge/service";
 import { MAX_AMOUNT, PAYMENT_METHODS, PROCEDURE_STATUSES, procedureBalance } from "./constants";
-import { ProcedureNotFoundError, ProcedureStateError } from "./errors";
+import { FinanceError, ProcedureNotFoundError, ProcedureStateError } from "./errors";
+import { priceOn } from "./prices";
 
 /**
  * Procedures: a treatment planned for or performed on a patient, with its
@@ -48,17 +49,28 @@ export const DepositInput = z.object({
 export const ProcedureInput = z
   .object({
     patientId: zId,
-    treatmentId: zId,
+    /** From the price list: the item and how many of its unit; the price is then the list price on the day unless given. */
+    priceItemId: zOptionalText(64),
+    quantity: z.number().int().min(1).max(10_000).default(1),
+    /** Required without a price-list item; with one, it is the item's treatment. */
+    treatmentId: zOptionalText(64),
     doctorId: zOptionalText(64),
     appointmentId: zOptionalText(64),
     performedAt: zDateTime,
-    price: zMoney,
+    /** Required without a price-list item. */
+    price: zMoney.optional(),
     discount: zMoney.default(0),
     notes: zOptionalText(2000),
     /** Record a deposit in the same call (requires payments:write at the route). */
     deposit: DepositInput.optional(),
   })
   .superRefine((v, ctx) => {
+    if (!v.priceItemId && !v.treatmentId) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["treatmentId"], message: "Choose a treatment or a price-list item" });
+    }
+    if (!v.priceItemId && v.price === undefined) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["price"], message: "Enter the price" });
+    }
     // Refinements run even when a field already failed; those issues are reported on their own.
     if (isNum(v.price) && isNum(v.discount) && v.discount > v.price) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["discount"], message: "Discount cannot exceed the price" });
@@ -157,7 +169,7 @@ export async function requireTenantProcedure(tenantId: string, id: string, clien
 export async function requireTenantAppointment(tenantId: string, id: string, patientId?: string, client: Client = db) {
   const row = await client.appointment.findFirst({
     where: { id, tenantId, ...notDeleted, ...(patientId ? { patientId } : {}) },
-    select: { id: true, patientId: true, doctorId: true, startsAt: true },
+    select: { id: true, patientId: true, doctorId: true, clinicId: true, startsAt: true },
   });
   if (!row) throw new TenantScopeError("appointment", id);
   return row;
@@ -193,10 +205,24 @@ export async function getProcedure(tenantId: string, id: string): Promise<Proced
 
 // ── Writes ───────────────────────────────────────────────────────────────────
 
-function snapshot(p: { patientId: string; treatmentId: string; doctorId: string | null; appointmentId: string | null; performedAt: Date; price: number; discount: number; status: string; notes: string | null }) {
+function snapshot(p: {
+  patientId: string;
+  treatmentId: string;
+  priceItemId?: string | null;
+  quantity?: number;
+  doctorId: string | null;
+  appointmentId: string | null;
+  performedAt: Date;
+  price: number;
+  discount: number;
+  status: string;
+  notes: string | null;
+}) {
   return {
     patientId: p.patientId,
     treatmentId: p.treatmentId,
+    priceItemId: p.priceItemId ?? null,
+    quantity: p.quantity ?? 1,
     doctorId: p.doctorId,
     appointmentId: p.appointmentId,
     performedAt: p.performedAt.toISOString(),
@@ -207,14 +233,45 @@ function snapshot(p: { patientId: string; treatmentId: string; doctorId: string 
   };
 }
 
+/**
+ * What a price-list item makes of a procedure: its treatment and, unless the
+ * caller set one, the price on the day (the branch's own when the visit is at
+ * a branch) times the quantity.
+ */
+async function fromPriceList(
+  tenantId: string,
+  input: { priceItemId: string; quantity: number; treatmentId?: string; price?: number; performedAt: Date },
+  clinicId: string | null,
+): Promise<{ treatmentId: string; price: number }> {
+  const item = await db.priceItem.findFirst({ where: { id: input.priceItemId, tenantId }, select: { id: true, treatmentId: true, active: true, name: true } });
+  if (!item) throw new TenantScopeError("price_item", input.priceItemId);
+  if (!item.active) throw new FinanceError(422, "price_item_inactive", `${item.name} is no longer on the price list`, { issues: { fieldErrors: { priceItemId: ["No longer on the price list"] } } });
+  if (input.treatmentId && input.treatmentId !== item.treatmentId) {
+    throw new z.ZodError([{ code: "custom", path: ["treatmentId"], message: "The price-list item bills for another treatment" }]);
+  }
+  if (input.price !== undefined) return { treatmentId: item.treatmentId, price: input.price };
+  const unitPrice = await priceOn(tenantId, item.id, input.performedAt, clinicId);
+  if (unitPrice === null) {
+    throw new FinanceError(422, "no_price", `${item.name} has no price on that day`, { issues: { fieldErrors: { priceItemId: ["No price on that day: enter one"] } } });
+  }
+  return { treatmentId: item.treatmentId, price: unitPrice * input.quantity };
+}
+
 export async function createProcedure(tenantId: string, rawInput: unknown, actor: Actor = {}) {
-  const input = ProcedureInput.parse(rawInput);
+  const parsed = ProcedureInput.parse(rawInput);
 
   // Every client-supplied foreign key must belong to the acting tenant (SEC-4).
-  await requireTenantPatient(tenantId, input.patientId);
+  await requireTenantPatient(tenantId, parsed.patientId);
+  if (parsed.doctorId) await requireTenantUser(tenantId, parsed.doctorId);
+  const appointment = parsed.appointmentId ? await requireTenantAppointment(tenantId, parsed.appointmentId, parsed.patientId) : null;
+  const priced = parsed.priceItemId
+    ? await fromPriceList(tenantId, { ...parsed, priceItemId: parsed.priceItemId }, appointment?.clinicId ?? null)
+    : { treatmentId: parsed.treatmentId!, price: parsed.price! };
+  if (parsed.discount > priced.price) {
+    throw new z.ZodError([{ code: "custom", path: ["discount"], message: "Discount cannot exceed the price" }]);
+  }
+  const input = { ...parsed, ...priced };
   const treatment = await requireTenantTreatment(tenantId, input.treatmentId);
-  if (input.doctorId) await requireTenantUser(tenantId, input.doctorId);
-  if (input.appointmentId) await requireTenantAppointment(tenantId, input.appointmentId, input.patientId);
 
   const { procedure, deposit } = await db.$transaction(async (tx) => {
     const procedure = await tx.procedure.create({
@@ -222,6 +279,8 @@ export async function createProcedure(tenantId: string, rawInput: unknown, actor
         tenantId,
         patientId: input.patientId,
         treatmentId: input.treatmentId,
+        priceItemId: input.priceItemId ?? null,
+        quantity: input.quantity,
         doctorId: input.doctorId ?? null,
         appointmentId: input.appointmentId ?? null,
         performedAt: input.performedAt,

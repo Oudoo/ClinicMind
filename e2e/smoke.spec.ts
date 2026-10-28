@@ -78,6 +78,7 @@ test.describe("signed-in clinic owner", () => {
       ["Consultations", /consultation/i],
       ["AI Assistant", /assistant/i],
       ["Conversations", /conversation/i],
+      ["Price list", /price list/i],
       ["Settings", /settings/i],
     ] as const) {
       await page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: label }).first().click();

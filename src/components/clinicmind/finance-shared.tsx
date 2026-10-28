@@ -1,5 +1,14 @@
 import { ApiError } from "@/lib/http";
-import { KIND_LABELS, METHOD_LABELS, PROCEDURE_STATUS_LABELS, type PaymentKindValue, type PaymentMethodValue, type ProcedureStatusValue } from "@/modules/finance/constants";
+import {
+  KIND_LABELS,
+  METHOD_LABELS,
+  PROCEDURE_STATUS_LABELS,
+  type PaymentKindValue,
+  type PaymentMethodValue,
+  type PriceCategoryValue,
+  type PriceUnitValue,
+  type ProcedureStatusValue,
+} from "@/modules/finance/constants";
 import type { BadgeTone } from "@/components/clinicmind/patient-shared";
 
 /**
@@ -14,6 +23,19 @@ export interface TreatmentOption {
   priceFrom: number | null;
   priceTo: number | null;
   depositAmount: number | null;
+}
+
+/** One price-list item as the procedure dialog offers it (price as of the day asked for). */
+export interface PriceOption {
+  id: string;
+  code: string;
+  name: string;
+  category: PriceCategoryValue;
+  unit: PriceUnitValue;
+  unitLabel: string | null;
+  sessions: number | null;
+  treatmentId: string;
+  price: number | null;
 }
 
 export interface DoctorOption {
@@ -78,4 +100,9 @@ export function financeErrorMessage(err: unknown): string {
     return err.message;
   }
   return "Something went wrong. Please try again.";
+}
+
+/** The price-list items as the dialog needs them (from `listPriceList`). */
+export function toPriceOptions(items: readonly { id: string; code: string; name: string; category: PriceCategoryValue; unit: PriceUnitValue; unitLabel: string | null; sessions: number | null; treatment: { id: string }; price: number | null }[]): PriceOption[] {
+  return items.map((i) => ({ id: i.id, code: i.code, name: i.name, category: i.category, unit: i.unit, unitLabel: i.unitLabel, sessions: i.sessions, treatmentId: i.treatment.id, price: i.price }));
 }

@@ -6,8 +6,9 @@ import { listPayments } from "@/modules/finance/payments";
 import { listProcedures } from "@/modules/finance/procedures";
 import { listReportDoctors } from "@/modules/reporting/service";
 import { listTreatments } from "@/modules/treatments/service";
+import { listPriceList } from "@/modules/finance/prices";
 import { FinancePatientPanel } from "./finance-patient-panel";
-import type { PaymentItem, ProcedureItem } from "./finance-shared";
+import { toPriceOptions, type PaymentItem, type ProcedureItem } from "./finance-shared";
 
 /**
  * Procedures and payments for this patient: signed procedures, deposits, balance, record a payment.
@@ -24,13 +25,14 @@ export async function PatientFinanceCard({ tenantId, role, patientId, canWrite }
   const seesPayments = can(role, "payments:write") || can(role, "finance:read");
   const canPay = canWrite && can(role, "payments:write");
   const canRecordProcedure = canWrite;
-  const [patient, timezone, procedures, payments, treatments, doctors] = await Promise.all([
+  const [patient, timezone, procedures, payments, treatments, doctors, prices] = await Promise.all([
     db.patient.findFirst({ where: { id: patientId, tenantId }, select: { id: true, fullName: true } }),
     getTenantTimezone(tenantId),
     listProcedures(tenantId, { patientId, page: 1, pageSize: 100 }),
     seesPayments ? listPayments(tenantId, { patientId, includeVoided: false, page: 1, pageSize: 100 }) : Promise.resolve(null),
     canRecordProcedure ? listTreatments(tenantId) : Promise.resolve([]),
     canRecordProcedure ? listReportDoctors(tenantId) : Promise.resolve([]),
+    canRecordProcedure ? listPriceList(tenantId) : Promise.resolve(null),
   ]);
   if (!patient) return null;
 
@@ -72,6 +74,7 @@ export async function PatientFinanceCard({ tenantId, role, patientId, canWrite }
       procedures={procedureItems}
       payments={paymentItems}
       treatments={treatments.map((t) => ({ id: t.id, key: t.key, name: t.name, priceFrom: t.priceFrom, priceTo: t.priceTo, depositAmount: t.depositAmount }))}
+      priceItems={prices ? toPriceOptions(prices.items) : []}
       doctors={doctors}
       canRecordProcedure={canRecordProcedure}
       canSign={canWrite && can(role, "consultations:sign")}

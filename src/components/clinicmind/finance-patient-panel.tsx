@@ -21,6 +21,7 @@ import {
   signedAmount,
   type DoctorOption,
   type PaymentItem,
+  type PriceOption,
   type ProcedureChoice,
   type ProcedureItem,
   type TreatmentOption,
@@ -40,6 +41,7 @@ export function FinancePatientPanel({
   procedures,
   payments,
   treatments,
+  priceItems = [],
   doctors,
   canRecordProcedure,
   canSign,
@@ -52,6 +54,8 @@ export function FinancePatientPanel({
   /** null when the role may not see the payment list. */
   payments: PaymentItem[] | null;
   treatments: TreatmentOption[];
+  /** The price list as of today (the dialog reprices for another day). */
+  priceItems?: PriceOption[];
   doctors: DoctorOption[];
   canRecordProcedure: boolean;
   canSign: boolean;
@@ -236,6 +240,7 @@ export function FinancePatientPanel({
         <RecordProcedureDialog
           timezone={timezone}
           treatments={treatments}
+          priceItems={priceItems}
           doctors={doctors}
           canDeposit={canPay}
           patient={patient}
