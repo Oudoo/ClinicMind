@@ -7,12 +7,31 @@ import { getTenantTimezone } from "@/modules/appointments/service";
  * Analytics aggregations for the ClinicMind overview dashboard. All queries are
  * tenant-scoped and "today" and every window follow the clinic's timezone, not
  * the server's. Each headline figure carries the same figure for the previous
- * window of equal length, so the dashboard can show the change. Failures
+ * window of equal length, so the dashboard can show the change, and the
+ * local days of every window so each change chip can name both. Failures
  * degrade to zeroed widgets rather than crashing the dashboard (e.g. before
  * the DB is migrated/seeded).
  */
+/** The local days (`YYYY-MM-DD`, clinic clock) each comparison covers, for the change chips' tooltips. */
+export interface OverviewWindows {
+  today: string;
+  /** The last 7 days, today included, and the 7 before. */
+  weekFrom: string;
+  prevWeekFrom: string;
+  prevWeekTo: string;
+  /** The last 14 days, today included, and the 14 before. */
+  fortnightFrom: string;
+  prevFortnightFrom: string;
+  prevFortnightTo: string;
+  /** The same weekday a week ago. */
+  sameDayLastWeek: string;
+}
+
 export interface OverviewMetrics {
+  /** Active (not archived) patient records now. */
   patients: number;
+  /** The size of the registry at the start of the 7-day window (records that existed then and were not archived yet). */
+  patientsWeekAgo: number;
   /** New patient records in the last 7 local days, and in the 7 days before. */
   patientsNew7: number;
   patientsNewPrev7: number;
@@ -23,9 +42,13 @@ export interface OverviewMetrics {
   appointmentsSameDayLastWeek: number;
   upcoming: number;
   upcoming7: number;
-  /** No-show share over the last 14 days and the 14 before, 0..1. */
+  /** No-show share over the last 14 days (0..1; 0 when nothing was due) and the 14 before (null when nothing was due then). */
   noShowRate: number;
-  noShowRatePrev: number;
+  noShowRatePrev: number | null;
+  /** No-shows and the bookings that were due (start passed, not cancelled or waitlisted) in the last 14 days; due in the 14 before. */
+  noShows: number;
+  noShowDue: number;
+  noShowDuePrev: number;
   /** AI runs in the last 7 days and the 7 before. */
   aiInteractions: number;
   aiInteractionsPrev: number;
@@ -39,10 +62,12 @@ export interface OverviewMetrics {
   appointmentTrend: { day: string; count: number }[];
   /** New patients per week, oldest first, 8 weeks ending this week. */
   newPatientsWeekly: number[];
+  windows: OverviewWindows | null;
 }
 
 const ZERO: OverviewMetrics = {
   patients: 0,
+  patientsWeekAgo: 0,
   patientsNew7: 0,
   patientsNewPrev7: 0,
   appointmentsToday: 0,
@@ -52,7 +77,10 @@ const ZERO: OverviewMetrics = {
   upcoming: 0,
   upcoming7: 0,
   noShowRate: 0,
-  noShowRatePrev: 0,
+  noShowRatePrev: null,
+  noShows: 0,
+  noShowDue: 0,
+  noShowDuePrev: 0,
   aiInteractions: 0,
   aiInteractionsPrev: 0,
   activeConsultations: 0,
@@ -62,16 +90,17 @@ const ZERO: OverviewMetrics = {
   diagnoses: [],
   appointmentTrend: [],
   newPatientsWeekly: [],
+  windows: null,
 };
 
 /** Days in the appointment trend and the no-show window, today included. */
 const TREND_DAYS = 14;
 const WEEKS = 8;
 
-export async function getOverview(tenantId: string): Promise<OverviewMetrics> {
+export async function getOverview(tenantId: string, at: Date = new Date()): Promise<OverviewMetrics> {
   try {
     const tz = await getTenantTimezone(tenantId);
-    const now = new Date();
+    const now = at;
     const todayStart = startOfDayInTz(now, tz);
     const todayEnd = endOfDayInTz(now, tz);
     // Local windows ending today (midnight on the clinic's clock).
@@ -84,6 +113,7 @@ export async function getOverview(tenantId: string): Promise<OverviewMetrics> {
 
     const [
       patients,
+      patientsWeekAgo,
       patientsNew7,
       patientsNewPrev7,
       appointmentsToday,
@@ -106,6 +136,8 @@ export async function getOverview(tenantId: string): Promise<OverviewMetrics> {
       recentPatients,
     ] = await Promise.all([
       db.patient.count({ where: { tenantId, ...notDeleted } }),
+      // The registry as it stood when the 7-day window opened: created before it, not archived before it.
+      db.patient.count({ where: { tenantId, createdAt: { lt: week }, OR: [{ deletedAt: null }, { deletedAt: { gte: week } }] } }),
       db.patient.count({ where: { tenantId, ...notDeleted, createdAt: { gte: week } } }),
       db.patient.count({ where: { tenantId, ...notDeleted, createdAt: { gte: prevWeek, lt: week } } }),
       // What is on today's schedule; cancelled bookings are not.
@@ -152,6 +184,7 @@ export async function getOverview(tenantId: string): Promise<OverviewMetrics> {
 
     return {
       patients,
+      patientsWeekAgo,
       patientsNew7,
       patientsNewPrev7,
       appointmentsToday,
@@ -161,7 +194,11 @@ export async function getOverview(tenantId: string): Promise<OverviewMetrics> {
       upcoming,
       upcoming7,
       noShowRate: pastInWindow ? noShows / pastInWindow : 0,
-      noShowRatePrev: pastInPrev ? noShowsPrev / pastInPrev : 0,
+      // Nothing was due in the previous window: there is no rate to compare with (not "0%").
+      noShowRatePrev: pastInPrev ? noShowsPrev / pastInPrev : null,
+      noShows,
+      noShowDue: pastInWindow,
+      noShowDuePrev: pastInPrev,
       aiInteractions,
       aiInteractionsPrev,
       activeConsultations,
@@ -178,6 +215,16 @@ export async function getOverview(tenantId: string): Promise<OverviewMetrics> {
         recentPatients.map((p) => p.createdAt),
         weeksStart,
       ),
+      windows: {
+        today: dateKeyInTz(todayStart, tz),
+        weekFrom: dateKeyInTz(week, tz),
+        prevWeekFrom: dateKeyInTz(prevWeek, tz),
+        prevWeekTo: dateKeyInTz(d(7), tz),
+        fortnightFrom: dateKeyInTz(fortnight, tz),
+        prevFortnightFrom: dateKeyInTz(prevFortnight, tz),
+        prevFortnightTo: dateKeyInTz(d(14), tz),
+        sameDayLastWeek: dateKeyInTz(d(7), tz),
+      },
     };
   } catch (err) {
     console.error("[analytics] overview failed", err);

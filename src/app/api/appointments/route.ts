@@ -31,7 +31,9 @@ export async function GET(req: Request) {
  * `{ error: "patient_conflict", conflicts }` when the patient already holds an
  * overlapping live booking unless the body sets `allowPatientOverlap`. The
  * database's exclusion constraints back the check; a violation is answered the
- * same way.
+ * same way. 422 `{ error: "in_the_past" | "outside_hours", message, overridable }`
+ * for a start more than 15 minutes ago or a slot outside the opening hours,
+ * unless an owner (users:manage) sets `allowPast` / `allowOutsideHours` (audited).
  */
 export async function POST(req: Request) {
   try {
@@ -43,6 +45,7 @@ export async function POST(req: Request) {
       id: ctx.userId,
       email: ctx.email,
       ip: clientIp(req),
+      role: ctx.role,
     });
     return ok(result, { status: 201 });
   } catch (err) {

@@ -1,6 +1,7 @@
 import type { Prisma } from "@prisma/client";
 import { IntakeFormInput } from "../../src/modules/intake/form";
 import { issueIntakeToken } from "../../src/modules/intake/tokens";
+import { conflictingMedications } from "./clinical";
 import type { SeedContext, SeedPatient } from "./index";
 import { daysAfter, daysBefore, egyptianMobile, makeRandom, type Random } from "./util";
 
@@ -185,7 +186,18 @@ export async function seedIntake(ctx: SeedContext): Promise<void> {
   // ── Submissions waiting for review (all through the desk QR) ─────────────
   const personalIds = new Set(personal.map((p) => p.id));
   const known = ctx.patients.filter((p) => !personalIds.has(p.id) && p.language === "ar" && p.phone);
-  const returning = known.length ? r.pick(known) : ctx.patients[0]!;
+  // The form adds an ibuprofen allergy: offer it for a patient whose medicines
+  // it does not conflict with (no NSAIDs or salicylates), so approving it keeps
+  // the record plausible. One draw either way, so the rest of the seed is unchanged.
+  const activeMeds = await db.medication.findMany({
+    where: { patientId: { in: known.map((p) => p.id) }, active: true },
+    select: { patientId: true, name: true },
+  });
+  const compatible = known.filter(
+    (p) => conflictingMedications([NEW_HISTORY.en.allergy], activeMeds.filter((m) => m.patientId === p.id).map((m) => m.name)).length === 0,
+  );
+  const candidates = compatible.length ? compatible : known;
+  const returning = candidates.length ? r.pick(candidates) : ctx.patients[0]!;
   const history = await db.medicalHistory.findUnique({ where: { patientId: returning.id }, select: { chronicConditions: true, allergies: true } });
   const onFile = await db.patient.findUnique({ where: { id: returning.id }, select: { dateOfBirth: true } });
   const lang: Lang = returning.language === "en" ? "en" : "ar";

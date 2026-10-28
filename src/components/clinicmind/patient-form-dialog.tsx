@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Loader2, UserPlus } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -15,7 +16,13 @@ import {
   EMPTY_PATIENT_FORM,
   GENDER_LABELS,
   LANGUAGE_LABELS,
+  MAX_AGE_YEARS,
   apiErrorMessage,
+  duplicateInfo,
+  oldestDateOfBirth,
+  type DuplicateField,
+  type DuplicateInfo,
+  type DuplicateMatchView,
   type PatientFormValues,
   type PatientGender,
   type PatientLanguage,
@@ -25,24 +32,52 @@ export type PatientFormTarget =
   | { mode: "create" }
   | { mode: "edit"; patientId: string; initial: PatientFormValues };
 
-/** Labelled input with the server's field error rendered as its hint. */
+/** Labelled input with the server's field error (or a warning) rendered as its hint. */
 export function FormField({
   id,
   label,
   hint,
   error,
+  warning,
   children,
 }: {
   id: string;
   label: string;
   hint?: string;
   error?: string;
+  /** Shown instead of the hint, e.g. "This number belongs to …". */
+  warning?: ReactNode;
   children: ReactNode;
 }) {
   return (
-    <Field label={label} htmlFor={id} hint={error ? <span className="text-danger">{error}</span> : hint}>
+    <Field
+      label={label}
+      htmlFor={id}
+      hint={error ? <span className="text-danger">{error}</span> : warning ? <span className="text-warning">{warning}</span> : hint}
+    >
       {children}
     </Field>
+  );
+}
+
+/** "This number belongs to Sara Ibrahim (open)": each existing record links to its page in a new tab. */
+function DuplicateNote({ matches, field }: { matches: DuplicateMatchView[]; field: DuplicateField }) {
+  const mine = matches.filter((m) => m.field === field);
+  if (!mine.length) return null;
+  return (
+    <span data-testid={`duplicate-${field}`}>
+      {field === "nationalId" ? "This national ID belongs to " : "This number belongs to "}
+      {mine.map((m, i) => (
+        <span key={m.id}>
+          {i ? (i === mine.length - 1 ? " and " : ", ") : null}
+          {m.fullName} (
+          <Link href={`/dashboard/patients/${m.id}`} target="_blank" rel="noopener" className="underline underline-offset-2 hover:text-foreground">
+            open
+          </Link>
+          )
+        </span>
+      ))}
+    </span>
   );
 }
 
@@ -99,24 +134,42 @@ function PatientForm({
   );
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [formError, setFormError] = useState<string | null>(null);
+  const [duplicate, setDuplicate] = useState<DuplicateInfo | null>(null);
   const [pending, setPending] = useState(false);
+  // The warning (with "Save anyway") sits at the top of a long form: bring it into view when it arrives.
+  const warningRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!duplicate) return;
+    const box = warningRef.current?.closest<HTMLElement>("[role=dialog]");
+    if (box) box.scrollTop = 0;
+    else warningRef.current?.scrollIntoView({ block: "start" });
+  }, [duplicate]);
 
-  const set = <K extends keyof PatientFormValues>(key: K, value: PatientFormValues[K]) =>
+  const set = <K extends keyof PatientFormValues>(key: K, value: PatientFormValues[K]) => {
     setValues((v) => ({ ...v, [key]: value }));
+    // A changed number or id is checked afresh on the next save.
+    if (key === "phone" || key === "whatsapp" || key === "nationalId") setDuplicate(null);
+  };
 
-  async function onSubmit(e: FormEvent<HTMLFormElement>) {
+  function onSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    void save(false);
+  }
+
+  /** Save; `confirmDuplicate` is the deliberate "Save anyway" after a duplicate warning. */
+  async function save(confirmDuplicate: boolean) {
     if (pending) return;
     setPending(true);
     setErrors({});
     setFormError(null);
+    const body = confirmDuplicate ? { ...values, confirmDuplicate: true } : values;
     try {
       const { patient } =
         target.mode === "create"
-          ? await apiFetch<{ patient: { id: string } }>("/api/patients", { method: "POST", body: values })
+          ? await apiFetch<{ patient: { id: string } }>("/api/patients", { method: "POST", body })
           : await apiFetch<{ patient: { id: string } }>(`/api/patients/${target.patientId}`, {
               method: "PATCH",
-              body: values,
+              body,
             });
       toast({
         title: target.mode === "create" ? "Patient added" : "Patient updated",
@@ -126,6 +179,11 @@ function PatientForm({
       router.refresh();
       onSaved(patient.id);
     } catch (err) {
+      const dup = duplicateInfo(err);
+      if (dup) {
+        setDuplicate(dup);
+        return;
+      }
       const fields = fieldErrors(err);
       setErrors(fields);
       setFormError(Object.keys(fields).length ? "Please check the highlighted fields." : apiErrorMessage(err));
@@ -135,10 +193,39 @@ function PatientForm({
   }
 
   const today = new Date().toISOString().slice(0, 10);
+  const oldest = oldestDateOfBirth();
 
   return (
     <form onSubmit={onSubmit} noValidate className="space-y-4">
       {formError ? <Alert>{formError}</Alert> : null}
+      {duplicate ? (
+        <div
+          ref={warningRef}
+          role="alert"
+          className="space-y-2 rounded-lg border border-warning/40 bg-warning/5 px-3 py-2 text-sm"
+          data-testid="duplicate-warning"
+        >
+          <p className="font-medium text-warning">
+            {duplicate.code === "duplicate_national_id" ? "This national ID is already on the registry." : "This number is already on the registry."}
+          </p>
+          <ul className="space-y-0.5 text-xs text-foreground">
+            {(["nationalId", "phone", "whatsapp"] as const).map((field) =>
+              duplicate.matches.some((m) => m.field === field) ? (
+                <li key={field}>
+                  <DuplicateNote matches={duplicate.matches} field={field} />
+                </li>
+              ) : null,
+            )}
+          </ul>
+          <p className="text-xs text-muted-foreground">
+            Open the existing record to check it is not the same person. Save anyway when it is someone else (a parent&apos;s
+            number given for a child, a shared family phone).
+          </p>
+          <Button type="button" size="sm" variant="outline" onClick={() => void save(true)} disabled={pending}>
+            Save anyway
+          </Button>
+        </div>
+      ) : null}
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <div className="sm:col-span-2">
@@ -169,18 +256,25 @@ function PatientForm({
           </Select>
         </FormField>
 
-        <FormField id="patient-dob" label="Date of birth" error={errors.dateOfBirth}>
+        <FormField id="patient-dob" label="Date of birth" hint={`Not in the future, at most ${MAX_AGE_YEARS} years ago`} error={errors.dateOfBirth}>
           <Input
             id="patient-dob"
             type="date"
             value={values.dateOfBirth}
             onChange={(e) => set("dateOfBirth", e.target.value)}
+            min={oldest}
             max={today}
             aria-invalid={errors.dateOfBirth ? true : undefined}
           />
         </FormField>
 
-        <FormField id="patient-phone" label="Phone" hint="Digits, optional leading +" error={errors.phone}>
+        <FormField
+          id="patient-phone"
+          label="Phone"
+          hint="Digits, optional leading +"
+          error={errors.phone}
+          warning={duplicate?.matches.some((m) => m.field === "phone") ? <DuplicateNote matches={duplicate.matches} field="phone" /> : undefined}
+        >
           <Input
             id="patient-phone"
             type="tel"
@@ -193,7 +287,12 @@ function PatientForm({
           />
         </FormField>
 
-        <FormField id="patient-whatsapp" label="WhatsApp" error={errors.whatsapp}>
+        <FormField
+          id="patient-whatsapp"
+          label="WhatsApp"
+          error={errors.whatsapp}
+          warning={duplicate?.matches.some((m) => m.field === "whatsapp") ? <DuplicateNote matches={duplicate.matches} field="whatsapp" /> : undefined}
+        >
           <Input
             id="patient-whatsapp"
             type="tel"
@@ -224,6 +323,7 @@ function PatientForm({
           label="National ID"
           hint="ID or passport number · Arabic digits accepted"
           error={errors.nationalId}
+          warning={duplicate?.matches.some((m) => m.field === "nationalId") ? <DuplicateNote matches={duplicate.matches} field="nationalId" /> : undefined}
         >
           <Input
             id="patient-nationalId"

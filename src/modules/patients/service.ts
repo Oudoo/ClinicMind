@@ -43,8 +43,13 @@ export const LANGUAGES = ["ar", "en"] as const;
 const blankToUndefined = (v: unknown) => (typeof v === "string" && v.trim() === "" ? undefined : v);
 const blankToNull = (v: unknown) => (typeof v === "string" && v.trim() === "" ? null : v);
 
-/** Date-only date of birth that is not in the future. */
-const zDateOfBirth = zDate.refine((d) => d.getTime() <= Date.now(), "Date of birth cannot be in the future");
+/** Nobody on the registry is older than this. */
+export const MAX_AGE_YEARS = 120;
+
+/** Date-only date of birth: not in the future and not more than 120 years ago. */
+const zDateOfBirth = zDate
+  .refine((d) => d.getTime() <= Date.now(), "Date of birth cannot be in the future")
+  .refine((d) => d.getTime() >= yearsBefore(new Date(), MAX_AGE_YEARS).getTime(), `Date of birth cannot be more than ${MAX_AGE_YEARS} years ago`);
 
 const zEmail = z.string().trim().toLowerCase().max(254).email("Invalid e-mail address");
 
@@ -97,6 +102,8 @@ export const PatientInput = z.object({
   language: z.enum(LANGUAGES).default("ar"),
   tags: zTags.default([]),
   notes: zOptionalText(2000),
+  /** Save even though the phone, WhatsApp or national id already belongs to another patient (409 otherwise). */
+  confirmDuplicate: z.boolean().default(false),
 });
 export type PatientInput = z.input<typeof PatientInput>;
 
@@ -114,6 +121,8 @@ export const PatientUpdateInput = z.object({
   language: z.enum(LANGUAGES).optional(),
   tags: zTags.optional(),
   notes: clearable(zText(2000)),
+  /** Save even though a changed phone, WhatsApp or national id belongs to another patient (409 otherwise). */
+  confirmDuplicate: z.boolean().optional(),
 });
 export type PatientUpdateInput = z.input<typeof PatientUpdateInput>;
 
@@ -179,6 +188,100 @@ function definedEntries<T extends object>(obj: T): Partial<T> {
 /** Prisma's "record not found" for a scoped `update` whose filters matched nothing. */
 function isNotFound(err: unknown): boolean {
   return err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2025";
+}
+
+// ── Duplicates ────────────────────────────────────────────────────────────────
+
+export type DuplicateField = "phone" | "whatsapp" | "nationalId";
+
+export interface DuplicateMatch {
+  id: string;
+  fullName: string;
+  /** Which of the submitted values matched this patient. */
+  field: DuplicateField;
+}
+
+/**
+ * The phone, WhatsApp number or national id of a new (or edited) patient
+ * already belongs to another active patient of the tenant (409). The caller
+ * may save anyway with `confirmDuplicate: true`.
+ */
+export class DuplicatePatientError extends Error {
+  readonly status = 409;
+  constructor(
+    readonly code: "duplicate_phone" | "duplicate_national_id",
+    readonly matches: DuplicateMatch[],
+  ) {
+    const first = matches.find((m) => (code === "duplicate_national_id" ? m.field === "nationalId" : m.field !== "nationalId"));
+    super(
+      code === "duplicate_national_id"
+        ? `This national ID belongs to ${first?.fullName ?? "another patient"}.`
+        : `This number belongs to ${first?.fullName ?? "another patient"}.`,
+    );
+    this.name = "DuplicatePatientError";
+  }
+}
+
+/**
+ * Active (not archived) patients of the tenant that already carry one of the
+ * given numbers, in any spelling (`+2010…`, `010…`, `0020…`, Arabic-Indic
+ * digits: the same normaliser the search box uses), or the same national id.
+ * At most five per field, oldest record first.
+ */
+export async function findDuplicatePatients(
+  tenantId: string,
+  values: { phone?: string | null; whatsapp?: string | null; nationalId?: string | null },
+  excludeId?: string,
+): Promise<DuplicateMatch[]> {
+  const base: Prisma.PatientWhereInput = { tenantId, ...notDeleted, ...(excludeId ? { id: { not: excludeId } } : {}) };
+  const select = { id: true, fullName: true } as const;
+  const matches: DuplicateMatch[] = [];
+  const add = (rows: { id: string; fullName: string }[], field: DuplicateField) => {
+    for (const r of rows) {
+      // One phone typed into both boxes names its owner once, under the phone.
+      if (field === "whatsapp" && matches.some((m) => m.id === r.id && m.field === "phone")) continue;
+      matches.push({ id: r.id, fullName: r.fullName, field });
+    }
+  };
+  for (const field of ["phone", "whatsapp"] as const) {
+    const value = values[field];
+    const variants = value ? phoneVariants(value) : [];
+    if (!variants.length) continue;
+    const rows = await db.patient.findMany({
+      where: { ...base, OR: [{ phone: { in: variants } }, { whatsapp: { in: variants } }] },
+      select,
+      orderBy: { createdAt: "asc" },
+      take: 5,
+    });
+    add(rows, field);
+  }
+  const nationalId = values.nationalId ? normalizeNationalId(values.nationalId) : "";
+  if (nationalId) {
+    const rows = await db.patient.findMany({
+      where: { ...base, nationalId: { equals: nationalId, mode: "insensitive" } },
+      select,
+      orderBy: { createdAt: "asc" },
+      take: 5,
+    });
+    add(rows, "nationalId");
+  }
+  return matches;
+}
+
+/** Refuse duplicates unless confirmed; returns the ids that were confirmed on purpose (for the audit). */
+async function guardDuplicates(
+  tenantId: string,
+  values: { phone?: string | null; whatsapp?: string | null; nationalId?: string | null },
+  confirmed: boolean,
+  excludeId?: string,
+): Promise<string[]> {
+  if (!values.phone && !values.whatsapp && !values.nationalId) return [];
+  const matches = await findDuplicatePatients(tenantId, values, excludeId);
+  if (!matches.length) return [];
+  if (!confirmed) {
+    throw new DuplicatePatientError(matches.some((m) => m.field === "nationalId") ? "duplicate_national_id" : "duplicate_phone", matches);
+  }
+  return [...new Set(matches.map((m) => m.id))];
 }
 
 // ── Listing & search ──────────────────────────────────────────────────────────
@@ -406,6 +509,11 @@ async function upcomingByPatient(
   );
 }
 
+/** The last page that has rows (1 for an empty result). */
+function lastPage(total: number, pageSize: number): number {
+  return Math.max(1, Math.ceil(total / pageSize));
+}
+
 /** Stable sort of ids by a per-id instant: present values first in the given direction, missing ones keep their order at the end. */
 function sortIdsBy(ids: string[], at: (id: string) => Date | undefined, direction: "asc" | "desc"): string[] {
   const indexed = ids.map((id, index) => ({ id, index, t: at(id)?.getTime() }));
@@ -428,7 +536,7 @@ async function queryPatients(
   const params = new URLSearchParams();
   if (opts.page !== undefined) params.set("page", String(opts.page));
   if (opts.pageSize !== undefined) params.set("pageSize", String(opts.pageSize));
-  const { page, pageSize, skip, take } = parsePaging(params, limits);
+  const { page: requestedPage, pageSize, skip, take } = parsePaging(params, limits);
   const now = opts.now ?? new Date();
   const sort: SortKey = opts.sort ?? DEFAULT_SORT;
   const { where, exact } = patientsWhere(tenantId, opts);
@@ -438,11 +546,18 @@ async function queryPatients(
   let total: number;
   let exactIds = new Set<string>();
 
+  let page = requestedPage;
   if (!exact && !aggregateSort) {
     [rows, total] = await db.$transaction([
       db.patient.findMany({ where, orderBy: orderFor(sort), skip, take, include: listInclude }),
       db.patient.count({ where }),
     ]);
+    // A page past the end (a stale link, ?page=99) shows the last page instead of an empty list.
+    const last = lastPage(total, pageSize);
+    if (!rows.length && page > last) {
+      page = last;
+      rows = await db.patient.findMany({ where, orderBy: orderFor(sort), skip: (page - 1) * pageSize, take, include: listInclude });
+    }
   } else {
     // Order the ids of the whole result (exact matches first, aggregate sorts
     // in memory), then fetch just the page. Clinic registries are thousands
@@ -467,7 +582,10 @@ async function queryPatients(
       exactIds = new Set(hits.map((h) => h.id));
       if (exactIds.size) ids = [...ids.filter((id) => exactIds.has(id)), ...ids.filter((id) => !exactIds.has(id))];
     }
-    const pageIds = ids.slice(skip, skip + take);
+    // Past the end (?page=99): the last page that has rows.
+    page = Math.min(page, lastPage(ids.length, pageSize));
+    const from = (page - 1) * pageSize;
+    const pageIds = ids.slice(from, from + take);
     const fetched = pageIds.length
       ? await db.patient.findMany({ where: { tenantId, id: { in: pageIds } }, include: listInclude })
       : [];
@@ -669,6 +787,8 @@ export type PatientDetail = NonNullable<Awaited<ReturnType<typeof getPatient>>>;
 
 export async function createPatient(tenantId: string, input: unknown, actor: Actor = {}) {
   const data = PatientInput.parse(input);
+  // The same number or national id on another active patient: 409 unless confirmed.
+  const duplicateOf = await guardDuplicates(tenantId, data, data.confirmDuplicate);
   const patient = await db.patient.create({
     data: {
       tenantId,
@@ -697,7 +817,7 @@ export async function createPatient(tenantId: string, input: unknown, actor: Act
     action: "patient.create",
     entity: "Patient",
     entityId: patient.id,
-    after: snapshot(patient),
+    after: { ...snapshot(patient), ...(duplicateOf.length ? { confirmedDuplicateOf: duplicateOf } : {}) },
   });
   // Keep the assistant's knowledge of this patient current (fire-and-forget).
   ingestInBackground({ kind: "patient", tenantId, id: patient.id });
@@ -710,12 +830,22 @@ export async function createPatient(tenantId: string, input: unknown, actor: Act
  * first. Returns `null` when the patient is not an active member of the tenant.
  */
 export async function updatePatient(tenantId: string, id: string, input: unknown, actor: Actor = {}) {
-  const patch = definedEntries(PatientUpdateInput.parse(input));
+  const { confirmDuplicate, ...fields } = PatientUpdateInput.parse(input);
+  const patch = definedEntries(fields);
   const keys = Object.keys(patch) as ProfileKey[];
 
   const existing = await db.patient.findFirst({ where: { id, tenantId, ...notDeleted } });
   if (!existing) return null;
   if (keys.length === 0) return existing;
+
+  // Only a number or id that changes is checked against the other patients.
+  const changed = (key: "phone" | "whatsapp" | "nationalId") => (patch[key] && patch[key] !== existing[key] ? patch[key] : null);
+  const duplicateOf = await guardDuplicates(
+    tenantId,
+    { phone: changed("phone"), whatsapp: changed("whatsapp"), nationalId: changed("nationalId") },
+    Boolean(confirmDuplicate),
+    id,
+  );
 
   let patient;
   try {
@@ -734,7 +864,7 @@ export async function updatePatient(tenantId: string, id: string, input: unknown
     entity: "Patient",
     entityId: patient.id,
     before: snapshot(existing, keys),
-    after: snapshot(patient, keys),
+    after: { ...snapshot(patient, keys), ...(duplicateOf.length ? { confirmedDuplicateOf: duplicateOf } : {}) },
   });
   // Keep the assistant's knowledge of this patient current (fire-and-forget).
   ingestInBackground({ kind: "patient", tenantId, id });

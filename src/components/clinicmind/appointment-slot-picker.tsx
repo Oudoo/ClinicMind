@@ -4,16 +4,9 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { dateKeyInTz, formatDateInTz, formatTimeInTz } from "@/lib/time";
 import { cn } from "@/lib/utils";
 import type { SlotCellDTO } from "@/modules/appointments/dto";
-import { STATUS_LABEL, type WorkingHours } from "@/modules/appointments/transitions";
+import { closedDaysLabel, describeHours } from "@/modules/appointments/rules";
+import { STATUS_LABEL } from "@/modules/appointments/transitions";
 import { useFreeSlots } from "./appointment-shared";
-
-const WEEKDAY = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-
-function describeHours(h: WorkingHours): string {
-  const days = [...h.days].sort((a, b) => ((a + 1) % 7) - ((b + 1) % 7)).map((d) => WEEKDAY[d]);
-  const range = days.length > 2 ? `${days[0]}–${days[days.length - 1]}` : days.join(", ");
-  return `${range} ${h.start}–${h.end}`;
-}
 
 /**
  * The day's free-slot grid for the chosen doctor (and room): free starts are
@@ -62,8 +55,9 @@ export function SlotPicker({
   }
   if (data.closed) {
     return (
-      <p className="rounded-lg border border-dashed border-border px-3 py-2 text-xs text-muted-foreground">
-        The clinic is closed on this day. Opening hours: {describeHours(data.hours)}.
+      <p className="rounded-lg border border-dashed border-border px-3 py-2 text-xs text-muted-foreground" data-testid="slots-closed-day">
+        The clinic is closed on this day. Opening hours: {describeHours(data.hours)}
+        {closedDaysLabel(data.hours) ? ` (${closedDaysLabel(data.hours)})` : ""}. Pick another day.
       </p>
     );
   }

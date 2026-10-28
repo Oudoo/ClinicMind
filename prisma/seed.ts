@@ -4,6 +4,7 @@ import { generatePassword, hashPassword, PasswordSchema } from "../src/lib/auth/
 import { reindexTenant } from "../src/modules/knowledge/ingest";
 import { PLATFORM_TENANT_SLUG } from "../src/modules/platform/service";
 import { seedRound2 } from "./seed/index";
+import { allergiesFromDraw, comorbiditiesFromDraw, conditionFromDraw, medicationStartDays, type Condition } from "./seed/clinical";
 
 /**
  * Demo seed: "Aura Derma & Hair Clinic" (Cairo), a dermatology and hair-transplant
@@ -62,33 +63,10 @@ const FIRST_M = ["Ahmed", "Mohamed", "Omar", "Youssef", "Khaled", "Mahmoud", "Ka
 const FIRST_F = ["Sara", "Nour", "Fatma", "Mariam", "Heba", "Dina", "Yasmin", "Salma", "Rana", "Aya", "Menna", "Hala", "Laila", "Nadine", "Mona", "Reem", "Farida", "Nesma"];
 const LAST = ["Mahmoud", "Saleh", "Ibrahim", "El-Din", "Adel", "Mansour", "Tarek", "Hany", "Fathy", "Abdel Rahman", "Samir", "Kamel", "Shaaban", "Gamal", "Zaki", "Fouad", "Nabil", "Ezzat", "Hamdy", "Lotfy"];
 
-interface Condition {
-  key: string;
-  tag: string;
-  chronic: string[];
-  diagnosis: string;
-  meds: { name: string; dosage: string; frequency: string }[];
-  reasons: string[];
-  symptoms: string[];
-  tests: string[];
-  followUps: string[];
-  doctor: "derm" | "hair";
-}
-const CONDITIONS: Condition[] = [
-  { key: "aga", tag: "hair-loss", chronic: ["Androgenetic alopecia"], diagnosis: "Androgenetic alopecia (Norwood III vertex)", meds: [{ name: "Minoxidil 5% solution", dosage: "1 ml", frequency: "Twice daily" }, { name: "Finasteride", dosage: "1 mg", frequency: "Once daily" }], reasons: ["Hair loss consultation", "Hair loss follow-up", "PRP session", "Hair transplant consultation"], symptoms: ["progressive thinning at the crown", "increased shedding over 8 months", "family history on father's side"], tests: ["Trichoscopy", "Ferritin and TSH"], followUps: ["Review in 3 months with photos", "Discuss transplant candidacy"], doctor: "hair" },
-  { key: "fue", tag: "hair-transplant", chronic: ["Androgenetic alopecia"], diagnosis: "Post FUE hair transplant, day 7 review", meds: [{ name: "Cephalexin", dosage: "500 mg", frequency: "Twice daily for 5 days" }, { name: "Saline spray", dosage: "As directed", frequency: "Every 2 hours while awake" }], reasons: ["Post-op day 7 review", "Post-op day 14 review", "Month 1 review", "Month 3 review"], symptoms: ["mild crusting in recipient area", "no bleeding", "donor area healing well"], tests: [], followUps: ["Crust removal guidance", "Photo set at month 1"], doctor: "hair" },
-  { key: "acne", tag: "acne", chronic: [], diagnosis: "Acne vulgaris, moderate inflammatory", meds: [{ name: "Adapalene 0.1% gel", dosage: "Thin layer", frequency: "Nightly" }, { name: "Doxycycline", dosage: "100 mg", frequency: "Once daily for 8 weeks" }], reasons: ["Acne consultation", "Acne follow-up", "Chemical peel session"], symptoms: ["inflammatory papules on cheeks and jawline", "post-inflammatory marks", "flares before menstruation"], tests: [], followUps: ["Review in 6 weeks", "Sunscreen counselling"], doctor: "derm" },
-  { key: "melasma", tag: "pigmentation", chronic: ["Melasma"], diagnosis: "Melasma, mixed epidermal-dermal", meds: [{ name: "Tranexamic acid", dosage: "250 mg", frequency: "Twice daily" }, { name: "Hydroquinone 4% cream", dosage: "Thin layer", frequency: "Nightly" }, { name: "Broad-spectrum sunscreen SPF 50", dosage: "Generous", frequency: "Every 3 hours outdoors" }], reasons: ["Pigmentation consultation", "Melasma follow-up", "Laser session"], symptoms: ["symmetrical brown patches on cheeks", "worse after summer", "no new medications"], tests: ["Wood's lamp examination"], followUps: ["Review in 8 weeks with photos"], doctor: "derm" },
-  { key: "eczema", tag: "eczema", chronic: ["Atopic dermatitis"], diagnosis: "Atopic dermatitis flare, flexural", meds: [{ name: "Emollient cream", dosage: "Liberal", frequency: "Twice daily" }, { name: "Mometasone 0.1% cream", dosage: "Thin layer", frequency: "Once daily for 7 days" }], reasons: ["Eczema flare", "Eczema review"], symptoms: ["itchy patches in elbow folds", "sleep disturbed by itching", "dry skin"], tests: [], followUps: ["Review in 2 weeks", "Written skincare plan"], doctor: "derm" },
-  { key: "psoriasis", tag: "psoriasis", chronic: ["Plaque psoriasis"], diagnosis: "Plaque psoriasis, limited, elbows and scalp", meds: [{ name: "Calcipotriol/betamethasone gel", dosage: "Thin layer", frequency: "Once daily" }, { name: "Coal tar shampoo", dosage: "As directed", frequency: "Three times weekly" }], reasons: ["Psoriasis review", "Psoriasis consultation"], symptoms: ["well-demarcated scaly plaques on elbows", "scalp scaling", "no joint pain"], tests: [], followUps: ["Review in 6 weeks"], doctor: "derm" },
-  { key: "rosacea", tag: "rosacea", chronic: ["Rosacea"], diagnosis: "Papulopustular rosacea", meds: [{ name: "Metronidazole 0.75% gel", dosage: "Thin layer", frequency: "Twice daily" }, { name: "Ivermectin 1% cream", dosage: "Thin layer", frequency: "Nightly" }], reasons: ["Rosacea consultation", "Rosacea follow-up"], symptoms: ["persistent central facial redness", "flushing with heat and spicy food", "papules on nose"], tests: [], followUps: ["Trigger diary", "Review in 8 weeks"], doctor: "derm" },
-  { key: "alopecia-areata", tag: "hair-loss", chronic: ["Alopecia areata"], diagnosis: "Alopecia areata, single patch, scalp", meds: [{ name: "Intralesional triamcinolone", dosage: "5 mg/ml", frequency: "Every 4 weeks" }], reasons: ["Alopecia areata injection", "Alopecia areata review"], symptoms: ["round patch of hair loss 3 cm", "noticed 6 weeks ago", "no nail changes"], tests: ["Thyroid function"], followUps: ["Injection in 4 weeks"], doctor: "hair" },
-  { key: "laser-hr", tag: "laser", chronic: [], diagnosis: "Hirsutism, cosmetic laser hair removal course", meds: [], reasons: ["Laser hair removal session", "Laser hair removal consultation"], symptoms: ["unwanted facial hair", "previous waxing", "no hormonal symptoms"], tests: ["Hormonal profile if cycles irregular"], followUps: ["Next session in 6 weeks"], doctor: "derm" },
-  { key: "warts", tag: "minor-procedure", chronic: [], diagnosis: "Plantar warts", meds: [{ name: "Salicylic acid 40% plaster", dosage: "Apply", frequency: "Daily" }], reasons: ["Wart cryotherapy", "Wart review"], symptoms: ["painful lesions on sole", "present for 4 months"], tests: [], followUps: ["Cryotherapy repeat in 3 weeks"], doctor: "derm" },
-];
-const ALLERGIES = [[], [], [], ["Penicillin"], ["Sulfa drugs"], ["NSAIDs"], ["Latex"]];
-const COMORBID = [[], [], [], ["Hypertension"], ["Type 2 diabetes"], ["Hypothyroidism"], ["PCOS"], ["Iron deficiency anaemia"]];
 const ROOMS = ["Room 1", "Room 2", "Laser suite", "Procedure room"];
+/** A patient who prefers English did not ask for Arabic-only communication (same draw, fitting words). */
+const fitLanguage = (note: string, language: string) =>
+  language === "en" && note === "Asked for Arabic-only communication." ? "Asked for written instructions in English." : note;
 
 // ── Main ─────────────────────────────────────────────────────────────────────
 async function main() {
@@ -178,12 +156,16 @@ async function main() {
       fullName = `${gender === "FEMALE" ? pick(FIRST_F) : pick(FIRST_M)} ${pick(LAST)}`;
     } while (used.has(fullName));
     used.add(fullName);
-    const cond = pick(CONDITIONS);
+    // Conditions and comorbidities respect the patient's sex; allergies never
+    // conflict with the condition's medications (prisma/seed/clinical.ts). One
+    // random number each, as always, so the rest of the demo is unchanged.
+    const condDraw = rand();
+    const cond = conditionFromDraw(gender, condDraw);
     const age = between(19, 68);
     const dob = new Date(Date.UTC(2026 - age, between(0, 11), between(1, 28)));
     const language = chance(0.8) ? "ar" : "en";
-    const allergies = pick(ALLERGIES);
-    const comorbid = pick(COMORBID);
+    const allergies = allergiesFromDraw(cond, rand());
+    const comorbid = comorbiditiesFromDraw(gender, rand());
     const tags = [cond.tag, ...(chance(0.12) ? ["vip"] : []), ...(chance(0.15) ? ["new-patient"] : [])];
     const phone = `+2010${String(between(10_000_000, 99_999_999))}`;
     const p = await db.patient.create({
@@ -199,7 +181,7 @@ async function main() {
         address: chance(0.7) ? pick(["Zamalek, Cairo", "Maadi, Cairo", "Nasr City, Cairo", "Heliopolis, Cairo", "6th of October City", "Sheikh Zayed", "Dokki, Giza", "New Cairo"]) : null,
         language,
         tags,
-        notes: chance(0.3) ? pick(["Prefers morning appointments.", "Referred by Dr. Nabil.", "Sensitive skin — patch test before peels.", "Asked for Arabic-only communication."]) : null,
+        notes: chance(0.3) ? fitLanguage(pick(["Prefers morning appointments.", "Referred by Dr. Nabil.", "Sensitive skin — patch test before peels.", "Asked for Arabic-only communication."]), language) : null,
         createdAt: new Date(Date.now() - between(20, 400) * 86_400_000),
         medicalHistory: {
           create: {
@@ -212,7 +194,11 @@ async function main() {
           },
         },
         medications: {
-          create: cond.meds.map((m) => ({ tenantId: tenant.id, name: m.name, dosage: m.dosage, frequency: m.frequency, startDate: new Date(Date.now() - between(7, 120) * 86_400_000), active: true })),
+          // Start dates drawn here, in the order the seed has always drawn them.
+          create: medicationStartDays(cond, condDraw, () => between(7, 120)).map((days, i) => {
+            const m = cond.meds[i]!;
+            return { tenantId: tenant.id, name: m.name, dosage: m.dosage, frequency: m.frequency, startDate: new Date(Date.now() - days * 86_400_000), active: true };
+          }),
         },
       },
       select: { id: true, fullName: true },

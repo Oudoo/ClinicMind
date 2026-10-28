@@ -10,7 +10,11 @@ export const dynamic = "force-dynamic";
 /**
  * `POST /api/appointments/[id]/transition` body `{ status, reason? }`.
  * 409 `invalid_transition` for a move the state machine forbids, 409 `conflict`
- * when a waitlisted booking cannot be promoted because its slot is still taken.
+ * when a waitlisted booking cannot be promoted because its slot is still taken,
+ * 409 `too_early` for a no-show or a completion before the start time, 409
+ * `not_today` for a check-in on another day than the appointment's (or more
+ * than two hours after it ended) or a consultation started on a future day,
+ * 422 `in_the_past` for promoting a waitlisted slot that has passed.
  */
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -23,6 +27,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       id: ctx.userId,
       email: ctx.email,
       ip: clientIp(req),
+      role: ctx.role,
     });
     return ok({ appointment });
   } catch (err) {

@@ -110,3 +110,36 @@ export function patientFormValues(patient: {
 export function apiErrorMessage(err: unknown): string {
   return err instanceof ApiError ? err.message : "Could not reach the server. Please try again.";
 }
+
+// ── Dates of birth and age ────────────────────────────────────────────────────
+
+/** Nobody on the registry is older than this (the API refuses an older date of birth). */
+export const MAX_AGE_YEARS = 120;
+
+/** `YYYY-MM-DD` of the oldest date of birth the form accepts (120 years before today, UTC like the stored dates). */
+export function oldestDateOfBirth(now: Date = new Date()): string {
+  return new Date(Date.UTC(now.getUTCFullYear() - MAX_AGE_YEARS, now.getUTCMonth(), now.getUTCDate())).toISOString().slice(0, 10);
+}
+
+// ── Duplicate warnings ────────────────────────────────────────────────────────
+
+export type DuplicateField = "phone" | "whatsapp" | "nationalId";
+
+export interface DuplicateMatchView {
+  id: string;
+  fullName: string;
+  field: DuplicateField;
+}
+
+export interface DuplicateInfo {
+  code: "duplicate_phone" | "duplicate_national_id";
+  matches: DuplicateMatchView[];
+}
+
+/** The 409 `duplicate_phone` / `duplicate_national_id` payload of the patient API, or null for any other error. */
+export function duplicateInfo(err: unknown): DuplicateInfo | null {
+  if (!(err instanceof ApiError) || err.status !== 409) return null;
+  if (err.code !== "duplicate_phone" && err.code !== "duplicate_national_id") return null;
+  const body = err.body as { matches?: DuplicateMatchView[] } | null;
+  return { code: err.code, matches: Array.isArray(body?.matches) ? body.matches : [] };
+}

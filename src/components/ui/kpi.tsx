@@ -11,31 +11,82 @@ import { cn } from "@/lib/utils";
 
 export type Direction = "up" | "down";
 
-/** Relative change with the colour decided by which direction is good. */
+/**
+ * `relative`: the change as a share of the previous value, for counts and
+ * money ("+12%"). `points`: the difference in percentage points, for rates
+ * and shares given as fractions 0..1 ("+4.5 pts") — a no-show rate going from
+ * 4% to 8% is "+4.0 pts", not "+100%".
+ */
+export type DeltaMode = "relative" | "points";
+
+export interface DeltaView {
+  /** "+12%", "−8%", "+4.5 pts", "new" (nothing to compare with) or "flat". */
+  text: string;
+  direction: "up" | "down" | "flat";
+  /** Whether the move is good news, from `goodWhen`; flat is neutral. */
+  tone: "good" | "bad" | "neutral";
+}
+
+const MINUS = "\u2212";
+const FLAT: DeltaView = { text: "flat", direction: "flat", tone: "neutral" };
+
+/**
+ * The change chip's wording, as a pure function. Relative changes under 1%
+ * and differences under 0.05 points read "flat"; a previous value of 0 in
+ * relative mode reads "new" instead of a meaningless "100%".
+ */
+export function describeDelta(current: number, previous: number, goodWhen: Direction, mode: DeltaMode = "relative"): DeltaView {
+  const toned = (up: boolean, text: string): DeltaView => ({ text, direction: up ? "up" : "down", tone: (goodWhen === "up") === up ? "good" : "bad" });
+  if (mode === "points") {
+    const points = Math.round((current - previous) * 1000) / 10;
+    if (points === 0) return FLAT;
+    return toned(points > 0, `${points > 0 ? "+" : MINUS}${Math.abs(points).toFixed(1)} pts`);
+  }
+  if (previous === 0) return current === 0 ? FLAT : toned(current > 0, "new");
+  const change = ((current - previous) / Math.abs(previous)) * 100;
+  if (Math.abs(change) < 1) return FLAT;
+  return toned(change > 0, `${change > 0 ? "+" : MINUS}${Math.abs(Math.round(change))}%`);
+}
+
+/**
+ * The change against the comparison window, coloured by which direction is
+ * good. The tooltip states both values and both windows
+ * ("412 now · 398 on 21 Oct, 7 days ago").
+ */
 export function DeltaChip({
   current,
   previous,
   goodWhen,
   format = (v) => String(v),
+  mode = "relative",
+  currentLabel = "this period",
+  previousLabel = "the previous period",
 }: {
   current: number;
   previous: number | null | undefined;
   goodWhen: Direction;
   format?: (v: number) => string;
+  mode?: DeltaMode;
+  /** The current window, as the tooltip names it ("last 7 days", "now"). */
+  currentLabel?: string;
+  /** The comparison window ("the 7 days before", "7 days ago"). */
+  previousLabel?: string;
 }) {
-  if (previous == null || !Number.isFinite(previous)) return null;
-  const change = previous ? ((current - previous) / Math.abs(previous)) * 100 : current ? 100 : 0;
-  const flat = Math.abs(change) < 1;
-  const good = goodWhen === "up" ? change > 0 : change < 0;
-  const tone = flat ? "bg-muted text-muted-foreground" : good ? "bg-success/10 text-success" : "bg-danger/10 text-danger";
-  const Icon = change > 0 ? TrendingUp : TrendingDown;
+  if (previous == null || !Number.isFinite(previous) || !Number.isFinite(current)) return null;
+  const view = describeDelta(current, previous, goodWhen, mode);
+  const tone =
+    view.tone === "neutral" ? "bg-muted text-muted-foreground" : view.tone === "good" ? "bg-success/10 text-success" : "bg-danger/10 text-danger";
+  const Icon = view.direction === "up" ? TrendingUp : TrendingDown;
+  const title = `${format(current)} ${currentLabel} · ${format(previous)} ${previousLabel}`;
   return (
     <span
       className={cn("inline-flex items-center gap-0.5 rounded-md px-1.5 py-0.5 font-mono text-[11px] tabular-nums", tone)}
-      title={`${format(previous)} in the comparison period`}
+      title={title}
+      data-testid="delta-chip"
     >
-      {flat ? null : <Icon className="h-3 w-3" aria-hidden="true" />}
-      {flat ? "flat" : `${Math.abs(Math.round(change))}%`}
+      {view.direction === "flat" ? null : <Icon className="h-3 w-3" aria-hidden="true" />}
+      {view.text}
+      <span className="sr-only"> ({title})</span>
     </span>
   );
 }

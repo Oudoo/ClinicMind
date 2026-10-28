@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { getActingContext } from "@/lib/auth/session";
 import { can } from "@/lib/auth/rbac";
 import {
@@ -9,11 +10,13 @@ import {
   startOfDayInTz,
   startOfWeekInTz,
 } from "@/lib/time";
-import { getTenantTimezone, listAppointments, listStaff } from "@/modules/appointments/service";
+import { getTenantTimezone, getWorkingHours, listAppointments, listStaff } from "@/modules/appointments/service";
 import { toAppointmentDTO } from "@/modules/appointments/dto";
 import { AppointmentCalendar, type CalendarView } from "@/components/clinicmind/appointment-calendar";
 
 export const dynamic = "force-dynamic";
+
+export const metadata: Metadata = { title: "Appointments" };
 
 /**
  * `/dashboard/appointments?view=week|day&date=YYYY-MM-DD&doctorId=`
@@ -40,9 +43,11 @@ export default async function AppointmentsPage({
   const dayCount = view === "week" ? 7 : 1;
   const rangeEnd = endOfDayInTz(addDays(rangeStart, dayCount - 1, timezone), timezone);
 
-  const [appointments, doctors] = await Promise.all([
+  const [appointments, doctors, hours] = await Promise.all([
     listAppointments(ctx.tenantId, { from: rangeStart, to: rangeEnd, doctorId: doctorFilter }),
-    listStaff(ctx.tenantId, "DOCTOR"),
+    // Clinicians, plus the nurses who hold nurse-led procedure sessions.
+    listStaff(ctx.tenantId, { kind: "PROCEDURE" }),
+    getWorkingHours(ctx.tenantId),
   ]);
 
   const days = Array.from({ length: dayCount }, (_, i) => {
@@ -70,6 +75,7 @@ export default async function AppointmentsPage({
       days={days}
       appointments={appointments.map(toAppointmentDTO)}
       doctors={doctors}
+      hours={hours}
       doctorId={doctorFilter ?? ""}
       nav={{
         prev: dateKeyInTz(addDays(anchor, -step, timezone), timezone),

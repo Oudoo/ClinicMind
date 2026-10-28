@@ -3,6 +3,9 @@ import {
   AppointmentConflictError,
   AppointmentNotFoundError,
   AppointmentNotReschedulableError,
+  AppointmentTimeError,
+  BookingTimeError,
+  DoctorNotBookableError,
   InvalidTransitionError,
   PatientConflictError,
 } from "@/modules/appointments/service";
@@ -24,6 +27,20 @@ export function appointmentErrorResponse(err: unknown): NextResponse | null {
   }
   if (err instanceof AppointmentNotReschedulableError) {
     return NextResponse.json({ error: "not_reschedulable", status: err.appointmentStatus }, { status: 409 });
+  }
+  if (err instanceof AppointmentTimeError) {
+    // 409 too_early (no-show or completion before the start) / not_today (check-in on another day).
+    return NextResponse.json({ error: err.code, message: err.message, from: err.from, to: err.to }, { status: 409 });
+  }
+  if (err instanceof BookingTimeError) {
+    // 422 in_the_past / outside_hours; `overridable` when an owner may resend it with allowPast / allowOutsideHours.
+    return NextResponse.json(
+      { error: err.code, message: err.message, overridable: err.overridable, ...(err.hours ? { hours: err.hours } : {}) },
+      { status: 422 },
+    );
+  }
+  if (err instanceof DoctorNotBookableError) {
+    return NextResponse.json({ error: "doctor_not_bookable", message: err.message }, { status: 422 });
   }
   if (err instanceof AppointmentNotFoundError) {
     return NextResponse.json({ error: "not_found", entity: "appointment" }, { status: 404 });

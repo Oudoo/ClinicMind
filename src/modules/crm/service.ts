@@ -6,7 +6,7 @@ import { TenantScopeError, requireTenantPatient, requireTenantUser } from "@/lib
 import { zDateTime, zOptionalText, zText } from "@/lib/validation";
 import { endOfDayInTz, formatDateInTz, fromDateKey, startOfDayInTz } from "@/lib/time";
 import { listTreatments, requireTenantTreatment, treatmentNames } from "@/modules/treatments/service";
-import { AppointmentConflictError, createAppointment, findConflicts, getTenantTimezone } from "@/modules/appointments/service";
+import { AppointmentConflictError, assertBookableTime, createAppointment, findConflicts, getTenantTimezone } from "@/modules/appointments/service";
 import { notify } from "@/modules/notifications/service";
 import type { BoardColumnDTO, CampaignDTO, CostImportPreviewDTO, FollowUpDTO, LeadCardDTO } from "./dto";
 import {
@@ -734,6 +734,9 @@ export async function bookConsultation(tenantId: string, id: string, rawInput: u
   let lead = await requireLead(tenantId, id);
   if (lead.stage === "LOST") throw new LeadStateError("lead_lost", "Reopen the lead before booking.");
   await requireTenantUser(tenantId, input.doctorId);
+  // A time in the past or outside opening hours is refused before anything is
+  // written, so a refused booking never leaves a newly converted patient behind.
+  await assertBookableTime(tenantId, { startsAt: input.startsAt, endsAt: input.endsAt }, actor);
 
   if (!lead.patientId) {
     // Look before converting: a slot that is already taken must not leave a

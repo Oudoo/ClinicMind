@@ -12,13 +12,14 @@ import { apiFetch } from "@/lib/http";
 import { dateKeyInTz } from "@/lib/time";
 import { cn } from "@/lib/utils";
 import type { AppointmentDTO } from "@/modules/appointments/dto";
-import { STATUS_LABEL, type AppointmentStatus } from "@/modules/appointments/transitions";
+import { STATUS_LABEL, type AppointmentStatus, type WorkingHours } from "@/modules/appointments/transitions";
 import { AppointmentCard } from "./appointment-card";
 import { CancelAppointmentDialog } from "./appointment-cancel-dialog";
 import { NewAppointmentDialog } from "./appointment-new-dialog";
+import { NoShowDialog } from "./appointment-no-show-dialog";
 import { AppointmentNotesDialog } from "./appointment-notes-dialog";
 import { RescheduleAppointmentDialog } from "./appointment-reschedule-dialog";
-import { describeApiError, type StaffOption } from "./appointment-shared";
+import { describeApiError, staffLabel, type StaffOption } from "./appointment-shared";
 
 export type CalendarView = "week" | "day";
 
@@ -39,12 +40,15 @@ export interface AppointmentCalendarProps {
   rangeLabel: string;
   days: CalendarDay[];
   appointments: AppointmentDTO[];
+  /** Clinicians (and nurses, for nurse-led procedures) the schedule can be filtered by. */
   doctors: StaffOption[];
+  /** The clinic's opening hours (booking form default time and closed-day hint). */
+  hours: WorkingHours;
   /** Current doctor filter ("" for all). */
   doctorId: string;
   nav: { prev: string; next: string; today: string };
   canWrite: boolean;
-  /** May remove other people's dictated notes (users:manage). */
+  /** May remove other people's dictated notes and back-enter or book outside the hours (users:manage). */
   canManage?: boolean;
   userId?: string | null;
 }
@@ -67,6 +71,7 @@ function Calendar({
   days,
   appointments,
   doctors,
+  hours,
   doctorId,
   nav,
   canWrite,
@@ -77,6 +82,7 @@ function Calendar({
   const { toast } = useToast();
   const [newOpen, setNewOpen] = useState(false);
   const [cancelTarget, setCancelTarget] = useState<AppointmentDTO | null>(null);
+  const [noShowTarget, setNoShowTarget] = useState<AppointmentDTO | null>(null);
   const [rescheduleTarget, setRescheduleTarget] = useState<AppointmentDTO | null>(null);
   const [notesTarget, setNotesTarget] = useState<AppointmentDTO | null>(null);
   const [pendingId, setPendingId] = useState<string | null>(null);
@@ -110,6 +116,7 @@ function Calendar({
   const actions = {
     onTransition: (a: AppointmentDTO, status: AppointmentStatus) => void transition(a, status),
     onCancel: setCancelTarget,
+    onNoShow: setNoShowTarget,
     onReschedule: setRescheduleTarget,
     onNotes: setNotesTarget,
   };
@@ -180,7 +187,7 @@ function Calendar({
                 <option value="">All doctors</option>
                 {doctors.map((d) => (
                   <option key={d.id} value={d.id}>
-                    {d.fullName}
+                    {staffLabel(d)}
                   </option>
                 ))}
               </Select>
@@ -255,6 +262,8 @@ function Calendar({
       {newOpen ? (
         <NewAppointmentDialog
           timezone={timezone}
+          hours={hours}
+          canOverride={canManage}
           defaultDate={anchorKey}
           defaultDoctorId={doctorId}
           onOpenChange={(open) => {
@@ -288,6 +297,22 @@ function Calendar({
         />
       ) : null}
 
+      {noShowTarget ? (
+        <NoShowDialog
+          key={noShowTarget.id}
+          appointment={noShowTarget}
+          timezone={timezone}
+          onOpenChange={(open) => {
+            if (!open) setNoShowTarget(null);
+          }}
+          onDone={(appointment) => {
+            setNoShowTarget(null);
+            toast({ title: `${appointment.patient.fullName} · ${STATUS_LABEL.NO_SHOW}`, tone: "success" });
+            router.refresh();
+          }}
+        />
+      ) : null}
+
       {notesTarget ? (
         <AppointmentNotesDialog
           key={notesTarget.id}
@@ -308,6 +333,8 @@ function Calendar({
           key={rescheduleTarget.id}
           appointment={rescheduleTarget}
           timezone={timezone}
+          hours={hours}
+          canOverride={canManage}
           onOpenChange={(open) => {
             if (!open) setRescheduleTarget(null);
           }}

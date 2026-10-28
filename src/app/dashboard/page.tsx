@@ -9,8 +9,12 @@ import { AttentionCard } from "@/components/clinicmind/attention-card";
 export const dynamic = "force-dynamic";
 
 const WEEKDAY = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const MONTH = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 /** Weekday label of a local date key (YYYY-MM-DD) without timezone drift. */
 const weekdayOf = (key: string) => WEEKDAY[new Date(`${key}T12:00:00Z`).getUTCDay()] ?? key;
+/** "22 Oct" from a local date key, built from the digits so server and browser agree. */
+const dayMonth = (key: string) => `${Number(key.slice(8, 10))} ${MONTH[Number(key.slice(5, 7)) - 1] ?? ""}`;
+const span = (from: string, to: string) => `${dayMonth(from)}–${dayMonth(to)}`;
 const pct = (v: number) => `${Math.round(v * 1000) / 10}%`;
 
 export default async function OverviewPage() {
@@ -20,6 +24,16 @@ export default async function OverviewPage() {
   const thisWeek = trend.slice(-7);
   const lastWeek = trend.slice(0, Math.max(0, trend.length - 7));
   const noShow = m?.noShowRate ?? 0;
+  const w = m?.windows ?? null;
+  // Each chip's tooltip names both values and both windows.
+  const labels = w
+    ? {
+        week: [`in the last 7 days (${span(w.weekFrom, w.today)})`, `in the 7 days before (${span(w.prevWeekFrom, w.prevWeekTo)})`],
+        fortnight: [`in the last 14 days (${span(w.fortnightFrom, w.today)})`, `in the 14 days before (${span(w.prevFortnightFrom, w.prevFortnightTo)})`],
+        registry: ["patients now", `patients 7 days ago (start of ${dayMonth(w.weekFrom)})`],
+        today: [`today (${dayMonth(w.today)})`, `the same day last week (${dayMonth(w.sameDayLastWeek)})`],
+      }
+    : null;
 
   return (
     <div className="space-y-6">
@@ -36,14 +50,32 @@ export default async function OverviewPage() {
           label="Total patients"
           value={formatNumber(m?.patients ?? 0)}
           tone="accent"
-          delta={<DeltaChip current={m?.patientsNew7 ?? 0} previous={m?.patientsNewPrev7} goodWhen="up" />}
+          // Growth of the registry: the total now against the total 7 days ago.
+          delta={
+            <DeltaChip
+              current={m?.patients ?? 0}
+              previous={m?.patientsWeekAgo}
+              goodWhen="up"
+              format={formatNumber}
+              currentLabel={labels?.registry[0]}
+              previousLabel={labels?.registry[1]}
+            />
+          }
           hint={`${formatNumber(m?.patientsNew7 ?? 0)} new this week`}
           spark={m?.newPatientsWeekly}
         />
         <Kpi
           label="Appointments today"
           value={formatNumber(m?.appointmentsToday ?? 0)}
-          delta={<DeltaChip current={m?.appointmentsToday ?? 0} previous={m?.appointmentsSameDayLastWeek} goodWhen="up" />}
+          delta={
+            <DeltaChip
+              current={m?.appointmentsToday ?? 0}
+              previous={m?.appointmentsSameDayLastWeek}
+              goodWhen="up"
+              currentLabel={labels?.today[0]}
+              previousLabel={labels?.today[1]}
+            />
+          }
           hint={`${formatNumber(m?.appointmentsTodayDone ?? 0)} done · ${formatNumber(m?.appointmentsTodayToCome ?? 0)} to come`}
           spark={trend.map((d) => d.count)}
         />
@@ -56,7 +88,21 @@ export default async function OverviewPage() {
           label="No-show rate · 14 d"
           value={pct(noShow)}
           tone={noShow > 0.08 ? "warning" : "default"}
-          delta={<DeltaChip current={noShow} previous={m?.noShowRatePrev} goodWhen="down" format={pct} />}
+          // A rate moves in percentage points; no chip until both windows had bookings due.
+          delta={
+            m?.noShowDue ? (
+              <DeltaChip
+                current={noShow}
+                previous={m.noShowRatePrev}
+                goodWhen="down"
+                format={pct}
+                mode="points"
+                currentLabel={labels?.fortnight[0]}
+                previousLabel={labels?.fortnight[1]}
+              />
+            ) : null
+          }
+          hint={m?.noShowDue ? `${formatNumber(m.noShows)} of ${formatNumber(m.noShowDue)} past bookings` : "no booking was due yet"}
           target={{ ok: noShow <= 0.08, text: "target ≤ 8%" }}
         />
         <Kpi
@@ -73,13 +119,29 @@ export default async function OverviewPage() {
         <Kpi
           label="AI interactions · 7 d"
           value={formatNumber(m?.aiInteractions ?? 0)}
-          delta={<DeltaChip current={m?.aiInteractions ?? 0} previous={m?.aiInteractionsPrev} goodWhen="up" />}
+          delta={
+            <DeltaChip
+              current={m?.aiInteractions ?? 0}
+              previous={m?.aiInteractionsPrev}
+              goodWhen="up"
+              currentLabel={labels?.week[0]}
+              previousLabel={labels?.week[1]}
+            />
+          }
           hint="extractions, answers and transcriptions"
         />
         <Kpi
           label="Signed visits · 14 d"
           value={formatNumber(m?.signedVisits14 ?? 0)}
-          delta={<DeltaChip current={m?.signedVisits14 ?? 0} previous={m?.signedVisitsPrev14} goodWhen="up" />}
+          delta={
+            <DeltaChip
+              current={m?.signedVisits14 ?? 0}
+              previous={m?.signedVisitsPrev14}
+              goodWhen="up"
+              currentLabel={labels?.fortnight[0]}
+              previousLabel={labels?.fortnight[1]}
+            />
+          }
         />
       </div>
 

@@ -69,7 +69,15 @@ function BriefRow({ line, index }: { line: BriefLine; index: number }) {
           <span className="text-sm font-medium">{line.label}</span>
           <span className="font-mono text-sm tabular-nums">{fmtMetric(line.unit, line.current)}</span>
           {line.current !== null && line.previous !== null ? (
-            <DeltaChip current={line.current} previous={line.previous} goodWhen={goodWhen} format={(v) => fmtMetric(line.unit, v)} />
+            <DeltaChip
+              current={line.current}
+              previous={line.previous}
+              goodWhen={goodWhen}
+              format={(v) => fmtMetric(line.unit, v)}
+              mode={line.unit === "percent" ? "points" : "relative"}
+              currentLabel="last week"
+              previousLabel="the week before"
+            />
           ) : null}
           <span className="text-xs text-muted-foreground">was {fmtMetric(line.unit, line.previous)}</span>
         </div>

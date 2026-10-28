@@ -42,7 +42,8 @@ import { GET as listTenants, POST as provisionTenant } from "@/app/api/tenants/r
 const mockedContext = vi.mocked(getActingContext);
 const mockedExtract = vi.mocked(extractClinicalData);
 
-const slot = { startsAt: "2026-11-02T09:00:00.000Z", endsAt: "2026-11-02T09:30:00.000Z" };
+// A Monday far ahead, inside the opening hours (11:00 on the clinic clock): bookings in the past are refused.
+const slot = { startsAt: "2030-11-04T09:00:00.000Z", endsAt: "2030-11-04T09:30:00.000Z" };
 // Extraction requires at least 20 characters of transcript.
 const TRANSCRIPT = "Patient reports a mild headache since yesterday.";
 

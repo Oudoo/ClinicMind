@@ -4,14 +4,13 @@ import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Alert } from "@/components/ui/field";
 import { ApiError, apiFetch } from "@/lib/http";
-import { formatDateInTz, formatTimeInTz, zonedParts } from "@/lib/time";
+import { formatDateInTz, formatTimeInTz, fromDateKey } from "@/lib/time";
+import { cn } from "@/lib/utils";
 import type { AppointmentConflictDTO, FreeSlotsDTO, SlotSuggestionDTO } from "@/modules/appointments/dto";
-import { STATUS_LABEL, type AppointmentStatus } from "@/modules/appointments/transitions";
+import { clinicDayLabel, closedDaysLabel, describeHours, isClosedDay } from "@/modules/appointments/rules";
+import { STATUS_LABEL, type AppointmentKind, type AppointmentStatus, type WorkingHours } from "@/modules/appointments/transitions";
 
 /** Pieces shared by the booking dialogs, the calendar and the next-appointment button. */
-
-const WEEKDAY_SHORT = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
-const MONTH_SHORT = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"] as const;
 
 /**
  * "Mon 02 Nov" on the clinic clock. Built from the numeric parts rather than
@@ -19,10 +18,7 @@ const MONTH_SHORT = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Se
  * ("Mon, 02 Nov" in Node, "Mon 02 Nov" in Chromium): text rendered on the
  * server and hydrated in the browser must be identical.
  */
-export function shortDayLabel(date: Date, timeZone: string): string {
-  const p = zonedParts(date, timeZone);
-  return `${WEEKDAY_SHORT[p.weekday]} ${String(p.day).padStart(2, "0")} ${MONTH_SHORT[p.month - 1]}`;
-}
+export const shortDayLabel = clinicDayLabel;
 
 export interface StaffOption {
   id: string;
@@ -30,27 +26,39 @@ export interface StaffOption {
   role: string;
 }
 
-/** Doctors of the tenant, fetched from `/api/staff` once `enabled` is true. */
-export function useDoctors(enabled: boolean): { doctors: StaffOption[] | null; error: string | null } {
-  const [state, setState] = useState<{ doctors: StaffOption[] | null; error: string | null }>({
+/** "Heba Mostafa (nurse)" for nurse-led sessions, the plain name for clinicians. */
+export function staffLabel(s: StaffOption): string {
+  return s.role === "NURSE" ? `${s.fullName} (nurse)` : s.fullName;
+}
+
+/**
+ * Who a booking of `kind` can be made with, from `/api/appointments/clinicians`
+ * once `enabled` is true: the clinicians, plus the nurses for a procedure.
+ * Refetched when the kind changes.
+ */
+export function useDoctors(enabled: boolean, kind?: AppointmentKind): { doctors: StaffOption[] | null; error: string | null } {
+  const url = `/api/appointments/clinicians${kind ? `?kind=${kind}` : ""}`;
+  const [state, setState] = useState<{ url: string | null; doctors: StaffOption[] | null; error: string | null }>({
+    url: null,
     doctors: null,
     error: null,
   });
   useEffect(() => {
     if (!enabled) return;
     let cancelled = false;
-    apiFetch<{ staff: StaffOption[] }>("/api/staff?role=DOCTOR")
+    apiFetch<{ staff: StaffOption[] }>(url)
       .then((res) => {
-        if (!cancelled) setState({ doctors: res.staff, error: null });
+        if (!cancelled) setState({ url, doctors: res.staff, error: null });
       })
       .catch(() => {
-        if (!cancelled) setState({ doctors: [], error: "Could not load the doctor list." });
+        if (!cancelled) setState({ url, doctors: [], error: "Could not load the doctor list." });
       });
     return () => {
       cancelled = true;
     };
-  }, [enabled]);
-  return state;
+  }, [enabled, url]);
+  // Keep showing the previous list while another kind's list loads.
+  return { doctors: state.doctors, error: state.error };
 }
 
 export function useDebouncedValue<T>(value: T, delayMs: number): T {
@@ -129,6 +137,66 @@ export function conflictInfo(err: unknown): ConflictInfo | null {
 export function conflictsFrom(err: unknown): AppointmentConflictDTO[] | null {
   const info = conflictInfo(err);
   return info && info.kind === "slot" ? info.conflicts : null;
+}
+
+// ── Clock rules (past bookings, opening hours) ───────────────────────────────
+
+export interface TimeRuleInfo {
+  code: "in_the_past" | "outside_hours";
+  message: string;
+  /** The caller is an owner who may resend with `allowPast` / `allowOutsideHours`. */
+  overridable: boolean;
+}
+
+/** The 422 `in_the_past` / `outside_hours` payload, or null for any other error. */
+export function timeRuleInfo(err: unknown): TimeRuleInfo | null {
+  if (!(err instanceof ApiError) || err.status !== 422) return null;
+  if (err.code !== "in_the_past" && err.code !== "outside_hours") return null;
+  const body = err.body as { overridable?: boolean } | null;
+  return { code: err.code, message: err.message, overridable: Boolean(body?.overridable) };
+}
+
+/**
+ * A booking refused by the clock: the server's explanation and, for the
+ * owner, a deliberate override ("Back-enter anyway" / "Book outside the hours").
+ */
+export function TimeRuleNotice({ rule, onOverride, busy = false }: { rule: TimeRuleInfo; onOverride?: () => void; busy?: boolean }) {
+  return (
+    <Alert tone="danger" className="space-y-2" data-testid="booking-time-refusal">
+      <p className="font-medium">{rule.code === "in_the_past" ? "That time has passed." : "The clinic is not open then."}</p>
+      <p className="text-xs">{rule.message}</p>
+      {rule.overridable && onOverride ? (
+        <div className="pt-1">
+          <Button type="button" variant="outline" size="sm" onClick={onOverride} disabled={busy}>
+            {rule.code === "in_the_past" ? "Back-enter anyway (owner)" : "Book outside the hours (owner)"}
+          </Button>
+        </div>
+      ) : null}
+    </Alert>
+  );
+}
+
+/**
+ * The hint under a booking date: the opening hours and the closed days
+ * ("Open Sat–Thu 10:00–20:00 · Friday closed"), or a warning when the chosen
+ * day is one of them.
+ */
+export function OpeningHoursHint({ date, hours, timezone, className }: { date: string; hours: WorkingHours; timezone: string; className?: string }) {
+  const day = /^\d{4}-\d{2}-\d{2}$/.test(date) ? fromDateKey(date, timezone) : null;
+  const closedLabel = closedDaysLabel(hours);
+  if (day && isClosedDay(day, hours, timezone)) {
+    return (
+      <span className={cn("text-warning", className)} data-testid="closed-day-hint">
+        Closed on {formatDateInTz(day, timezone, { weekday: "long" })}s · open {describeHours(hours)}
+      </span>
+    );
+  }
+  return (
+    <span className={className}>
+      Open {describeHours(hours)}
+      {closedLabel ? ` · ${closedLabel}` : ""}
+    </span>
+  );
 }
 
 export function describeApiError(err: unknown): string {

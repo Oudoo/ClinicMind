@@ -2,6 +2,7 @@ import { Prisma, type UserRole } from "@prisma/client";
 import { z } from "zod";
 import { db, notDeleted } from "@/lib/db";
 import { audit } from "@/lib/audit";
+import { can } from "@/lib/auth/rbac";
 import { ingestInBackground } from "@/modules/knowledge/ingest";
 import { notify, type NotifyInput } from "@/modules/notifications/service";
 import { readTenantSetting } from "@/lib/tenant-settings";
@@ -16,10 +17,11 @@ import {
   startOfDayInTz,
   zonedParts,
 } from "@/lib/time";
-import { requireTenantClinic, requireTenantPatient, requireTenantUser } from "@/lib/tenant-scope";
+import { TenantScopeError, requireTenantClinic, requireTenantPatient, requireTenantUser } from "@/lib/tenant-scope";
 import { zDateTime, zOptionalText, zText } from "@/lib/validation";
 import { toAppointmentDTO, type FreeSlotsDTO, type NextAppointmentDTO, type SlotCellDTO } from "./dto";
 import { buildSlotGrid, freeCellsAfter, initialsOf, normaliseHours, type SlotCell, type TakenRange } from "./slots";
+import { clinicDayLabel, hoursViolation, isInThePast, transitionTimeBlock, type TransitionTimeCode } from "./rules";
 import {
   APPOINTMENT_KINDS,
   APPOINTMENT_STATUSES,
@@ -32,7 +34,9 @@ import {
   MIN_DURATION_MINUTES,
   NON_BLOCKING_STATUSES,
   SLOT_STEP_MINUTES,
+  type AppointmentKind,
   type AppointmentStatus,
+  type WorkingHours,
 } from "./transitions";
 
 /**
@@ -62,6 +66,8 @@ export interface Actor {
   id?: string | null;
   email?: string | null;
   ip?: string | null;
+  /** The caller's role: owner-level callers (users:manage) may back-enter or book outside the hours on purpose. */
+  role?: UserRole | null;
 }
 
 // ── Errors (mapped to HTTP by the route layer) ───────────────────────────────
@@ -117,6 +123,62 @@ export class AppointmentNotReschedulableError extends Error {
   }
 }
 
+/**
+ * The clock does not allow the move yet (or any more): a no-show before the
+ * start, a check-in on another day, a completion before the start (409).
+ */
+export class AppointmentTimeError extends Error {
+  readonly status = 409;
+  constructor(
+    readonly code: TransitionTimeCode,
+    message: string,
+    readonly from: AppointmentStatus,
+    readonly to: AppointmentStatus,
+  ) {
+    super(message);
+    this.name = "AppointmentTimeError";
+  }
+}
+
+export type BookingTimeCode = "in_the_past" | "outside_hours";
+
+/**
+ * A booking or a move into the past or outside the opening hours (422).
+ * `overridable` tells the caller that an owner may resend it with
+ * `allowPast` / `allowOutsideHours` set.
+ */
+/**
+ * The person booked as the doctor cannot take the booking: not marked as a
+ * clinician, or a nurse booked for anything but a procedure (422).
+ */
+export class DoctorNotBookableError extends Error {
+  readonly status = 422;
+  constructor(
+    readonly doctorId: string,
+    readonly role: UserRole,
+  ) {
+    super(
+      role === "NURSE"
+        ? "A nurse can be booked for a procedure only; choose a doctor."
+        : "Only staff the owner marked as clinicians can be booked as the doctor.",
+    );
+    this.name = "DoctorNotBookableError";
+  }
+}
+
+export class BookingTimeError extends Error {
+  readonly status = 422;
+  constructor(
+    readonly code: BookingTimeCode,
+    message: string,
+    readonly overridable: boolean,
+    readonly hours: WorkingHours | null = null,
+  ) {
+    super(message);
+    this.name = "BookingTimeError";
+  }
+}
+
 // ── Clinic timezone ──────────────────────────────────────────────────────────
 
 /**
@@ -134,7 +196,105 @@ export async function getTenantTimezone(tenantId: string): Promise<string> {
   return tz && isValidTimeZone(tz) ? tz : DEFAULT_TIMEZONE;
 }
 
+/** The tenant's opening hours (`hours` setting, repaired field by field; Saturday–Thursday 10:00–20:00 by default). */
+export async function getWorkingHours(tenantId: string): Promise<WorkingHours> {
+  return normaliseHours(await readTenantSetting(tenantId, "hours", DEFAULT_WORKING_HOURS));
+}
+
+// ── The booking clock ────────────────────────────────────────────────────────
+
+interface BookingClock {
+  timezone: string;
+  hours: WorkingHours;
+  now: Date;
+}
+
+async function bookingClock(tenantId: string): Promise<BookingClock> {
+  const [timezone, hours] = await Promise.all([getTenantTimezone(tenantId), getWorkingHours(tenantId)]);
+  return { timezone, hours, now: new Date() };
+}
+
+/** The owner overrides a booking needed; written to the audit entry. */
+interface BookingOverrides {
+  allowPast?: true;
+  allowOutsideHours?: true;
+}
+
+/**
+ * Refuse a slot that starts more than 15 minutes before now (422
+ * `in_the_past`) or lies outside the opening hours (422 `outside_hours`),
+ * unless an owner-level caller (users:manage) asked for it on purpose with
+ * `allowPast` / `allowOutsideHours`. Returns the overrides that were needed.
+ * `checkPast` is false when a move keeps the booking's start (only its end
+ * changes): the booking is not being put into the past.
+ */
+function checkBookingTime(
+  slot: { startsAt: Date; endsAt: Date },
+  flags: { allowPast: boolean; allowOutsideHours: boolean },
+  actor: Actor,
+  clock: BookingClock,
+  checkPast = true,
+): BookingOverrides {
+  const owner = Boolean(actor.role && can(actor.role, "users:manage"));
+  const overrides: BookingOverrides = {};
+  if (checkPast && isInThePast(slot.startsAt, clock.now)) {
+    if (!(owner && flags.allowPast)) {
+      const when = `${clinicDayLabel(slot.startsAt, clock.timezone)} ${formatTimeInTz(slot.startsAt, clock.timezone)}`;
+      throw new BookingTimeError(
+        "in_the_past",
+        owner
+          ? `${when} has already passed. Choose a time from now on, or back-enter it on purpose.`
+          : `${when} has already passed. Choose a time from now on; only the clinic owner can back-enter a past booking.`,
+        owner,
+      );
+    }
+    overrides.allowPast = true;
+  }
+  const outside = hoursViolation(slot.startsAt, slot.endsAt, clock.hours, clock.timezone);
+  if (outside) {
+    if (!(owner && flags.allowOutsideHours)) {
+      throw new BookingTimeError(
+        "outside_hours",
+        owner ? `${outside.message} As the owner you can book outside the hours on purpose.` : outside.message,
+        owner,
+        clock.hours,
+      );
+    }
+    overrides.allowOutsideHours = true;
+  }
+  return overrides;
+}
+
+/**
+ * The same clock check a booking gets, for callers that must look before they
+ * write anything else (the CRM converts a lead into a patient before booking:
+ * a refused time must not leave that patient behind). Throws the 422
+ * `BookingTimeError`; owners may pass the override flags.
+ */
+export async function assertBookableTime(
+  tenantId: string,
+  slot: { startsAt: Date; endsAt: Date },
+  actor: Actor = {},
+  flags: { allowPast?: boolean; allowOutsideHours?: boolean } = {},
+): Promise<void> {
+  checkBookingTime(slot, { allowPast: Boolean(flags.allowPast), allowOutsideHours: Boolean(flags.allowOutsideHours) }, actor, await bookingClock(tenantId));
+}
+
 // ── Staff (doctor pickers) ───────────────────────────────────────────────────
+
+/**
+ * The person booked as the doctor: of the acting tenant (SEC-4) and one of the
+ * people the doctor pickers offer (`listStaff`): a bookable role the owner
+ * marked as a clinician, or a nurse for a PROCEDURE (a nurse-led session).
+ */
+async function requireBookableDoctor(tenantId: string, doctorId: string, kind: AppointmentKind | null | undefined): Promise<void> {
+  await requireTenantUser(tenantId, doctorId);
+  const user = await db.user.findFirst({ where: { id: doctorId, tenantId }, select: { role: true, isClinician: true } });
+  if (!user) throw new TenantScopeError("user", doctorId);
+  const bookableRole = (BOOKABLE_ROLES as readonly UserRole[]).includes(user.role);
+  if (bookableRole && (user.isClinician || (kind === "PROCEDURE" && user.role === "NURSE"))) return;
+  throw new DoctorNotBookableError(doctorId, user.role);
+}
 
 export const BOOKABLE_ROLES = ["DOCTOR", "NURSE", "CLINIC_OWNER"] as const;
 export const zBookableRole = z.enum(BOOKABLE_ROLES);
@@ -146,14 +306,30 @@ export interface StaffSummary {
   role: BookableRole;
 }
 
-/** Active, non-deleted staff an appointment can be booked with. */
-export async function listStaff(tenantId: string, role?: BookableRole): Promise<StaffSummary[]> {
+export interface StaffFilter {
+  /** Narrow to one role. */
+  role?: BookableRole;
+  /** The kind of booking: a PROCEDURE may also be a nurse-led session, so nurses are listed too. */
+  kind?: AppointmentKind;
+}
+
+/**
+ * Who an appointment can be booked with: active, non-deleted staff of a
+ * bookable role whom the owner marked as clinicians (doctors and the
+ * physician-owner), plus nurses for a PROCEDURE (nurse-led sessions). An
+ * owner-level administrator who is not a clinician (the Clinic AI lead) and,
+ * outside procedures, the nurses are never offered as "the doctor".
+ */
+export async function listStaff(tenantId: string, filter: BookableRole | StaffFilter = {}): Promise<StaffSummary[]> {
+  const { role, kind } = typeof filter === "string" ? { role: filter, kind: undefined } : filter;
+  const nurseLed = kind === "PROCEDURE";
   const users = await db.user.findMany({
     where: {
       tenantId,
       ...notDeleted,
       status: "ACTIVE",
       role: role ?? { in: [...BOOKABLE_ROLES] },
+      OR: [{ isClinician: true }, ...(nurseLed ? [{ role: "NURSE" as const }] : [])],
     },
     orderBy: [{ fullName: "asc" }, { email: "asc" }],
     take: 200,
@@ -216,6 +392,10 @@ export const AppointmentInput = z
     allowWaitlist: z.boolean().default(false),
     /** Let the patient hold two overlapping live appointments (e.g. two procedures in one visit). */
     allowPatientOverlap: z.boolean().default(false),
+    /** Owner only (users:manage): back-enter a booking that started more than 15 minutes ago. Audited. */
+    allowPast: z.boolean().default(false),
+    /** Owner only (users:manage): book outside the opening hours or on a closed day. Audited. */
+    allowOutsideHours: z.boolean().default(false),
   })
   .superRefine((v, ctx) => checkDuration(v.startsAt, v.endsAt, ctx));
 export type AppointmentInput = z.infer<typeof AppointmentInput>;
@@ -232,6 +412,10 @@ export const AppointmentUpdateInput = z
     notes: zClearableText(2000),
     allowWaitlist: z.boolean().default(false),
     allowPatientOverlap: z.boolean().default(false),
+    /** Owner only: move the booking to a time that started more than 15 minutes ago. Audited. */
+    allowPast: z.boolean().default(false),
+    /** Owner only: move the booking outside the opening hours. Audited. */
+    allowOutsideHours: z.boolean().default(false),
   })
   .superRefine((v, ctx) => {
     if ((v.startsAt === undefined) !== (v.endsAt === undefined)) {
@@ -316,6 +500,9 @@ export const NextAppointmentQuery = z.object({
   scope: z.enum(["auto", "mine", "clinic"]).default("auto"),
   patientId: zOptionalText(64),
 });
+
+/** Query string of GET /api/appointments/clinicians. */
+export const CliniciansQuery = z.object({ kind: zAppointmentKind.optional() });
 
 // ── Shapes ───────────────────────────────────────────────────────────────────
 
@@ -615,8 +802,10 @@ export async function createAppointment(tenantId: string, rawInput: unknown, act
   // otherwise a booking (and its timeline event) could land on another
   // tenant's patient, doctor or clinic.
   await requireTenantPatient(tenantId, input.patientId);
-  if (input.doctorId) await requireTenantUser(tenantId, input.doctorId);
+  if (input.doctorId) await requireBookableDoctor(tenantId, input.doctorId, input.kind);
   if (input.clinicId) await requireTenantClinic(tenantId, input.clinicId);
+  // Not in the past, not outside the opening hours (the owner may override, audited).
+  const overrides = checkBookingTime(input, input, actor, await bookingClock(tenantId));
 
   const slot: SlotRef = { doctorId: input.doctorId ?? null, room: input.room ?? null, startsAt: input.startsAt, endsAt: input.endsAt };
   let outcome: { appointment: Awaited<ReturnType<typeof bookRow>>; conflicts: AppointmentConflict[] };
@@ -662,7 +851,7 @@ export async function createAppointment(tenantId: string, rawInput: unknown, act
     action: "appointment.create",
     entity: "Appointment",
     entityId: appointment.id,
-    after: slotSnapshot(appointment),
+    after: { ...slotSnapshot(appointment), ...overrides },
   });
   // The patient profile document lists upcoming appointments; refresh it.
   ingestInBackground({ kind: "patient", tenantId, id: input.patientId });
@@ -712,16 +901,17 @@ export async function rescheduleAppointment(
 ) {
   const input = AppointmentUpdateInput.parse(rawInput);
   if (input.doctorId) await requireTenantUser(tenantId, input.doctorId);
+  const clock = await bookingClock(tenantId);
 
   // The slot the transaction ends up targeting, for the conflict mapping below.
   const seen: { slot: SlotRef | null } = { slot: null };
   let outcome: Awaited<ReturnType<typeof applyReschedule>>;
   try {
-    outcome = await db.$transaction((tx) => applyReschedule(tx, tenantId, id, input, seen));
+    outcome = await db.$transaction((tx) => applyReschedule(tx, tenantId, id, input, seen, { actor, clock }));
   } catch (err) {
     throw await conflictFromError(tenantId, actor, err, seen.slot ?? { startsAt: input.startsAt ?? new Date(), endsAt: input.endsAt ?? new Date(), excludeId: id });
   }
-  const { before, after, conflicts, slotChanged } = outcome;
+  const { before, after, conflicts, slotChanged, overrides } = outcome;
 
   await audit({
     tenantId,
@@ -732,7 +922,7 @@ export async function rescheduleAppointment(
     entity: "Appointment",
     entityId: id,
     before: slotSnapshot(before),
-    after: slotSnapshot(after),
+    after: { ...slotSnapshot(after), ...overrides },
   });
   // The patient profile document lists upcoming appointments; refresh it.
   ingestInBackground({ kind: "patient", tenantId, id: before.patientId });
@@ -740,7 +930,14 @@ export async function rescheduleAppointment(
   return { appointment: await attachDoctor(tenantId, after), conflicts };
 }
 
-async function applyReschedule(tx: Client, tenantId: string, id: string, input: AppointmentUpdateInput, seen: { slot: SlotRef | null }) {
+async function applyReschedule(
+  tx: Client,
+  tenantId: string,
+  id: string,
+  input: AppointmentUpdateInput,
+  seen: { slot: SlotRef | null },
+  ctx: { actor: Actor; clock: BookingClock },
+) {
   const before = await tx.appointment.findFirst({
     where: { id, tenantId, ...notDeleted },
     include: appointmentInclude,
@@ -751,13 +948,18 @@ async function applyReschedule(tx: Client, tenantId: string, id: string, input: 
   const endsAt = input.endsAt ?? before.endsAt;
   const doctorId = input.doctorId === undefined ? before.doctorId : input.doctorId;
   const room = input.room === undefined ? before.room : input.room;
-  const timeChanged =
-    startsAt.getTime() !== before.startsAt.getTime() || endsAt.getTime() !== before.endsAt.getTime();
+  const startChanged = startsAt.getTime() !== before.startsAt.getTime();
+  const timeChanged = startChanged || endsAt.getTime() !== before.endsAt.getTime();
   const slotChanged = timeChanged || doctorId !== before.doctorId || room !== before.room;
+  // A new doctor (or a new kind of visit for the same one) must be someone the pickers offer.
+  const kind = input.kind ?? before.kind;
+  if (doctorId && (doctorId !== before.doctorId || kind !== before.kind)) await requireBookableDoctor(tenantId, doctorId, kind);
   seen.slot = { doctorId, room, startsAt, endsAt, excludeId: id };
   if (slotChanged && !isReschedulable(before.status)) {
     throw new AppointmentNotReschedulableError(before.status);
   }
+  // A move must land from now on and inside the opening hours (the owner may override, audited).
+  const overrides = timeChanged ? checkBookingTime({ startsAt, endsAt }, input, ctx.actor, ctx.clock, startChanged) : {};
 
   let status: AppointmentStatus = before.status;
   let conflicts: AppointmentConflict[] = [];
@@ -808,7 +1010,7 @@ async function applyReschedule(tx: Client, tenantId: string, id: string, input: 
     if (event) await tx.timelineEvent.update({ where: { id: event.id }, data: { occurredAt: startsAt } });
   }
 
-  return { before: shape(before), after: shape(after), conflicts, slotChanged };
+  return { before: shape(before), after: shape(after), conflicts, slotChanged, overrides };
 }
 
 const TIMELINE_FOR_STATUS: Partial<Record<AppointmentStatus, string>> = {
@@ -824,6 +1026,7 @@ export async function transitionAppointment(
   actor: Actor = {},
 ) {
   const input = AppointmentTransitionInput.parse(rawInput);
+  const timezone = await getTenantTimezone(tenantId);
 
   const seen: { slot: SlotRef | null } = { slot: null };
   let outcome: { before: ReturnType<typeof shape<Row>>; after: ReturnType<typeof shape<Row>> };
@@ -837,9 +1040,22 @@ export async function transitionAppointment(
       if (!canTransition(before.status, input.status)) {
         throw new InvalidTransitionError(before.status, input.status);
       }
+      // The clock decides too: no no-show before the start, check-in only on the
+      // day (until two hours after the end), no completion before the start.
+      const now = new Date();
+      const block = transitionTimeBlock(before, input.status, now, timezone);
+      if (block) throw new AppointmentTimeError(block.code, block.message, before.status, input.status);
       seen.slot = { doctorId: before.doctorId, room: before.room, startsAt: before.startsAt, endsAt: before.endsAt, excludeId: id };
 
       if (before.status === "WAITLISTED" && input.status === "SCHEDULED") {
+        // A slot that has passed cannot become a live booking again; move it instead.
+        if (isInThePast(before.startsAt, now)) {
+          throw new BookingTimeError(
+            "in_the_past",
+            `The waitlisted slot (${clinicDayLabel(before.startsAt, timezone)} ${formatTimeInTz(before.startsAt, timezone)}) has passed. Reschedule it to a free time instead.`,
+            false,
+          );
+        }
         // Promotion only when the slot has since become free.
         await lockSlots(tx, tenantId, { doctorId: before.doctorId, room: before.room, patientId: before.patientId });
         const conflicts = await findConflicts(tenantId, seen.slot, tx);
@@ -849,7 +1065,6 @@ export async function transitionAppointment(
         if (own.length) throw new PatientConflictError(own);
       }
 
-      const now = new Date();
       const keepsReason = input.status === "CANCELLED" || input.status === "NO_SHOW";
       const after = await tx.appointment.update({
         where: { id, tenantId },
@@ -968,7 +1183,7 @@ export interface NextAppointmentOptions {
  */
 export async function getNextAppointment(tenantId: string, opts: NextAppointmentOptions = {}): Promise<NextAppointmentDTO> {
   const now = opts.now ?? new Date();
-  const timezone = await getTenantTimezone(tenantId);
+  const [timezone, hours] = await Promise.all([getTenantTimezone(tenantId), getWorkingHours(tenantId)]);
   const dayStart = startOfDayInTz(now, timezone);
   const dayEnd = endOfDayInTz(now, timezone);
   const live: Prisma.AppointmentWhereInput = {
@@ -1031,6 +1246,7 @@ export async function getNextAppointment(tenantId: string, opts: NextAppointment
     scope,
     fallback,
     timezone,
+    hours,
     now: now.toISOString(),
   };
 }
@@ -1095,8 +1311,7 @@ function cellDTO(c: SlotCell): SlotCellDTO {
 export async function findFreeSlots(tenantId: string, rawQuery: unknown, now: Date = new Date()): Promise<FreeSlotsDTO> {
   const q = FreeSlotsQuery.parse(rawQuery);
   if (q.doctorId) await requireTenantUser(tenantId, q.doctorId);
-  const timezone = await getTenantTimezone(tenantId);
-  const hours = normaliseHours(await readTenantSetting(tenantId, "hours", DEFAULT_WORKING_HOURS));
+  const [timezone, hours] = await Promise.all([getTenantTimezone(tenantId), getWorkingHours(tenantId)]);
   const day = fromDateKey(q.date, timezone) ?? startOfDayInTz(now, timezone);
 
   const gridFor = async (d: Date) => {

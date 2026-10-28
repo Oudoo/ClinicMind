@@ -26,8 +26,10 @@ import { addDays, dateKeyInTz, formatTimeInTz } from "@/lib/time";
 import { cn } from "@/lib/utils";
 import { describeCountdown, isRunningLate, type CountdownTone } from "@/modules/appointments/countdown";
 import type { AppointmentDTO, NextAppointmentDTO } from "@/modules/appointments/dto";
-import { canTransition, isReschedulable, KIND_LABEL, STATUS_LABEL, type AppointmentStatus } from "@/modules/appointments/transitions";
+import { availableTransitions, transitionTimeBlock } from "@/modules/appointments/rules";
+import { isReschedulable, KIND_LABEL, STATUS_LABEL, type AppointmentStatus } from "@/modules/appointments/transitions";
 import { NewAppointmentDialog } from "./appointment-new-dialog";
+import { NoShowDialog } from "./appointment-no-show-dialog";
 import { AppointmentNotesDialog } from "./appointment-notes-dialog";
 import { RescheduleAppointmentDialog } from "./appointment-reschedule-dialog";
 import { describeApiError, shortDayLabel } from "./appointment-shared";
@@ -51,7 +53,7 @@ const TONE_CLASS: Record<CountdownTone, string> = {
   danger: "bg-danger/10 text-danger",
 };
 
-type DialogState = { kind: "notes" | "reschedule"; appointment: AppointmentDTO } | { kind: "book" } | null;
+type DialogState = { kind: "notes" | "reschedule" | "no-show"; appointment: AppointmentDTO } | { kind: "book" } | null;
 
 export interface NextAppointmentCardProps {
   initial: NextAppointmentDTO;
@@ -70,8 +72,10 @@ export interface NextAppointmentCardProps {
  * The big "next appointment" button. Server-rendered with its first answer,
  * then alive on the client: the countdown ticks every second against the
  * server's clock, the data refreshes every 30 seconds (and whenever the tab
- * comes back), and the one-tap actions follow the state machine
- * (Confirm → Check in → Start consultation → Complete; Mark as no-show; Open).
+ * comes back), and the one-tap actions follow the state machine and the clock
+ * (Confirm → Check in → Start consultation → Complete; Mark as no-show; Open):
+ * check-in only on the appointment's day, a no-show only after the start and
+ * always confirmed first.
  * Below it, the rest of today's queue with a "late" flag for anyone past
  * their start without a check-in.
  */
@@ -191,11 +195,24 @@ export function NextAppointmentCard({ initial, timezone, variant, patientId, pat
           }}
         />
       ) : null}
+      {dialog?.kind === "no-show" ? (
+        <NoShowDialog
+          key={dialog.appointment.id}
+          appointment={dialog.appointment}
+          timezone={timezone}
+          onOpenChange={(open) => {
+            if (!open) setDialog(null);
+          }}
+          onDone={(marked) => afterDialog(`${marked.patient.fullName} · ${STATUS_LABEL.NO_SHOW}`)}
+        />
+      ) : null}
       {dialog?.kind === "reschedule" ? (
         <RescheduleAppointmentDialog
           key={dialog.appointment.id}
           appointment={dialog.appointment}
           timezone={timezone}
+          hours={data.hours}
+          canOverride={canManage}
           onOpenChange={(open) => {
             if (!open) setDialog(null);
           }}
@@ -205,6 +222,8 @@ export function NextAppointmentCard({ initial, timezone, variant, patientId, pat
       {dialog?.kind === "book" ? (
         <NewAppointmentDialog
           timezone={timezone}
+          hours={data.hours}
+          canOverride={canManage}
           defaultDate={todayKey}
           presetPatient={patientId && patientName ? { id: patientId, fullName: patientName } : null}
           onOpenChange={(open) => {
@@ -251,7 +270,11 @@ export function NextAppointmentCard({ initial, timezone, variant, patientId, pat
   const start = new Date(a.startsAt);
   const end = new Date(a.endsAt);
   const countdown = describeCountdown(a, now);
-  const step = NEXT_STEP[a.status];
+  // What the clock allows right now: no check-in before the day, no no-show before the start.
+  const available = availableTransitions(a, now, timezone);
+  const nextStep = NEXT_STEP[a.status];
+  const step = nextStep && available.includes(nextStep.status) ? nextStep : undefined;
+  const stepLater = nextStep && !step ? transitionTimeBlock(a, nextStep.status, now, timezone) : null;
   const StepIcon = step?.Icon ?? Check;
   const busy = pending?.startsWith(`${a.id}:`) ?? false;
   const dayKey = dateKeyInTz(start, timezone);
@@ -325,6 +348,10 @@ export function NextAppointmentCard({ initial, timezone, variant, patientId, pat
                 {busy ? <Loader2 className="animate-spin" /> : <StepIcon />}
                 {step.label}
               </Button>
+            ) : canWrite && stepLater ? (
+              <p className="rounded-md border border-dashed border-border px-3 py-2 text-xs text-muted-foreground" data-testid="next-step-later">
+                {stepLater.message}
+              </p>
             ) : null}
             {a.status === "IN_PROGRESS" ? (
               <Button asChild variant="outline">
@@ -335,17 +362,17 @@ export function NextAppointmentCard({ initial, timezone, variant, patientId, pat
               </Button>
             ) : null}
             <div className="flex flex-wrap gap-2">
-              {canWrite && canTransition(a.status, "NO_SHOW") ? (
+              {canWrite && available.includes("NO_SHOW") ? (
                 <Button
                   type="button"
                   variant="outline"
                   size="sm"
                   className="text-danger hover:bg-danger/10"
                   disabled={Boolean(pending)}
-                  onClick={() => void transition(a, "NO_SHOW")}
+                  onClick={() => setDialog({ kind: "no-show", appointment: a })}
                 >
                   <UserX />
-                  Mark as no-show
+                  Mark as no-show…
                 </Button>
               ) : null}
               {variant === "patient" && canWrite && isReschedulable(a.status) ? (

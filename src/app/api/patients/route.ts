@@ -6,6 +6,7 @@ import { parsePaging } from "@/lib/validation";
 import { getTenantTimezone } from "@/modules/appointments/service";
 import { parsePatientListQuery } from "@/modules/patients/filters";
 import { createPatient, listOptionsFromQuery, listPatients } from "@/modules/patients/service";
+import { patientErrorResponse } from "./_lib/errors";
 
 export const dynamic = "force-dynamic";
 
@@ -20,7 +21,8 @@ export const dynamic = "force-dynamic";
  * name_desc | last_visit | next_appointment | age_desc | age_asc), `page`,
  * `pageSize`. Unknown values are ignored. Responds `{ patients, total, page,
  * pageSize }`; each patient carries `lastVisitAt`, `nextAppointmentAt`,
- * `upcomingCount` and `exact` (the search matched a phone / id exactly).
+ * `upcomingCount` and `exact` (the search matched a phone / id exactly). A
+ * `page` past the end answers the last page (and says which in `page`).
  */
 export async function GET(req: Request) {
   try {
@@ -43,7 +45,13 @@ export async function GET(req: Request) {
   }
 }
 
-/** Register a patient. Responds 201 `{ patient }`, or 422 with field errors. */
+/**
+ * Register a patient. Responds 201 `{ patient }`, 422 with field errors, or
+ * 409 `{ error: "duplicate_phone" | "duplicate_national_id", message, matches:
+ * [{ id, fullName, field }] }` when the phone / WhatsApp number (any spelling)
+ * or the national id already belongs to an active patient, unless the body
+ * sets `confirmDuplicate: true`.
+ */
 export async function POST(req: Request) {
   try {
     if (!isSameOrigin(req)) return crossOriginRejected();
@@ -59,6 +67,6 @@ export async function POST(req: Request) {
     });
     return ok({ patient }, { status: 201 });
   } catch (err) {
-    return handleApiError(err);
+    return patientErrorResponse(err) ?? handleApiError(err);
   }
 }

@@ -8,40 +8,80 @@ import { Alert, Field } from "@/components/ui/field";
 import { Input, Select, Textarea } from "@/components/ui/input";
 import { DictationField } from "@/components/clinicmind/dictate-field";
 import { apiFetch, fieldErrors } from "@/lib/http";
-import { dateKeyInTz, formatTimeInTz, fromLocalInput } from "@/lib/time";
+import { dateKeyInTz, formatTimeInTz, fromDateKey, fromLocalInput } from "@/lib/time";
 import type { AppointmentDTO, FreeSlotsDTO, SlotSuggestionDTO } from "@/modules/appointments/dto";
+import { nextOpenStart } from "@/modules/appointments/rules";
 import {
   APPOINTMENT_KINDS,
+  DEFAULT_WORKING_HOURS,
   DURATION_OPTIONS,
   KIND_LABEL,
   MAX_REASON_LENGTH,
   type AppointmentKind,
+  type WorkingHours,
 } from "@/modules/appointments/transitions";
 import { PatientPicker, type PatientOption } from "./appointment-patient-picker";
 import { SlotPicker } from "./appointment-slot-picker";
-import { ConflictNotice, conflictInfo, describeApiError, freeSlotsUrl, useDoctors, type ConflictInfo } from "./appointment-shared";
+import {
+  ConflictNotice,
+  conflictInfo,
+  describeApiError,
+  freeSlotsUrl,
+  OpeningHoursHint,
+  staffLabel,
+  TimeRuleNotice,
+  timeRuleInfo,
+  useDoctors,
+  type ConflictInfo,
+  type TimeRuleInfo,
+} from "./appointment-shared";
+
+const DEFAULT_DURATION = 30;
+
+/**
+ * Where the form starts: the first slot inside the opening hours from now on
+ * (or from the start of `defaultDate` when that day is still ahead), so a
+ * booking never defaults to a closed day, a time before opening or the past.
+ */
+function initialSlot(defaultDate: string, hours: WorkingHours, timezone: string): { date: string; time: string; from: Date } {
+  const now = new Date();
+  const dayStart = fromDateKey(defaultDate, timezone);
+  const from = dayStart && dayStart.getTime() > now.getTime() ? dayStart : now;
+  const start = nextOpenStart(from, hours, timezone, DEFAULT_DURATION);
+  if (!start) return { date: defaultDate, time: hours.start, from };
+  return { date: dateKeyInTz(start, timezone), time: formatTimeInTz(start, timezone), from };
+}
 
 /**
  * Book a new appointment: patient search, doctor, kind, date, start time and
  * duration on the clinic clock, with the day's free slots laid out for the
- * chosen doctor. A taken slot comes back as a 409 with the bookings in the
- * way, the next three free slots as one-tap buttons and the waitlist; a
- * patient who is already booked then can be booked anyway on purpose.
+ * chosen doctor. The form opens on the next free slot inside the opening
+ * hours. A taken slot comes back as a 409 with the bookings in the way, the
+ * next three free slots as one-tap buttons and the waitlist; a patient who is
+ * already booked then can be booked anyway on purpose. A time in the past or
+ * outside the opening hours is refused with the reason; the owner may
+ * back-enter or book outside the hours on purpose.
  */
 export function NewAppointmentDialog({
   timezone,
+  hours = DEFAULT_WORKING_HOURS,
+  canOverride = false,
   defaultDate,
   defaultDoctorId = "",
-  defaultTime = "10:00",
+  defaultTime,
   presetPatient = null,
   onOpenChange,
   onDone,
 }: {
   timezone: string;
+  /** The clinic's opening hours (the default start and the closed-day hint follow them). */
+  hours?: WorkingHours;
+  /** The viewer may back-enter a past booking or book outside the hours (users:manage). */
+  canOverride?: boolean;
   /** `YYYY-MM-DD` on the clinic clock. */
   defaultDate: string;
   defaultDoctorId?: string;
-  /** `HH:mm` on the clinic clock. */
+  /** `HH:mm` on the clinic clock; by default the next free slot inside the opening hours. */
   defaultTime?: string;
   /** Skip the patient search (booking from a patient's record). */
   presetPatient?: PatientOption | null;
@@ -49,18 +89,24 @@ export function NewAppointmentDialog({
   onDone: (appointment: AppointmentDTO, waitlisted: boolean) => void;
 }) {
   const id = useId();
-  const { doctors, error: doctorsError } = useDoctors(true);
+  const [initial] = useState(() => initialSlot(defaultDate, hours, timezone));
   const [patient, setPatient] = useState<PatientOption | null>(presetPatient);
   const [doctorId, setDoctorId] = useState(defaultDoctorId);
   const [kind, setKind] = useState<AppointmentKind>("CONSULTATION");
-  const [date, setDate] = useState(defaultDate);
-  const [time, setTime] = useState(defaultTime);
-  const [duration, setDuration] = useState<number>(30);
+  const { doctors, error: doctorsError } = useDoctors(true, kind);
+  const [date, setDate] = useState(defaultTime ? defaultDate : initial.date);
+  const [time, setTime] = useState(defaultTime ?? initial.time);
+  // Once the user picks a date, a time or a slot, the form stops moving the start for them.
+  const [touched, setTouched] = useState(Boolean(defaultTime));
+  const [duration, setDuration] = useState<number>(DEFAULT_DURATION);
   const [room, setRoom] = useState("");
   const [reason, setReason] = useState("");
   const [notes, setNotes] = useState("");
   const [issues, setIssues] = useState<Record<string, string>>({});
   const [conflict, setConflict] = useState<ConflictInfo | null>(null);
+  const [timeRule, setTimeRule] = useState<TimeRuleInfo | null>(null);
+  // Owner overrides asked for on purpose; any change of date or time drops them.
+  const [overrides, setOverrides] = useState({ allowPast: false, allowOutsideHours: false });
   const [suggestions, setSuggestions] = useState<SlotSuggestionDTO[] | null>(null);
   const [showSlots, setShowSlots] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -69,14 +115,53 @@ export function NewAppointmentDialog({
   // shown at its top: scroll back up when one arrives, or it lands out of sight.
   const noticeRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    if (!conflict && !error) return;
+    if (!conflict && !error && !timeRule) return;
     const box = noticeRef.current?.closest<HTMLElement>("[role=dialog]");
     if (box) box.scrollTop = 0;
     else noticeRef.current?.scrollIntoView({ block: "start" });
-  }, [conflict, error]);
+  }, [conflict, error, timeRule]);
 
-  const effectiveDoctorId = doctorId || (doctors?.length === 1 ? (doctors[0]?.id ?? "") : "");
+  // A doctor who cannot take this kind of booking (a nurse once it is no longer a procedure) is dropped.
+  const selectable = doctors === null || !doctorId || doctors.some((d) => d.id === doctorId);
+  const effectiveDoctorId = (selectable ? doctorId : "") || (doctors?.length === 1 ? (doctors[0]?.id ?? "") : "");
   const startsAt = fromLocalInput(`${date}T${time}`, timezone);
+
+  // Until the user chooses a time, move the start to the doctor's first free slot.
+  useEffect(() => {
+    if (touched || !effectiveDoctorId) return;
+    const controller = new AbortController();
+    apiFetch<FreeSlotsDTO>(
+      freeSlotsUrl({
+        doctorId: effectiveDoctorId,
+        date: initial.date,
+        duration,
+        after: new Date(initial.from.getTime() - 1).toISOString(),
+      }),
+      { signal: controller.signal },
+    )
+      .then((res) => {
+        const first = res.suggestions[0];
+        if (!first) return;
+        setDate(first.date);
+        setTime(formatTimeInTz(new Date(first.startsAt), timezone));
+      })
+      .catch(() => undefined);
+    return () => controller.abort();
+  }, [touched, effectiveDoctorId, duration, initial, timezone]);
+
+  function changeDate(value: string) {
+    setTouched(true);
+    setDate(value);
+    setOverrides({ allowPast: false, allowOutsideHours: false });
+    setTimeRule(null);
+  }
+
+  function changeTime(value: string) {
+    setTouched(true);
+    setTime(value);
+    setOverrides({ allowPast: false, allowOutsideHours: false });
+    setTimeRule(null);
+  }
 
   async function loadSuggestions(after: Date) {
     setSuggestions(null);
@@ -90,7 +175,9 @@ export function NewAppointmentDialog({
     }
   }
 
-  async function submit(opts: { allowWaitlist?: boolean; allowPatientOverlap?: boolean; startsAt?: Date } = {}) {
+  async function submit(
+    opts: { allowWaitlist?: boolean; allowPatientOverlap?: boolean; startsAt?: Date; allowPast?: boolean; allowOutsideHours?: boolean } = {},
+  ) {
     if (busy) return;
     const nextIssues: Record<string, string> = {};
     if (!patient) nextIssues.patientId = "Choose a patient.";
@@ -101,9 +188,12 @@ export function NewAppointmentDialog({
     if (!patient || !effectiveDoctorId || !start) return;
 
     const endsAt = new Date(start.getTime() + duration * 60_000);
+    const allowPast = opts.allowPast ?? overrides.allowPast;
+    const allowOutsideHours = opts.allowOutsideHours ?? overrides.allowOutsideHours;
     setBusy(true);
     setError(null);
     setConflict(null);
+    setTimeRule(null);
     try {
       const res = await apiFetch<{ appointment: AppointmentDTO }>("/api/appointments", {
         method: "POST",
@@ -118,14 +208,19 @@ export function NewAppointmentDialog({
           notes: notes.trim() || undefined,
           allowWaitlist: Boolean(opts.allowWaitlist),
           allowPatientOverlap: Boolean(opts.allowPatientOverlap),
+          ...(allowPast ? { allowPast: true } : {}),
+          ...(allowOutsideHours ? { allowOutsideHours: true } : {}),
         },
       });
       onDone(res.appointment, res.appointment.status === "WAITLISTED");
     } catch (err) {
       const found = conflictInfo(err);
+      const rule = timeRuleInfo(err);
       if (found) {
         setConflict(found);
         void loadSuggestions(start);
+      } else if (rule) {
+        setTimeRule({ ...rule, overridable: rule.overridable && canOverride });
       } else {
         const fields = fieldErrors(err);
         setIssues(fields);
@@ -138,19 +233,26 @@ export function NewAppointmentDialog({
 
   function pickSlot(startsAtIso: string) {
     const d = new Date(startsAtIso);
-    setDate(dateKeyInTz(d, timezone));
-    setTime(formatTimeInTz(d, timezone));
+    changeDate(dateKeyInTz(d, timezone));
+    changeTime(formatTimeInTz(d, timezone));
     setConflict(null);
     setIssues((prev) => ({ ...prev, startsAt: "" }));
   }
 
   function pickSuggestion(s: SlotSuggestionDTO) {
     const d = new Date(s.startsAt);
-    setDate(s.date);
-    setTime(formatTimeInTz(d, timezone));
+    changeDate(s.date);
+    changeTime(formatTimeInTz(d, timezone));
     setConflict(null);
     setSuggestions(null);
-    void submit({ startsAt: d });
+    void submit({ startsAt: d, allowPast: false, allowOutsideHours: false });
+  }
+
+  /** The owner confirms the refused time on purpose (audited on the server). */
+  function override(rule: TimeRuleInfo) {
+    const next = { ...overrides, ...(rule.code === "in_the_past" ? { allowPast: true } : { allowOutsideHours: true }) };
+    setOverrides(next);
+    void submit(next);
   }
 
   function onSubmit(e: FormEvent) {
@@ -166,6 +268,7 @@ export function NewAppointmentDialog({
         <form onSubmit={onSubmit} className="space-y-4" noValidate>
           <div ref={noticeRef} className="space-y-4 empty:hidden">
             {error ? <Alert>{error}</Alert> : null}
+            {timeRule ? <TimeRuleNotice rule={timeRule} onOverride={() => override(timeRule)} busy={busy} /> : null}
             {conflict ? (
               <ConflictNotice
                 conflict={conflict}
@@ -199,7 +302,7 @@ export function NewAppointmentDialog({
                 )}
                 {(doctors ?? []).map((d) => (
                   <option key={d.id} value={d.id}>
-                    {d.fullName}
+                    {staffLabel(d)}
                   </option>
                 ))}
               </Select>
@@ -221,13 +324,14 @@ export function NewAppointmentDialog({
                 id={`${id}-date`}
                 type="date"
                 value={date}
-                onChange={(e) => setDate(e.target.value)}
+                onChange={(e) => changeDate(e.target.value)}
                 aria-invalid={issues.startsAt ? true : undefined}
+                aria-describedby={`${id}-hours`}
                 required
               />
             </Field>
             <Field label="Start" htmlFor={`${id}-time`}>
-              <Input id={`${id}-time`} type="time" step={900} value={time} onChange={(e) => setTime(e.target.value)} required />
+              <Input id={`${id}-time`} type="time" step={900} value={time} onChange={(e) => changeTime(e.target.value)} required />
             </Field>
             <Field label="Duration" htmlFor={`${id}-duration`} hint={issue("endsAt")}>
               <Select id={`${id}-duration`} value={String(duration)} onChange={(e) => setDuration(Number(e.target.value))}>
@@ -242,6 +346,9 @@ export function NewAppointmentDialog({
               <Input id={`${id}-room`} value={room} onChange={(e) => setRoom(e.target.value)} maxLength={60} placeholder="e.g. Room 2" />
             </Field>
           </div>
+          <p id={`${id}-hours`} className="-mt-2 text-xs text-muted-foreground">
+            <OpeningHoursHint date={date} hours={hours} timezone={timezone} />
+          </p>
 
           <section aria-label="Free slots" className="rounded-lg border border-border p-3">
             <button

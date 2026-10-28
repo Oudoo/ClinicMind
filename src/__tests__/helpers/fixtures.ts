@@ -49,13 +49,13 @@ export function seedTwoTenants(fake: FakeDb) {
   ]);
 
   fake.seed("user", [
-    { id: "owner-a", tenantId: TENANT_A.id, email: "owner@acme", role: "CLINIC_OWNER", status: "ACTIVE" },
-    { id: "doctor-a", tenantId: TENANT_A.id, email: "doctor@acme", role: "DOCTOR", status: "ACTIVE" },
+    { id: "owner-a", tenantId: TENANT_A.id, email: "owner@acme", role: "CLINIC_OWNER", status: "ACTIVE", isClinician: true },
+    { id: "doctor-a", tenantId: TENANT_A.id, email: "doctor@acme", role: "DOCTOR", status: "ACTIVE", isClinician: true },
     { id: "reception-a", tenantId: TENANT_A.id, email: "desk@acme", role: "RECEPTIONIST", status: "ACTIVE" },
     { id: "invited-a", tenantId: TENANT_A.id, email: "new@acme", role: "DOCTOR", status: "INVITED" },
     { id: "disabled-a", tenantId: TENANT_A.id, email: "gone@acme", role: "DOCTOR", status: "DISABLED" },
     { id: "deleted-a", tenantId: TENANT_A.id, email: "del@acme", role: "DOCTOR", status: "ACTIVE", deletedAt: new Date() },
-    { id: "doctor-b", tenantId: TENANT_B.id, email: "doctor@beta", role: "DOCTOR", status: "ACTIVE" },
+    { id: "doctor-b", tenantId: TENANT_B.id, email: "doctor@beta", role: "DOCTOR", status: "ACTIVE", isClinician: true },
     { id: "super", tenantId: TENANT_A.id, email: "root@platform", role: "SUPER_ADMIN", status: "ACTIVE" },
   ]);
 

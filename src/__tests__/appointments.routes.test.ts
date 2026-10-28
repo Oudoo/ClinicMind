@@ -2,9 +2,14 @@
  * Appointment lifecycle over the real route handlers and the test database:
  * booking with conflict detection and waitlisting, rescheduling, every status
  * transition, tenant isolation of ids, RBAC and the staff picker endpoint.
+ *
+ * Bookings land on open weekdays (the clinic is closed on Fridays) inside the
+ * opening hours; the status walk runs on a booking that started a few minutes
+ * ago today, because check-in, no-show and completion follow the clock.
  */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { db } from "@/lib/db";
+import { startOfDayInTz } from "@/lib/time";
 import { GET as listRoute, POST as createRoute } from "@/app/api/appointments/route";
 import { GET as getRoute, PATCH as patchRoute } from "@/app/api/appointments/[id]/route";
 import { POST as transitionRoute } from "@/app/api/appointments/[id]/transition/route";
@@ -20,12 +25,35 @@ import {
 
 const params = (id: string) => ({ params: Promise.resolve({ id }) });
 
-/** A 30-minute slot on a fixed future day; tests pick distinct days/hours. */
-const BASE = Date.UTC(2027, 2, 1, 0, 0, 0); // 1 Mar 2027
+const DAY = 86_400_000;
+const TZ = "Africa/Cairo";
+/** 1 Mar 2027 (a Monday); Cairo runs on UTC+2 then, so 08:00–17:00 UTC is 10:00–19:00 on the clinic clock. */
+const BASE = Date.UTC(2027, 2, 1, 0, 0, 0);
+
+/** Logical day n → the nth calendar day from BASE on which the clinic opens (Fridays are skipped). */
+function openDay(n: number): number {
+  let day = -1;
+  for (let open = -1; open < n; ) {
+    day++;
+    if (new Date(BASE + day * DAY).getUTCDay() !== 5) open++;
+  }
+  return day;
+}
+const dayStart = (n: number) => new Date(BASE + openDay(n) * DAY);
+const dayEnd = (n: number) => new Date(BASE + (openDay(n) + 1) * DAY);
+
+/** A 30-minute slot on a fixed future open day (hours in UTC); tests pick distinct days/hours. */
 function slot(day: number, hour: number, minutes = 30, minuteOffset = 0) {
-  const start = new Date(BASE + day * 86_400_000 + hour * 3_600_000 + minuteOffset * 60_000);
+  const start = new Date(dayStart(day).getTime() + hour * 3_600_000 + minuteOffset * 60_000);
   const end = new Date(start.getTime() + minutes * 60_000);
   return { startsAt: start.toISOString(), endsAt: end.toISOString() };
+}
+
+/** 30 minutes that started a few minutes ago, never before today's midnight on the clinic clock. */
+function startedToday() {
+  const now = Date.now();
+  const start = new Date(Math.max(startOfDayInTz(new Date(now), TZ).getTime(), now - 5 * 60_000));
+  return { startsAt: start.toISOString(), endsAt: new Date(start.getTime() + 30 * 60_000).toISOString() };
 }
 
 describe.skipIf(!dbTestsEnabled)("appointments", () => {
@@ -69,6 +97,19 @@ describe.skipIf(!dbTestsEnabled)("appointments", () => {
     return json.appointment.id as string;
   }
 
+  /**
+   * Book (as the owner) a SCHEDULED appointment that started a few minutes ago
+   * today, so check-in, no-show and completion are allowed by the clock. No
+   * doctor or room, so several of them may overlap; the owner books outside
+   * the opening hours on purpose when the tests run in the evening.
+   */
+  async function today(extra: Record<string, unknown> = {}) {
+    const { res, json } = await book({ patientId: patientA, ...startedToday(), allowOutsideHours: true, allowPatientOverlap: true, ...extra });
+    expect(res.status).toBe(201);
+    expect(json.appointment.status).toBe("SCHEDULED");
+    return json.appointment.id as string;
+  }
+
   beforeAll(async () => {
     const tenantA = await createTenant({ slug: `appt-a-${Date.now().toString(36)}` });
     const tenantB = await createTenant({ slug: `appt-b-${Date.now().toString(36)}` });
@@ -80,6 +121,8 @@ describe.skipIf(!dbTestsEnabled)("appointments", () => {
     doctorA = await createUser({ tenantId: a.id, role: "DOCTOR", fullName: "Dr. Amina" });
     doctorA2 = await createUser({ tenantId: a.id, role: "DOCTOR", fullName: "Dr. Bassem" });
     await createUser({ tenantId: a.id, role: "NURSE", fullName: "Nurse Nour" });
+    // An owner-level administrator who is not a clinician (the Clinic AI lead).
+    await createUser({ tenantId: a.id, role: "CLINIC_OWNER", fullName: "AI Lead", isClinician: false });
     await createUser({ tenantId: a.id, role: "RECEPTIONIST", fullName: "Desk" });
     await createUser({ tenantId: a.id, role: "DOCTOR", fullName: "Dr. Invited", status: "INVITED", password: null });
     await createUser({ tenantId: a.id, role: "DOCTOR", fullName: "Dr. Disabled", status: "DISABLED" });
@@ -207,7 +250,7 @@ describe.skipIf(!dbTestsEnabled)("appointments", () => {
 
       const badDate = await book({ patientId: patientA, doctorId: doctorA.id, startsAt: "yesterday", endsAt: "tomorrow" });
       expect(badDate.res.status).toBe(422);
-      expect(await db.appointment.count({ where: { tenantId: a.id, startsAt: { gte: new Date(BASE + 5 * 86_400_000), lt: new Date(BASE + 6 * 86_400_000) } } })).toBe(0);
+      expect(await db.appointment.count({ where: { tenantId: a.id, startsAt: { gte: dayStart(5), lt: dayEnd(5) } } })).toBe(0);
     });
 
     it("rejects a cross-origin browser request before touching the database", async () => {
@@ -227,8 +270,8 @@ describe.skipIf(!dbTestsEnabled)("appointments", () => {
     it("lists the window with patient and doctor names and honours the filters", async () => {
       const mine = await scheduled(10, 9);
       const other = await book({ patientId: patientA2, doctorId: doctorA2.id, ...slot(10, 10) });
-      const from = new Date(BASE + 10 * 86_400_000).toISOString();
-      const to = new Date(BASE + 11 * 86_400_000 - 1).toISOString();
+      const from = dayStart(10).toISOString();
+      const to = new Date(dayEnd(10).getTime() - 1).toISOString();
 
       const all = await listRoute(request(`/api/appointments?from=${from}&to=${to}`, { cookie: ownerCookie }));
       expect(all.status).toBe(200);
@@ -259,8 +302,8 @@ describe.skipIf(!dbTestsEnabled)("appointments", () => {
 
     it("never lists another tenant's appointments", async () => {
       const id = await scheduled(11, 9);
-      const from = new Date(BASE + 11 * 86_400_000).toISOString();
-      const to = new Date(BASE + 12 * 86_400_000).toISOString();
+      const from = dayStart(11).toISOString();
+      const to = dayEnd(11).toISOString();
       const res = await listRoute(request(`/api/appointments?from=${from}&to=${to}`, { cookie: ownerBCookie }));
       expect(res.status).toBe(200);
       expect((await res.json()).appointments.map((x: { id: string }) => x.id)).not.toContain(id);
@@ -333,8 +376,8 @@ describe.skipIf(!dbTestsEnabled)("appointments", () => {
     });
 
     it("cannot reschedule once the visit has started or ended", async () => {
-      const id = await scheduled(24, 9);
-      await transition(id, { status: "CHECKED_IN" });
+      const id = await today();
+      expect((await transition(id, { status: "CHECKED_IN" })).res.status).toBe(200);
       const { res, json } = await patch(id, slot(24, 15));
       expect(res.status).toBe(409);
       expect(json).toEqual({ error: "not_reschedulable", status: "CHECKED_IN" });
@@ -351,7 +394,7 @@ describe.skipIf(!dbTestsEnabled)("appointments", () => {
 
   describe("transitions", () => {
     it("walks SCHEDULED → CONFIRMED → CHECKED_IN → IN_PROGRESS → COMPLETED", async () => {
-      const id = await scheduled(30, 9);
+      const id = await today();
       for (const status of ["CONFIRMED", "CHECKED_IN", "IN_PROGRESS", "COMPLETED"] as const) {
         const { res, json } = await transition(id, { status });
         expect(res.status, status).toBe(200);
@@ -368,7 +411,7 @@ describe.skipIf(!dbTestsEnabled)("appointments", () => {
     });
 
     it("allows SCHEDULED → CHECKED_IN directly and CHECKED_IN → CANCELLED", async () => {
-      const id = await scheduled(31, 9);
+      const id = await today();
       expect((await transition(id, { status: "CHECKED_IN" })).res.status).toBe(200);
       const { res, json } = await transition(id, { status: "CANCELLED", reason: "Doctor called away" });
       expect(res.status).toBe(200);
@@ -397,24 +440,25 @@ describe.skipIf(!dbTestsEnabled)("appointments", () => {
       await transition(first, { status: "CONFIRMED" });
       expect((await transition(first, { status: "CANCELLED", reason: "Sick" })).res.status).toBe(200);
 
-      const second = await scheduled(33, 11);
+      const second = await today();
       await transition(second, { status: "CONFIRMED" });
       const { res, json } = await transition(second, { status: "NO_SHOW" });
       expect(res.status).toBe(200);
       expect(json.appointment.status).toBe("NO_SHOW");
     });
 
-    it("marks a no-show (reason optional) and re-books it into the same slot", async () => {
-      const id = await scheduled(34, 9);
+    it("marks a no-show (reason optional) and re-books it into the same slot the same day", async () => {
+      const id = await today();
+      const startsAt = (await db.appointment.findUniqueOrThrow({ where: { id } })).startsAt.toISOString();
       const noShow = await transition(id, { status: "NO_SHOW", reason: "Did not answer the phone" });
       expect(noShow.res.status).toBe(200);
       expect(noShow.json.appointment).toMatchObject({ status: "NO_SHOW", cancelReason: "Did not answer the phone" });
       const event = await db.timelineEvent.findFirst({ where: { tenantId: a.id, refId: id, title: { contains: "no-show" } } });
-      expect(event?.occurredAt.toISOString()).toBe(slot(34, 9).startsAt);
+      expect(event?.occurredAt.toISOString()).toBe(startsAt);
 
       const rebooked = await transition(id, { status: "SCHEDULED" });
       expect(rebooked.res.status).toBe(200);
-      expect(rebooked.json.appointment).toMatchObject({ status: "SCHEDULED", cancelReason: null, startsAt: slot(34, 9).startsAt });
+      expect(rebooked.json.appointment).toMatchObject({ status: "SCHEDULED", cancelReason: null, startsAt });
     });
 
     it("promotes a waitlisted booking only once its slot is free", async () => {
@@ -453,8 +497,10 @@ describe.skipIf(!dbTestsEnabled)("appointments", () => {
       expect(revive.res.status).toBe(409);
       expect(revive.json).toEqual({ error: "invalid_transition", from: "CANCELLED", to: "SCHEDULED" });
 
-      const done = await scheduled(37, 11);
-      for (const status of ["CHECKED_IN", "IN_PROGRESS", "COMPLETED"] as const) await transition(done, { status });
+      const done = await today();
+      for (const status of ["CHECKED_IN", "IN_PROGRESS", "COMPLETED"] as const) {
+        expect((await transition(done, { status })).res.status, status).toBe(200);
+      }
       const undo = await transition(done, { status: "CANCELLED", reason: "Oops" });
       expect(undo.res.status).toBe(409);
       expect(undo.json).toEqual({ error: "invalid_transition", from: "COMPLETED", to: "CANCELLED" });
@@ -487,7 +533,7 @@ describe.skipIf(!dbTestsEnabled)("appointments", () => {
       expect(foreignClinic.json).toEqual({ error: "not_found", entity: "clinic" });
 
       expect(await db.appointment.count({ where: { OR: [{ patientId: patientB, tenantId: a.id }, { doctorId: doctorB.id }] } })).toBe(0);
-      expect(await db.appointment.count({ where: { tenantId: a.id, startsAt: { gte: new Date(BASE + 40 * 86_400_000), lt: new Date(BASE + 41 * 86_400_000) } } })).toBe(0);
+      expect(await db.appointment.count({ where: { tenantId: a.id, startsAt: { gte: dayStart(40), lt: dayEnd(40) } } })).toBe(0);
     });
   });
 
@@ -518,13 +564,13 @@ describe.skipIf(!dbTestsEnabled)("appointments", () => {
   });
 
   describe("GET /api/staff", () => {
-    it("lists only the tenant's active bookable staff", async () => {
+    it("lists only the tenant's active clinicians (no nurse, no non-clinical owner)", async () => {
       const res = await staffRoute(request("/api/staff", { cookie: assistantCookie }));
       expect(res.status).toBe(200);
       const staff = (await res.json()).staff as { id: string; fullName: string; role: string }[];
-      expect(staff.map((s) => s.fullName).sort()).toEqual(["Dr. Amina", "Dr. Bassem", "Nurse Nour", "Owner A"]);
+      expect(staff.map((s) => s.fullName).sort()).toEqual(["Dr. Amina", "Dr. Bassem", "Owner A"]);
       expect(staff.map((s) => s.id)).not.toContain(doctorB.id);
-      expect(staff.every((s) => ["DOCTOR", "NURSE", "CLINIC_OWNER"].includes(s.role))).toBe(true);
+      expect(staff.every((s) => ["DOCTOR", "CLINIC_OWNER"].includes(s.role))).toBe(true);
     });
 
     it("filters by role and validates it", async () => {

@@ -280,7 +280,10 @@ describe.skipIf(!dbTestsEnabled)("leads", () => {
 
     it("books a consultation through the appointments service with kind CONSULTATION and leadId, moving the lead to CONSULTATION_BOOKED", async () => {
       const l = await lead({ fullName: "Book Me", phone: "01022233344", interests: ["pigmentation"] });
-      const startsAt = new Date(Date.UTC(2027, 4, 3, 9, 0, 0));
+      // About a month ahead at 09:00 UTC (11:00–12:00 in Cairo, inside opening hours), never a Friday.
+      const startsAt = new Date(Date.now() + 30 * 86_400_000);
+      startsAt.setUTCHours(9, 0, 0, 0);
+      while (startsAt.getUTCDay() === 5) startsAt.setUTCDate(startsAt.getUTCDate() + 1);
       const endsAt = new Date(startsAt.getTime() + 30 * 60_000);
       const { res, json } = await post("/api/leads/x/book", bookRoute, l.id, { doctorId: doctorA.id, startsAt: startsAt.toISOString(), endsAt: endsAt.toISOString(), room: "Room 1" }, receptionCookie);
       expect(res.status).toBe(201);
@@ -300,6 +303,18 @@ describe.skipIf(!dbTestsEnabled)("leads", () => {
       expect(foreignDoctor.res.status).toBe(404);
       const backwards = await post("/api/leads/x/book", bookRoute, other.id, { doctorId: doctorA.id, startsAt: endsAt.toISOString(), endsAt: startsAt.toISOString() });
       expect(backwards.res.status).toBe(422);
+    });
+
+    it("refuses a time in the past before converting, so no patient is left behind", async () => {
+      const l = await lead({ fullName: "Too Late", phone: "01022233366" });
+      const startsAt = new Date(Date.now() - 3 * 86_400_000);
+      const endsAt = new Date(startsAt.getTime() + 30 * 60_000);
+      const { res, json } = await post("/api/leads/x/book", bookRoute, l.id, { doctorId: doctorA.id, startsAt: startsAt.toISOString(), endsAt: endsAt.toISOString() }, receptionCookie);
+      expect(res.status).toBe(422);
+      expect(json.error).toBe("in_the_past");
+      const after = await db.lead.findUniqueOrThrow({ where: { id: l.id } });
+      expect(after.patientId).toBeNull();
+      expect(await db.patient.count({ where: { tenantId: a.id, fullName: "Too Late" } })).toBe(0);
     });
   });
 

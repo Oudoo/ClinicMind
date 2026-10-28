@@ -237,8 +237,9 @@ function MetricBlockPlain({ title, description, children }: { title: string; des
 /** "1 lead", "3 leads". */
 const plural = (n: number, one: string, many: string) => `${fmtCount(n)} ${n === 1 ? one : many}`;
 
+/** Rates (formatted with fmtPct) move in percentage points, counts and money relatively. */
 const Delta = ({ cur, prev, good, fmt }: { cur: number | null; prev: number | null; good: "up" | "down"; fmt: (v: number) => string }) =>
-  cur === null ? null : <DeltaChip current={cur} previous={prev} goodWhen={good} format={fmt} />;
+  cur === null ? null : <DeltaChip current={cur} previous={prev} goodWhen={good} format={fmt} mode={fmt === fmtPct ? "points" : "relative"} />;
 
 // ── Tabs ─────────────────────────────────────────────────────────────────────
 

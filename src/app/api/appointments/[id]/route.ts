@@ -35,7 +35,9 @@ export async function GET(req: Request, { params }: Params) {
  * and/or edit kind/reason/notes. 409 `conflict` when the new slot is taken unless
  * `allowWaitlist` is set; 409 `patient_conflict` when the patient already holds
  * an overlapping booking unless `allowPatientOverlap` is set; 409
- * `not_reschedulable` once the visit has started.
+ * `not_reschedulable` once the visit has started; 422 `in_the_past` /
+ * `outside_hours` for a new time that started more than 15 minutes ago or lies
+ * outside the opening hours, unless an owner sets `allowPast` / `allowOutsideHours`.
  */
 export async function PATCH(req: Request, { params }: Params) {
   try {
@@ -48,6 +50,7 @@ export async function PATCH(req: Request, { params }: Params) {
       id: ctx.userId,
       email: ctx.email,
       ip: clientIp(req),
+      role: ctx.role,
     });
     return ok(result);
   } catch (err) {

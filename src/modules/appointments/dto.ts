@@ -67,6 +67,8 @@ export interface NextAppointmentDTO {
   /** The viewer has no booking of their own, so the clinic's next one is shown. */
   fallback: boolean;
   timezone: string;
+  /** The clinic's opening hours (for the booking form's default time and closed-day hint). */
+  hours: WorkingHours;
   /** Server clock at the time of the answer, for the client's countdown. */
   now: string;
 }

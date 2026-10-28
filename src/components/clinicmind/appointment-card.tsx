@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { formatTimeInTz } from "@/lib/time";
 import { cn } from "@/lib/utils";
 import type { AppointmentDTO } from "@/modules/appointments/dto";
+import { availableTransitions, transitionTimeBlock } from "@/modules/appointments/rules";
 import {
   allowedTransitions,
   isReschedulable,
@@ -19,6 +20,8 @@ export interface AppointmentActions {
   onTransition: (appointment: AppointmentDTO, status: AppointmentStatus) => void;
   onCancel: (appointment: AppointmentDTO) => void;
   onReschedule: (appointment: AppointmentDTO) => void;
+  /** Confirm a no-show before it is recorded (it feeds the no-show rate). */
+  onNoShow?: (appointment: AppointmentDTO) => void;
   /** Open the dictated notes of the booking (dictate, read, remove). */
   onNotes?: (appointment: AppointmentDTO) => void;
 }
@@ -28,8 +31,9 @@ const DESTRUCTIVE: readonly AppointmentStatus[] = ["CANCELLED", "NO_SHOW"];
 /**
  * One booking on the schedule: time range, patient (linked to their record),
  * doctor, reason, kind, status, the count of dictated notes and — for
- * writers — a menu with exactly the moves the state machine allows from its
- * current status, plus "Dictate a note".
+ * writers — a menu with the moves the state machine allows from its current
+ * status that the clock also allows right now (no check-in before the day, no
+ * no-show before the start), plus "Dictate a note".
  */
 export function AppointmentCard({
   appointment,
@@ -54,7 +58,7 @@ export function AppointmentCard({
   const muted = appointment.status === "CANCELLED" || appointment.status === "NO_SHOW";
 
   const menu = showMenu ? (
-    <AppointmentActionsMenu appointment={appointment} pending={pending} actions={actions} />
+    <AppointmentActionsMenu appointment={appointment} timezone={timezone} pending={pending} actions={actions} />
   ) : null;
 
   const notesBadge =
@@ -144,23 +148,15 @@ export function AppointmentCard({
 
 function AppointmentActionsMenu({
   appointment,
+  timezone,
   pending,
   actions,
 }: {
   appointment: AppointmentDTO;
+  timezone: string;
   pending: boolean;
   actions: AppointmentActions;
 }) {
-  const transitions = allowedTransitions(appointment.status);
-  const regular = transitions.filter((s) => !DESTRUCTIVE.includes(s));
-  const destructive = transitions.filter((s) => DESTRUCTIVE.includes(s));
-  const reschedulable = isReschedulable(appointment.status);
-
-  function choose(status: AppointmentStatus) {
-    if (status === "CANCELLED") actions.onCancel(appointment);
-    else actions.onTransition(appointment, status);
-  }
-
   return (
     <DropdownMenu.Root>
       <DropdownMenu.Trigger asChild>
@@ -179,36 +175,69 @@ function AppointmentActionsMenu({
         <DropdownMenu.Content
           align="end"
           sideOffset={4}
-          className="z-50 min-w-[12rem] rounded-lg border border-border bg-card p-1 text-sm shadow-lg animate-fade-in"
+          className="z-50 min-w-[12rem] max-w-[calc(100vw-2rem)] rounded-lg border border-border bg-card p-1 text-sm shadow-lg animate-fade-in"
         >
-          {regular.map((status) => (
-            <MenuItem key={status} onSelect={() => choose(status)}>
-              {transitionLabel(appointment.status, status)}
-            </MenuItem>
-          ))}
-          {reschedulable ? (
-            <MenuItem onSelect={() => actions.onReschedule(appointment)}>
-              <CalendarClock className="h-4 w-4" />
-              Reschedule
-            </MenuItem>
-          ) : null}
-          {actions.onNotes ? (
-            <MenuItem onSelect={() => actions.onNotes?.(appointment)}>
-              <Mic className="h-4 w-4" />
-              {appointment.notesCount ? `Notes · ${appointment.notesCount}` : "Dictate a note"}
-            </MenuItem>
-          ) : null}
-          {destructive.length && (regular.length || reschedulable || actions.onNotes) ? (
-            <DropdownMenu.Separator className="my-1 h-px bg-border" />
-          ) : null}
-          {destructive.map((status) => (
-            <MenuItem key={status} onSelect={() => choose(status)} tone="danger">
-              {transitionLabel(appointment.status, status)}
-            </MenuItem>
-          ))}
+          {/* Rendered only while the menu is open, so the clock is read when it is opened. */}
+          <ActionsMenuItems appointment={appointment} timezone={timezone} actions={actions} />
         </DropdownMenu.Content>
       </DropdownMenu.Portal>
     </DropdownMenu.Root>
+  );
+}
+
+function ActionsMenuItems({ appointment, timezone, actions }: { appointment: AppointmentDTO; timezone: string; actions: AppointmentActions }) {
+  const now = new Date();
+  const transitions = availableTransitions(appointment, now, timezone);
+  const regular = transitions.filter((s) => !DESTRUCTIVE.includes(s));
+  const destructive = transitions.filter((s) => DESTRUCTIVE.includes(s));
+  const reschedulable = isReschedulable(appointment.status);
+  // Say why check-in is missing on a visit that is still ahead.
+  const checkInLater =
+    allowedTransitions(appointment.status).includes("CHECKED_IN") && !transitions.includes("CHECKED_IN")
+      ? transitionTimeBlock(appointment, "CHECKED_IN", now, timezone)
+      : null;
+  const hint = checkInLater && new Date(appointment.startsAt).getTime() > now.getTime() ? checkInLater.message : null;
+
+  function choose(status: AppointmentStatus) {
+    if (status === "CANCELLED") actions.onCancel(appointment);
+    else if (status === "NO_SHOW" && actions.onNoShow) actions.onNoShow(appointment);
+    else actions.onTransition(appointment, status);
+  }
+
+  return (
+    <>
+      {hint ? (
+        <DropdownMenu.Label className="max-w-[16rem] px-2.5 py-1.5 text-xs text-muted-foreground" data-testid="check-in-later-hint">
+          {hint}
+        </DropdownMenu.Label>
+      ) : null}
+      {regular.map((status) => (
+        <MenuItem key={status} onSelect={() => choose(status)}>
+          {transitionLabel(appointment.status, status)}
+        </MenuItem>
+      ))}
+      {reschedulable ? (
+        <MenuItem onSelect={() => actions.onReschedule(appointment)}>
+          <CalendarClock className="h-4 w-4" />
+          Reschedule
+        </MenuItem>
+      ) : null}
+      {actions.onNotes ? (
+        <MenuItem onSelect={() => actions.onNotes?.(appointment)}>
+          <Mic className="h-4 w-4" />
+          {appointment.notesCount ? `Notes · ${appointment.notesCount}` : "Dictate a note"}
+        </MenuItem>
+      ) : null}
+      {destructive.length && (regular.length || reschedulable || actions.onNotes) ? (
+        <DropdownMenu.Separator className="my-1 h-px bg-border" />
+      ) : null}
+      {destructive.map((status) => (
+        <MenuItem key={status} onSelect={() => choose(status)} tone="danger">
+          {transitionLabel(appointment.status, status)}
+          {status === "NO_SHOW" && actions.onNoShow ? "…" : ""}
+        </MenuItem>
+      ))}
+    </>
   );
 }
 

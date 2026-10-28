@@ -3,6 +3,7 @@ import { assertCan } from "@/lib/auth/rbac";
 import { clientIp, crossOriginRejected, isSameOrigin } from "@/lib/auth/request";
 import { handleApiError, notFound, ok, unauthorized } from "@/lib/api";
 import { archivePatient, getPatient, updatePatient } from "@/modules/patients/service";
+import { patientErrorResponse } from "../_lib/errors";
 
 export const dynamic = "force-dynamic";
 
@@ -28,7 +29,11 @@ export async function GET(req: Request, { params }: Params) {
   }
 }
 
-/** Partial profile update. Blank or `null` clears an optional field. */
+/**
+ * Partial profile update. Blank or `null` clears an optional field. 409
+ * `duplicate_phone` / `duplicate_national_id` when a changed number or id
+ * belongs to another active patient, unless `confirmDuplicate: true`.
+ */
 export async function PATCH(req: Request, { params }: Params) {
   try {
     const { id } = await params;
@@ -46,7 +51,7 @@ export async function PATCH(req: Request, { params }: Params) {
     if (!patient) return notFound("patient");
     return ok({ patient });
   } catch (err) {
-    return handleApiError(err);
+    return patientErrorResponse(err) ?? handleApiError(err);
   }
 }
 
