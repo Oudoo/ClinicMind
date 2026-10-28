@@ -10,6 +10,12 @@ import { toVectorLiteral } from "./vectors";
  * Hard rule: the assistant NEVER answers without retrieval. Every answer is
  * grounded in tenant-scoped patient knowledge and returns citations.
  *
+ * Retrieval returns the most relevant snippets, never every record, so it is
+ * NOT how "list every patient who …" questions are answered: those go through
+ * the structured cohort path (src/modules/assistant/cohort.ts), which queries
+ * every record. When a list-shaped question still lands here, the answer says
+ * that it may be incomplete.
+ *
  * Pipeline:
  *   embed query ─► vector search (pgvector cosine, tenant-scoped)
  *                ─► lexical search (pg_trgm word similarity / ILIKE on content,
@@ -74,6 +80,24 @@ export interface RetrieveOptions {
   topK?: number;
   /** Restrict retrieval to one patient's records (the UI's patient-context picker). */
   patientId?: string | null;
+  /**
+   * Restrict retrieval to these patients (the patients who meet a question's
+   * stated criteria, e.g. "female patients over 40"). An empty list retrieves
+   * nothing. Chunks without a patient are excluded whenever a set is given.
+   */
+  patientIds?: string[] | null;
+}
+
+export interface AnswerOptions {
+  topK?: number;
+  patientId?: string | null;
+  patientIds?: string[] | null;
+  /** Plain-English description of the patient restriction, stated in the prompt. */
+  scope?: string | null;
+  /** The question asks for a list of patients: the answer must not present retrieval as complete. */
+  listQuestion?: boolean;
+  preferProvider?: string;
+  tenantAi?: TenantAiOverrides;
 }
 
 /** Below this combined score a chunk does not count as a "strong" match. */
@@ -122,12 +146,13 @@ interface LexicalRow {
  */
 export async function retrieve(tenantId: string, query: string, opts: RetrieveOptions = {}): Promise<RetrievedChunk[]> {
   const topK = Math.max(1, Math.min(opts.topK ?? 8, 50));
-  const patientId = opts.patientId ?? null;
+  if (opts.patientIds && !opts.patientIds.length) return [];
+  const filter = patientFilterSql(opts.patientId ?? null, opts.patientIds ?? null);
   const terms = extractLexicalTerms(query);
 
   const [vectorRows, lexicalRows] = await Promise.all([
-    vectorSearch(tenantId, query, patientId, topK * 2),
-    terms.length ? lexicalSearch(tenantId, terms, patientId, topK * 2) : Promise.resolve([] as LexicalRow[]),
+    vectorSearch(tenantId, query, filter, topK * 2),
+    terms.length ? lexicalSearch(tenantId, terms, filter, topK * 2) : Promise.resolve([] as LexicalRow[]),
   ]);
 
   const merged = new Map<string, RetrievedChunk>();
@@ -173,12 +198,19 @@ export async function retrieve(tenantId: string, query: string, opts: RetrieveOp
   return rerank(query, combined).slice(0, topK);
 }
 
-async function vectorSearch(tenantId: string, query: string, patientId: string | null, limit: number): Promise<VectorRow[]> {
+/** SQL restriction to one patient and/or a set of patients (both are tenant-scoped by the caller's WHERE). */
+function patientFilterSql(patientId: string | null, patientIds: string[] | null): Prisma.Sql {
+  const parts: Prisma.Sql[] = [];
+  if (patientId) parts.push(Prisma.sql`AND "patientId" = ${patientId}`);
+  if (patientIds) parts.push(Prisma.sql`AND "patientId" = ANY(${patientIds})`);
+  return parts.length ? Prisma.join(parts, " ") : Prisma.empty;
+}
+
+async function vectorSearch(tenantId: string, query: string, patientFilter: Prisma.Sql, limit: number): Promise<VectorRow[]> {
   const { vectors } = await embeddingProvider().embed([query], { kind: "query" });
   const queryVec = vectors[0];
   if (!queryVec) return [];
   const literal = toVectorLiteral(queryVec);
-  const patientFilter = patientId ? Prisma.sql`AND "patientId" = ${patientId}` : Prisma.empty;
 
   // pgvector cosine distance (<=>); score = 1 - distance. Tenant-scoped. The
   // probe count is raised for this transaction only so the ivfflat index (100
@@ -197,8 +229,7 @@ async function vectorSearch(tenantId: string, query: string, patientId: string |
   return rows;
 }
 
-async function lexicalSearch(tenantId: string, terms: string[], patientId: string | null, limit: number): Promise<LexicalRow[]> {
-  const patientFilter = patientId ? Prisma.sql`AND "patientId" = ${patientId}` : Prisma.empty;
+async function lexicalSearch(tenantId: string, terms: string[], patientFilter: Prisma.Sql, limit: number): Promise<LexicalRow[]> {
   // Exact substring (ILIKE) catches names and drug names verbatim; pg_trgm
   // word_similarity adds typo tolerance ("amlodipin") and provides the score.
   const similarity = Prisma.sql`GREATEST(${Prisma.join(
@@ -259,14 +290,13 @@ export function computeConfidence(input: { chunks: { score: number }[]; answer: 
 }
 
 /** Step 5: generate a grounded, cited answer. */
-export async function answerWithRag(
-  tenantId: string,
-  query: string,
-  opts: { topK?: number; patientId?: string | null; preferProvider?: string; tenantAi?: TenantAiOverrides } = {},
-): Promise<RagAnswer> {
+export async function answerWithRag(tenantId: string, query: string, opts: AnswerOptions = {}): Promise<RagAnswer> {
   const started = Date.now();
-  const retrieved = (await retrieve(tenantId, query, { topK: opts.topK ?? 8, patientId: opts.patientId }))
+  const allowed = opts.patientIds ? new Set(opts.patientIds) : null;
+  const retrieved = (await retrieve(tenantId, query, { topK: opts.topK ?? 8, patientId: opts.patientId, patientIds: opts.patientIds }))
     .filter((c) => c.score >= CONTEXT_SCORE_FLOOR)
+    // Defence in depth: never let a chunk about another patient through a restriction.
+    .filter((c) => (!opts.patientId || c.patientId === opts.patientId) && (!allowed || (c.patientId !== null && allowed.has(c.patientId))))
     .slice(0, 6);
   const names = await patientNames(tenantId, retrieved);
 
@@ -276,7 +306,7 @@ export async function answerWithRag(
   const ceiling = computeConfidence({ chunks: retrieved, answer: "[1]" });
   if (!retrieved.length || ceiling < GROUNDED_THRESHOLD) {
     return {
-      answer: noMatchingRecordsAnswer(query),
+      answer: noMatchingRecordsAnswer(query, { listQuestion: opts.listQuestion }),
       citations: [],
       chunks: retrieved,
       provider: "clinicmind",
@@ -287,25 +317,15 @@ export async function answerWithRag(
     };
   }
 
-  const contextBlock = retrieved.length
-    ? retrieved.map((c, i) => `[${i + 1}] ${headingFor(c, names)}\n${c.content}`).join("\n\n")
-    : "(none)";
-
+  const contextBlock = retrieved.map((c, i) => `[${i + 1}] ${headingFor(c, names)}\n${c.content}`).join("\n\n");
   const system: AiMessage = {
     role: "system",
-    content: [
-      "You are ClinicMind's clinical assistant. You provide decision support to licensed clinic staff; you do not give medical advice to patients.",
-      "Answer ONLY from the CONTEXT below, which is retrieved from this clinic's own patient records.",
-      "Cite every statement of fact with the [n] marker of the context item it comes from; a statement without a marker is not allowed.",
-      "Never invent or infer diagnoses, medications, doses, dates, lab values or outcomes that are not written in the context. Do not generalise from one patient to another.",
-      "If the context does not contain the answer, or only partly answers, say so plainly (for example: \"The records do not contain …\") instead of guessing.",
-      "Be concise and clinical. Keep patient names exactly as they appear in the context. Answer in the language of the question.",
-      opts.patientId ? "The question is about a single patient; the context is restricted to that patient's records." : "",
-      "",
-      `CONTEXT:\n${contextBlock}`,
-    ]
-      .filter((line) => line !== "")
-      .join("\n"),
+    content: buildSystemPrompt({
+      contextBlock,
+      singlePatient: Boolean(opts.patientId),
+      scope: opts.scope ?? null,
+      listQuestion: Boolean(opts.listQuestion),
+    }),
   };
 
   const provider = chatProvider(opts.preferProvider, opts.tenantAi);
@@ -321,28 +341,77 @@ export async function answerWithRag(
     provider: result.provider,
     model: result.model,
     confidence,
-    grounded: retrieved.length > 0 && confidence >= GROUNDED_THRESHOLD,
+    // An answer that cites nothing is not grounded, however good the retrieval was.
+    grounded: citations.length > 0 && confidence >= GROUNDED_THRESHOLD,
     latencyMs: Date.now() - started,
   };
 }
 
+/**
+ * The system prompt: answer only from the context, cite every fact, and the
+ * grounding rule for patients: name only patients whose records are in the
+ * context, cite each one, and never present retrieved records as a complete
+ * list of patients.
+ */
+export function buildSystemPrompt(input: { contextBlock: string; singlePatient: boolean; scope: string | null; listQuestion: boolean }): string {
+  return [
+    "You are ClinicMind's clinical assistant. You provide decision support to licensed clinic staff; you do not give medical advice to patients.",
+    "Answer ONLY from the CONTEXT below, which is retrieved from this clinic's own patient records.",
+    "Cite every statement of fact with the [n] marker of the context item it comes from; a statement without a marker is not allowed.",
+    "Never invent or infer diagnoses, medications, doses, dates, lab values or outcomes that are not written in the context. Do not generalise from one patient to another.",
+    "Grounding rule for patients: name a patient only if their record is in the CONTEXT, put the [n] marker of that patient's record next to the name every time, and never mention any other patient. The patients you name must be exactly the patients you cite.",
+    "If a question states criteria (sex, age, an allergy, a condition, a medication), never name a patient whose record does not show that they meet every one of them.",
+    "If the context does not contain the answer, or only partly answers, say so plainly (for example: \"The records do not contain …\") instead of guessing.",
+    "Be concise and clinical. Keep patient names exactly as they appear in the context. Answer in the language of the question.",
+    input.singlePatient ? "The question is about a single patient; the context is restricted to that patient's records." : "",
+    input.scope ? `Every record in the CONTEXT belongs to a patient who matches: ${input.scope}. Do not describe anyone outside that group.` : "",
+    input.listQuestion
+      ? "The CONTEXT holds only the most relevant records, not every patient of the clinic. Never present a list of patients as complete; say that it may be incomplete."
+      : "",
+    "",
+    `CONTEXT:\n${input.contextBlock || "(none)"}`,
+  ]
+    .filter((line) => line !== "")
+    .join("\n");
+}
+
 /** The answer given when retrieval found nothing that answers the question. */
-export function noMatchingRecordsAnswer(query: string): string {
+export function noMatchingRecordsAnswer(query: string, opts: { listQuestion?: boolean } = {}): string {
   const q = query.length > 120 ? `${query.slice(0, 119)}…` : query;
-  return `No matching records were found for "${q}". The clinic's indexed records do not contain information that answers this question, and ClinicMind does not answer clinical questions without matching records.`;
+  const base = `No matching records were found for "${q}". The clinic's indexed records do not contain information that answers this question, and ClinicMind does not answer clinical questions without matching records.`;
+  return opts.listQuestion
+    ? `${base} This was a search of the most relevant records, not a check of every patient: it does not show that no patient matches.`
+    : base;
 }
 
 /**
- * Citations for the context items the answer actually cites; when the answer
- * carries no markers at all, every retrieved item is listed so the reader can
- * see what the answer was derived from.
+ * Citations for the context items the answer actually cites (markers outside
+ * the context are ignored). Every patient the answer names from the context
+ * is cited, even where the model forgot the marker, so the patients named and
+ * the patients cited are the same. An answer without any marker cites
+ * nothing: listing everything retrieved under it would make records it did
+ * not use look like its sources.
  */
 export function buildCitations(chunks: RetrievedChunk[], names: Map<string, string>, answer: string): Citation[] {
   const cited = new Set<number>();
-  for (const m of answer.matchAll(/\[(\d+)\]/g)) cited.add(Number(m[1]));
+  for (const m of answer.matchAll(/\[(\d+)\]/g)) {
+    const n = Number(m[1]);
+    if (n >= 1 && n <= chunks.length) cited.add(n);
+  }
+  if (!cited.size) return [];
+  // A context patient named in the answer without a marker: cite their first chunk.
+  const citedPatients = new Set([...cited].map((n) => chunks[n - 1]?.patientId).filter(Boolean));
+  chunks.forEach((c, i) => {
+    if (!c.patientId || citedPatients.has(c.patientId)) return;
+    const name = names.get(c.patientId) ?? c.metadata?.patientName ?? null;
+    if (name && mentions(answer, name)) {
+      cited.add(i + 1);
+      citedPatients.add(c.patientId);
+    }
+  });
   return chunks
     .map((c, i) => ({ chunk: c, index: i + 1 }))
-    .filter(({ index }) => cited.size === 0 || cited.has(index))
+    .filter(({ index }) => cited.has(index))
     .map(({ chunk, index }) => {
       const patientName = chunk.patientId ? (names.get(chunk.patientId) ?? chunk.metadata?.patientName ?? null) : null;
       return {
@@ -356,6 +425,13 @@ export function buildCitations(chunks: RetrievedChunk[], names: Map<string, stri
         href: chunk.patientId ? `/dashboard/patients/${encodeURIComponent(chunk.patientId)}` : null,
       };
     });
+}
+
+/** Whole-word, case-insensitive mention of a name in a text. */
+export function mentions(text: string, name: string): boolean {
+  const escaped = name.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/\s+/g, "\\s+");
+  if (!escaped) return false;
+  return new RegExp(`(^|[^\\p{L}\\p{N}])${escaped}(?=$|[^\\p{L}\\p{N}])`, "iu").test(text);
 }
 
 /**

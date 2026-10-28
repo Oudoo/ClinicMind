@@ -193,8 +193,16 @@ campaign" shows the answer and the read-only SQL.
 
 **Show (application):** **Overview** (today's appointments, upcoming, no-show
 rate, volume, diagnoses) and **AI Assistant**: "Which patients have a documented
-allergy to penicillin?" (grounded, numbered citations), then "Which patients had
-knee replacement surgery?" for the plain "no matching records" answer.
+allergy to lidocaine or penicillin?" answers from the record, not from search
+snippets: the banner "Answered from the record: N patients matched (all shown)",
+"No patient has lidocaine recorded as an allergy", and every patient with
+penicillin on file, each linked to the record. "Is Tarek Ezzat on Cephalexin?"
+checks his chart only and cites only him; "Which male patients have PCOS?" lists
+no women; "Which patients had knee replacement surgery?" answers "No patient has
+knee replacement recorded as a surgery or procedure." Open questions
+("Summarise today's appointments") still use retrieval, limited to the patients
+who match. `npm run assistant:eval` runs the 37-question evaluation set against
+the demo clinic and prints a table.
 
 > "Every number on the dashboard has one definition, owned by one table; a
 > metric that fails its reconciliation test is hidden with a notice rather than

@@ -1,9 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
   buildCitations,
+  buildSystemPrompt,
   computeConfidence,
   extractLexicalTerms,
   GROUNDED_THRESHOLD,
+  mentions,
+  noMatchingRecordsAnswer,
   rerank,
   type RetrievedChunk,
 } from "@/lib/ai/rag";
@@ -134,9 +137,63 @@ describe("citations", () => {
     expect(citations[1]!.patientName).toBe("Ahmed Mahmoud"); // live name wins over stored metadata
   });
 
-  it("lists every retrieved item when the answer carries no markers", () => {
-    const citations = buildCitations(retrieved, names, "The records do not say.");
-    expect(citations.map((c) => c.index)).toEqual([1, 2, 3]);
-    expect(citations[1]).toMatchObject({ patientId: null, patientName: null, href: null, title: "Conversation" });
+  it("cites nothing when the answer carries no markers (retrieved records it did not use are not its sources)", () => {
+    // Before the audit fix every retrieved record was listed under such an
+    // answer, which made unrelated patients look like the answer's sources.
+    expect(buildCitations(retrieved, names, "The records do not say.")).toEqual([]);
+  });
+
+  it("ignores markers that point outside the context", () => {
+    const citations = buildCitations(retrieved, names, "Hypertension [1]; something else [9] and [0].");
+    expect(citations.map((c) => c.index)).toEqual([1]);
+  });
+
+  it("cites every context patient the answer names, even without a marker", () => {
+    const withSara: RetrievedChunk[] = [
+      ...retrieved,
+      chunk({
+        id: "x4",
+        source: "DIAGNOSIS",
+        refId: "p2",
+        patientId: "p2",
+        content: "Patient: Sara Ibrahim. Allergies: Penicillin.",
+        score: 0.5,
+        metadata: { title: "Profile & medical history", occurredAt: null, kind: "patient_history", model: "echo-embed-1", patientName: "Sara Ibrahim" },
+      }),
+    ];
+    const both = new Map([...names, ["p2", "Sara Ibrahim"]]);
+    const citations = buildCitations(withSara, both, "Ahmed Mahmoud has hypertension [1]. Sara Ibrahim is allergic to penicillin.");
+    expect(citations.map((c) => c.patientName)).toEqual(["Ahmed Mahmoud", "Sara Ibrahim"]);
+    expect(citations.map((c) => c.index)).toEqual([1, 4]);
+  });
+});
+
+describe("grounding rule in the prompt", () => {
+  it("tells the model to name exactly the patients it cites and never to present retrieval as complete", () => {
+    const prompt = buildSystemPrompt({ contextBlock: "[1] DIAGNOSIS · patient: Ahmed\nAllergies: Penicillin.", singlePatient: false, scope: "female · age over 40 (41 or older)", listQuestion: true });
+    expect(prompt).toContain("The patients you name must be exactly the patients you cite");
+    expect(prompt).toContain("never name a patient whose record does not show that they meet every one of them");
+    expect(prompt).toContain("matches: female · age over 40 (41 or older)");
+    expect(prompt).toContain("Never present a list of patients as complete");
+    expect(prompt.endsWith("Allergies: Penicillin.")).toBe(true);
+  });
+
+  it("leaves the scope and list sentences out when they do not apply", () => {
+    const prompt = buildSystemPrompt({ contextBlock: "", singlePatient: true, scope: null, listQuestion: false });
+    expect(prompt).toContain("restricted to that patient's records");
+    expect(prompt).not.toContain("Never present a list");
+    expect(prompt).toContain("CONTEXT:\n(none)");
+  });
+
+  it("says a failed list search is not proof that nobody matches", () => {
+    expect(noMatchingRecordsAnswer("Which patients are due their photos?")).toMatch(/no matching records/i);
+    expect(noMatchingRecordsAnswer("Which patients are due their photos?", { listQuestion: true })).toMatch(/does not show that no patient matches/);
+  });
+
+  it("finds whole-name mentions only", () => {
+    expect(mentions("Tarek Ezzat is on tranexamic acid [1].", "Tarek Ezzat")).toBe(true);
+    expect(mentions("tarek  ezzat", "Tarek Ezzat")).toBe(true);
+    expect(mentions("Tarek Ezzatson", "Tarek Ezzat")).toBe(false);
+    expect(mentions("Hassan Ezzat", "Tarek Ezzat")).toBe(false);
   });
 });

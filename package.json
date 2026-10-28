@@ -18,6 +18,7 @@
     "db:seed": "tsx prisma/seed.ts",
     "ai:reindex": "tsx scripts/reindex.ts",
     "platform:bootstrap": "tsx scripts/platform-bootstrap.ts",
+    "assistant:eval": "tsx scripts/assistant-eval.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "db:migrate": "prisma migrate deploy",
