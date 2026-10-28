@@ -1,5 +1,5 @@
 import { getActingContext } from "@/lib/auth/session";
-import { assertCan, can } from "@/lib/auth/rbac";
+import { assertCan, can, assertCanSignClinical, canSignClinical } from "@/lib/auth/rbac";
 import { clientIp, crossOriginRejected, isSameOrigin } from "@/lib/auth/request";
 import { handleApiError, ok, unauthorized } from "@/lib/api";
 import { cancelProcedure } from "@/modules/finance/procedures";
@@ -26,7 +26,7 @@ export async function POST(req: Request, { params }: Params) {
       id,
       await req.json().catch(() => null),
       { id: ctx.userId, email: ctx.email, ip: clientIp(req) },
-      { allowSigned: can(ctx.role, "consultations:sign") },
+      { allowSigned: canSignClinical(ctx) },
     );
     return ok({ procedure });
   } catch (err) {

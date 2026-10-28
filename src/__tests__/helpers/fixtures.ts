@@ -111,6 +111,7 @@ export function actorA(role: UserRole = "DOCTOR", userId = "doctor-a"): ActingCo
     email: `${userId}@acme`,
     fullName: null,
     role,
+    isClinician: role === "DOCTOR" || role === "CLINIC_OWNER",
     auth: { method: "session", sessionId: `session-${userId}` },
   };
 }

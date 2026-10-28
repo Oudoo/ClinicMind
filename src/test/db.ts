@@ -36,6 +36,8 @@ export async function createUser(opts: {
   status?: UserStatus;
   password?: string | null;
   fullName?: string;
+  /** Defaults to true for doctors and owners, as the migration set existing accounts. */
+  isClinician?: boolean;
 }) {
   const password = opts.password === undefined ? "correct horse battery staple" : opts.password;
   return db.user.create({
@@ -46,6 +48,7 @@ export async function createUser(opts: {
       role: opts.role ?? "CLINIC_OWNER",
       status: opts.status ?? "ACTIVE",
       passwordHash: password ? await hashPassword(password) : null,
+      isClinician: opts.isClinician ?? ["DOCTOR", "CLINIC_OWNER"].includes(opts.role ?? "CLINIC_OWNER"),
     },
   });
 }

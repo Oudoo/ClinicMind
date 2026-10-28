@@ -1,5 +1,5 @@
 import { getActingContext } from "@/lib/auth/session";
-import { assertCan } from "@/lib/auth/rbac";
+import { assertCan, assertCanSignClinical, canSignClinical } from "@/lib/auth/rbac";
 import { clientIp, crossOriginRejected, isSameOrigin } from "@/lib/auth/request";
 import { ok, unauthorized } from "@/lib/api";
 import { handleConsultationError, signConsultation, SignInput } from "@/modules/consultations/service";
@@ -26,7 +26,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     if (!isSameOrigin(req)) return crossOriginRejected();
     const ctx = await getActingContext(req);
     if (!ctx) return unauthorized();
-    assertCan(ctx.role, "consultations:sign");
+    assertCanSignClinical(ctx);
 
     const input = SignInput.parse(await req.json());
     const result = await signConsultation(ctx.tenantId, id, input, {

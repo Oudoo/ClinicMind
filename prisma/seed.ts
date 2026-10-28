@@ -133,13 +133,13 @@ async function main() {
   const clinicId = tenant.clinics[0]!.id;
 
   const staffSeed = [
-    { email: "owner@demo.clinic", fullName: "Dr. Layla Hassan", role: "CLINIC_OWNER" as const, kind: "derm" as const },
+    { email: "owner@demo.clinic", fullName: "Dr. Layla Hassan", role: "CLINIC_OWNER" as const, kind: "derm" as const, clinician: true },
     // The Clinic AI lead: owner-level, no clinic list of their own; the account the spec demo signs in with.
-    { email: "ai@demo.clinic", fullName: "Nadia Youssef", role: "CLINIC_OWNER" as const, kind: null },
-    { email: "doctor@demo.clinic", fullName: "Dr. Omar Fahmy", role: "DOCTOR" as const, kind: "hair" as const },
-    { email: "mariam@demo.clinic", fullName: "Dr. Mariam Tarek", role: "DOCTOR" as const, kind: "derm" as const },
-    { email: "nurse@demo.clinic", fullName: "Heba Mostafa", role: "NURSE" as const, kind: null },
-    { email: "reception@demo.clinic", fullName: "Youssef Hany", role: "RECEPTIONIST" as const, kind: null },
+    { email: "ai@demo.clinic", fullName: "Nadia Youssef", role: "CLINIC_OWNER" as const, kind: null, clinician: false },
+    { email: "doctor@demo.clinic", fullName: "Dr. Omar Fahmy", role: "DOCTOR" as const, kind: "hair" as const, clinician: true },
+    { email: "mariam@demo.clinic", fullName: "Dr. Mariam Tarek", role: "DOCTOR" as const, kind: "derm" as const, clinician: true },
+    { email: "nurse@demo.clinic", fullName: "Heba Mostafa", role: "NURSE" as const, kind: null, clinician: false },
+    { email: "reception@demo.clinic", fullName: "Youssef Hany", role: "RECEPTIONIST" as const, kind: null, clinician: false },
   ];
   // Platform console: SUPER_ADMIN accounts live in their own tenant, never in a clinic.
   const platformExisting = await db.tenant.findUnique({ where: { slug: PLATFORM_TENANT_SLUG }, select: { id: true } });
@@ -160,7 +160,7 @@ async function main() {
   const staff = [] as { id: string; fullName: string; kind: "derm" | "hair" | null }[];
   for (const s of staffSeed) {
     const u = await db.user.create({
-      data: { tenantId: tenant.id, clinicId, email: s.email, fullName: s.fullName, role: s.role, status: "ACTIVE", passwordHash },
+      data: { tenantId: tenant.id, clinicId, email: s.email, fullName: s.fullName, role: s.role, status: "ACTIVE", passwordHash, isClinician: s.clinician },
       select: { id: true, fullName: true },
     });
     staff.push({ id: u.id, fullName: u.fullName ?? s.fullName, kind: s.kind });

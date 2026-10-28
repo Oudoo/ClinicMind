@@ -178,6 +178,25 @@ export function assertCan(role: UserRole, permission: Permission): void {
   }
 }
 
+/**
+ * Signing clinical decisions (consultation notes, procedures, protocol
+ * approvals) needs the role's consultations:sign permission AND the person's
+ * clinician mark. An owner-level administrator who is not a clinician (the
+ * Clinic AI lead, a practice manager) and the platform administrator cannot
+ * sign, whatever their role.
+ */
+export function canSignClinical(actor: { role: UserRole; isClinician: boolean }): boolean {
+  return actor.isClinician && can(actor.role, "consultations:sign");
+}
+
+export function assertCanSignClinical(actor: { role: UserRole; isClinician: boolean }): void {
+  if (!canSignClinical(actor)) {
+    throw new RbacError(
+      actor.isClinician ? `Role ${actor.role} lacks permission consultations:sign` : "Only clinicians may sign clinical records",
+    );
+  }
+}
+
 export class RbacError extends Error {
   readonly status = 403;
   constructor(message: string) {

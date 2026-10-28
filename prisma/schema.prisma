@@ -183,6 +183,7 @@ model Tenant {
   savedViews              SavedView[]
   reviewSnapshots         ReviewSnapshot[]
   fileBlobs               FileBlob[]
+  safetyOverrides         SafetyOverride[]
 
   @@index([status])
   @@map("tenants")
@@ -252,6 +253,11 @@ model User {
   passwordHash String?
   status       UserStatus @default(INVITED)
 
+  /// May sign clinical notes and procedures and approve protocols (together with
+  /// the role's consultations:sign permission). Set per person by the clinic
+  /// owner, so an owner-level administrator who is not a clinician cannot sign.
+  isClinician Boolean @default(false)
+
   mfaEnabled Boolean @default(false)
   mfaSecret  String?
 
@@ -267,6 +273,7 @@ model User {
   notifications          Notification[]
   notificationPreference NotificationPreference?
   savedViews             SavedView[]
+  safetyOverrides        SafetyOverride[]
 
   @@unique([tenantId, email])
   @@index([tenantId, role])
@@ -1512,4 +1519,30 @@ model FileBlob {
 
   @@index([tenantId, patientId])
   @@map("file_blobs")
+}
+
+/// A prescribing-safety warning or stop that a clinician chose to override,
+/// with their reason. Written when the consultation is signed and listed for
+/// the owner's review. Nothing updates or deletes these rows.
+model SafetyOverride {
+  id             String   @id @default(cuid())
+  tenantId       String
+  tenant         Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  consultationId String?
+  patientId      String
+  userId         String
+  user           User     @relation(fields: [userId], references: [id])
+  /// Stable rule id, e.g. "allergy.cross-reactivity", "pregnancy.contraindicated".
+  rule           String
+  /// "stop" (needed a typed reason) or "warn" (acknowledged).
+  severity       String
+  medication     String?
+  message        String
+  detail         Json?
+  reason         String
+  createdAt      DateTime @default(now())
+
+  @@index([tenantId, createdAt])
+  @@index([tenantId, patientId])
+  @@map("safety_overrides")
 }

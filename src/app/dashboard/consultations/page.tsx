@@ -1,5 +1,5 @@
 import { getActingContext } from "@/lib/auth/session";
-import { can } from "@/lib/auth/rbac";
+import { can, assertCanSignClinical, canSignClinical } from "@/lib/auth/rbac";
 import { db } from "@/lib/db";
 import { getAppointment, getTenantTimezone } from "@/modules/appointments/service";
 import { toAppointmentDTO } from "@/modules/appointments/dto";
@@ -67,7 +67,7 @@ export default async function ConsultationsPage({
       />
       <ConsultationsWorkspace
         initial={initial}
-        canSign={can(ctx.role, "consultations:sign")}
+        canSign={canSignClinical(ctx)}
         userId={ctx.userId}
         openId={id}
         presetPatient={presetPatient}

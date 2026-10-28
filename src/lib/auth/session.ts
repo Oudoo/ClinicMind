@@ -41,6 +41,8 @@ export interface ActingContext {
   email: string | null;
   fullName: string | null;
   role: UserRole;
+  /** The owner marked this person as a clinician (may sign with consultations:sign). */
+  isClinician: boolean;
   /** How the caller proved who they are. */
   auth: { method: "session"; sessionId: string } | { method: "embed" };
 }
@@ -205,6 +207,7 @@ async function contextFromSessionToken(token: string): Promise<ActingContext | n
     email: user.email,
     fullName: user.fullName,
     role: user.role,
+    isClinician: user.isClinician,
     auth: { method: "session", sessionId: session.id },
   };
 }
@@ -235,7 +238,7 @@ async function contextForEmbedClaims(claims: EmbedClaims): Promise<ActingContext
 
   const user = await db.user.findFirst({
     where: { id: claims.userId, tenantId: tenant.id, status: "ACTIVE", deletedAt: null },
-    select: { id: true, email: true, fullName: true, role: true },
+    select: { id: true, email: true, fullName: true, role: true, isClinician: true },
   });
   if (!user) return null;
 
@@ -250,6 +253,7 @@ async function contextForEmbedClaims(claims: EmbedClaims): Promise<ActingContext
     email: user.email,
     fullName: user.fullName,
     role: claims.role,
+    isClinician: user.isClinician,
     auth: { method: "embed" },
   };
 }

@@ -1,5 +1,5 @@
 import { handleApiError, ok, unauthorized } from "@/lib/api";
-import { assertCan } from "@/lib/auth/rbac";
+import { assertCan, assertCanSignClinical, canSignClinical } from "@/lib/auth/rbac";
 import { crossOriginRejected, isSameOrigin } from "@/lib/auth/request";
 import { approveProtocol } from "@/modules/concierge/service";
 import { conciergeContext, type IdParams } from "../../../_lib/context";
@@ -20,7 +20,7 @@ export async function POST(req: Request, { params }: IdParams) {
     if (!isSameOrigin(req)) return crossOriginRejected();
     const c = await conciergeContext(req, "concierge:write");
     if (!c) return unauthorized();
-    assertCan(c.ctx.role, "consultations:sign");
+    assertCanSignClinical(c.ctx);
     return ok({ protocol: await approveProtocol(c.ctx.tenantId, id, c.actor) });
   } catch (err) {
     return conciergeErrorResponse(err) ?? handleApiError(err);
