@@ -7,8 +7,10 @@ import { listProcedures } from "@/modules/finance/procedures";
 import { listReportDoctors } from "@/modules/reporting/service";
 import { listTreatments } from "@/modules/treatments/service";
 import { listPriceList } from "@/modules/finance/prices";
+import { listBillable, listInvoices } from "@/modules/finance/invoices";
+import { patientCredit } from "@/modules/finance/allocations";
 import { FinancePatientPanel } from "./finance-patient-panel";
-import { toPriceOptions, type PaymentItem, type ProcedureItem } from "./finance-shared";
+import { toPriceOptions, type InvoiceItem, type PaymentItem, type ProcedureItem } from "./finance-shared";
 
 /**
  * Procedures and payments for this patient: signed procedures, deposits, balance, record a payment.
@@ -25,7 +27,7 @@ export async function PatientFinanceCard({ tenantId, role, patientId, canWrite }
   const seesPayments = can(role, "payments:write") || can(role, "finance:read");
   const canPay = canWrite && can(role, "payments:write");
   const canRecordProcedure = canWrite;
-  const [patient, timezone, procedures, payments, treatments, doctors, prices] = await Promise.all([
+  const [patient, timezone, procedures, payments, treatments, doctors, prices, invoices, billable, credit] = await Promise.all([
     db.patient.findFirst({ where: { id: patientId, tenantId }, select: { id: true, fullName: true } }),
     getTenantTimezone(tenantId),
     listProcedures(tenantId, { patientId, page: 1, pageSize: 100 }),
@@ -33,6 +35,9 @@ export async function PatientFinanceCard({ tenantId, role, patientId, canWrite }
     canRecordProcedure ? listTreatments(tenantId) : Promise.resolve([]),
     canRecordProcedure ? listReportDoctors(tenantId) : Promise.resolve([]),
     canRecordProcedure ? listPriceList(tenantId) : Promise.resolve(null),
+    seesPayments ? listInvoices(tenantId, { patientId, pageSize: 50 }) : Promise.resolve(null),
+    canPay ? listBillable(tenantId, patientId) : Promise.resolve(null),
+    seesPayments ? db.$transaction((tx) => patientCredit(tx, tenantId, patientId)) : Promise.resolve(null),
   ]);
   if (!patient) return null;
 
@@ -69,7 +74,11 @@ export async function PatientFinanceCard({ tenantId, role, patientId, canWrite }
         note: p.note,
         procedureLabel: p.procedure?.treatment.name ?? null,
         imported: Boolean(p.importBatchId),
+        receiptNumber: p.receiptNumber,
       }))
+    : null;
+  const invoiceItems: InvoiceItem[] | null = invoices
+    ? invoices.invoices.map((i) => ({ id: i.id, number: i.number, status: i.status, total: i.total, paid: i.paid, date: i.issuedAt ?? i.createdAt }))
     : null;
 
   return (
@@ -78,6 +87,9 @@ export async function PatientFinanceCard({ tenantId, role, patientId, canWrite }
       timezone={timezone}
       procedures={procedureItems}
       payments={paymentItems}
+      invoices={invoiceItems}
+      billable={billable ? { count: billable.charges.length, total: billable.total } : null}
+      credit={credit ? credit.credit : null}
       treatments={treatments.map((t) => ({ id: t.id, key: t.key, name: t.name, priceFrom: t.priceFrom, priceTo: t.priceTo, depositAmount: t.depositAmount }))}
       priceItems={prices ? toPriceOptions(prices.items) : []}
       doctors={doctors}

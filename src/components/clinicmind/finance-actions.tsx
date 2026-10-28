@@ -24,8 +24,10 @@ export function FinanceActions({
   doctors,
   canPay,
   canRecordProcedure,
+  canRefund = false,
 }: {
   timezone: string;
+  canRefund?: boolean;
   treatments: TreatmentOption[];
   priceItems?: PriceOption[];
   doctors: DoctorOption[];
@@ -65,7 +67,7 @@ export function FinanceActions({
           Import POS CSV
         </Button>
       ) : null}
-      {open === "payment" ? <RecordPaymentDialog timezone={timezone} onOpenChange={close} onDone={() => done("Payment recorded")} /> : null}
+      {open === "payment" ? <RecordPaymentDialog timezone={timezone} canRefund={canRefund} onOpenChange={close} onDone={() => done("Payment recorded")} /> : null}
       {open === "procedure" ? (
         <RecordProcedureDialog timezone={timezone} treatments={treatments} priceItems={priceItems} doctors={doctors} canDeposit={canPay} onOpenChange={close} onDone={() => done("Procedure recorded", "Planned until a clinician signs it.")} />
       ) : null}

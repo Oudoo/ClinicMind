@@ -78,6 +78,19 @@ export interface PaymentItem {
   note: string | null;
   procedureLabel: string | null;
   imported: boolean;
+  /** Its receipt (or refund voucher) number at the branch. */
+  receiptNumber?: string | null;
+}
+
+/** One of the patient's invoices, as their finance card lists it. */
+export interface InvoiceItem {
+  id: string;
+  number: string | null;
+  status: string;
+  total: number;
+  paid: number;
+  /** Issued (or, for a draft, created) at. */
+  date: string;
 }
 
 /** A procedure the payment form can point at: "Hair transplant · 12 Oct 2026 · owes 9,000 EGP". */
@@ -99,7 +112,8 @@ export const signedAmount = (p: { kind: string; amount: number }) => (p.kind ===
 export function financeErrorMessage(err: unknown): string {
   if (err instanceof ApiError) {
     if (err.status === 409 && err.code === "invalid_state") {
-      const body = err.body as { status?: string; action?: string };
+      const body = err.body as { status?: string; action?: string; message?: string };
+      if (body.message) return body.message;
       return `A ${String(body.status ?? "").toLowerCase() || "closed"} procedure cannot be ${body.action ?? "changed"}. Reload to see its latest status.`;
     }
     if (err.status === 404) return "That record no longer exists (or belongs to another clinic).";

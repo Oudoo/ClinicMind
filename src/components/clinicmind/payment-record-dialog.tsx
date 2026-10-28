@@ -28,10 +28,13 @@ export function RecordPaymentDialog({
   patient: presetPatient = null,
   procedures: presetProcedures,
   defaults = {},
+  canRefund = false,
   onOpenChange,
   onDone,
 }: {
   timezone: string;
+  /** Money going back out is the owner's to give: refunds are offered to them only. */
+  canRefund?: boolean;
   patient?: PatientOption | null;
   /** The patient's procedures, when the caller already has them; otherwise fetched once a patient is chosen. */
   procedures?: ProcedureChoice[];
@@ -92,6 +95,7 @@ export function RecordPaymentDialog({
     const paidAt = fromLocalInput(`${date}T${time}`, timezone);
     if (!paidAt) next.paidAt = "Enter a valid date and time.";
     else if (paidAt.getTime() > Date.now() + 5 * 60_000) next.paidAt = "A payment cannot be in the future.";
+    if (kind === "REFUND" && !note.trim()) next.note = "Say why the money goes back.";
     setIssues(next);
     if (Object.keys(next).length || !patient || !paidAt) return;
     setBusy(true);
@@ -147,7 +151,7 @@ export function RecordPaymentDialog({
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             <Field label="Kind" htmlFor={`${id}-kind`} hint={issue("kind")}>
               <Select id={`${id}-kind`} value={kind} onChange={(e) => setKind(e.target.value as PaymentKindValue)}>
-                {PAYMENT_KINDS.map((k) => (
+                {PAYMENT_KINDS.filter((k) => k !== "REFUND" || canRefund).map((k) => (
                   <option key={k} value={k}>
                     {KIND_LABELS[k]}
                   </option>
@@ -214,7 +218,7 @@ export function RecordPaymentDialog({
               <Input id={`${id}-reference`} value={reference} onChange={(e) => setReference(e.target.value)} maxLength={120} />
             </DictationField>
           </Field>
-          <Field label="Note" htmlFor={`${id}-note`} hint={issue("note") ?? "Optional"}>
+          <Field label={kind === "REFUND" ? "Reason" : "Note"} htmlFor={`${id}-note`} hint={issue("note") ?? (kind === "REFUND" ? "Required: why the money goes back" : "Optional")}>
             <DictationField onDictated={setNote} disabled={busy} patientId={patient?.id ?? null}>
               <Textarea id={`${id}-note`} value={note} onChange={(e) => setNote(e.target.value)} maxLength={1000} className="min-h-[4.5rem]" />
             </DictationField>

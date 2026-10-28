@@ -24,6 +24,7 @@ import {
   X,
   Tags,
   ClipboardCheck,
+  FileText,
 } from "lucide-react";
 import { BRAND } from "@/lib/brand";
 import { onAuthChange } from "@/lib/auth/browser-session";
@@ -54,6 +55,7 @@ const NAV: NavItem[] = [
   { href: "/dashboard/consultations", label: "Consultations", icon: Stethoscope },
   { href: "/dashboard/concierge", label: "Concierge", icon: HeartPulse, permission: "concierge:read" },
   { href: "/dashboard/finance", label: "Finance", icon: Banknote, permission: "finance:read" },
+  { href: "/dashboard/finance/invoices", label: "Invoices", icon: FileText, permission: "payments:write" },
   { href: "/dashboard/finance/prices", label: "Price list", icon: Tags, permission: "patients:write" },
   { href: "/dashboard/finance/unbilled", label: "Not billed", icon: ClipboardCheck, permission: "payments:write" },
   { href: "/dashboard/reports", label: "Reports", icon: ChartColumn, permission: "reports:read" },

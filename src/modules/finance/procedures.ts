@@ -12,6 +12,7 @@ import { priceOn } from "./prices";
 import { fromDateKey, startOfDayInTz } from "@/lib/time";
 import { getTenantTimezone } from "@/modules/appointments/service";
 import { postCharge, procedureLabel, reverseProcedureCharges, stagePhrase, stageShare, stagesFor, summarizeCharges } from "./charges";
+import { clinicForPayment, takeNumber } from "./documents";
 
 /**
  * Procedures: a treatment planned for or performed on a patient, with its
@@ -337,12 +338,17 @@ export async function createProcedure(tenantId: string, rawInput: unknown, actor
     let deposit: { id: string; amount: number } | null = null;
     if (input.deposit) {
       const paidAt = input.deposit.paidAt ?? new Date();
+      const clinicId = await clinicForPayment(tx, tenantId, { appointmentId: input.appointmentId, procedureId: procedure.id });
+      const receipt = clinicId ? await takeNumber(tx, tenantId, clinicId, "RECEIPT") : null;
       const payment = await tx.payment.create({
         data: {
           tenantId,
           patientId: input.patientId,
           procedureId: procedure.id,
           appointmentId: input.appointmentId ?? null,
+          clinicId,
+          receiptSequence: receipt?.sequence ?? null,
+          receiptNumber: receipt?.number ?? null,
           kind: "DEPOSIT",
           method: input.deposit.method,
           amount: input.deposit.amount,

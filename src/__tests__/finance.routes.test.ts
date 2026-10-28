@@ -54,7 +54,9 @@ describe("POS import parsing (pure)", () => {
     expect(parseKind("consultation")).toBe("CONSULTATION_FEE");
     expect(parseKind("")).toBe("PAYMENT");
     expect(parseMethod("Visa")).toBe("CARD");
-    expect(parseMethod("instapay")).toBe("WALLET");
+    expect(parseMethod("instapay")).toBe("INSTAPAY");
+    expect(parseMethod("Cheque")).toBe("CHEQUE");
+    expect(parseMethod("Vodafone wallet")).toBe("WALLET");
     expect(parseMethod("")).toBe("POS");
   });
 
@@ -263,13 +265,20 @@ describe.skipIf(!dbTestsEnabled)("finance routes", () => {
     describe("payments and balance", () => {
       let payment: string;
 
-      it("lets reception record payments towards a procedure, and the balance follows (refunds add back)", async () => {
+      it("lets reception record payments towards a procedure, and the balance follows (refunds, the owner's, add back)", async () => {
         const pay = await recordPayment({ patientId: patientA, procedureId: planned, kind: "PAYMENT", method: "CARD", amount: 30_000, reference: "POS-1", note: "First instalment" }, receptionCookie);
         expect(pay.res.status).toBe(201);
         expect(pay.json.payment).toMatchObject({ kind: "PAYMENT", amount: 30_000, method: "CARD", procedure: { id: planned } });
+        expect(pay.json.payment.receiptNumber).toMatch(/^[A-Z]+\d*-RC-\d{6}$/);
         payment = pay.json.payment.id;
-        const refund = await recordPayment({ patientId: patientA, procedureId: planned, kind: "REFUND", method: "CASH", amount: 1_000 }, receptionCookie);
+        // Money going back out is the owner's to give, with the reason.
+        expect((await recordPayment({ patientId: patientA, procedureId: planned, kind: "REFUND", method: "CASH", amount: 1_000, note: "Overcharged" }, receptionCookie)).res.status).toBe(403);
+        const noReason = await recordPayment({ patientId: patientA, procedureId: planned, kind: "REFUND", method: "CASH", amount: 1_000 });
+        expect(noReason.res.status).toBe(422);
+        expect(noReason.json.issues.fieldErrors.note).toBeDefined();
+        const refund = await recordPayment({ patientId: patientA, procedureId: planned, kind: "REFUND", method: "CASH", amount: 1_000, note: "Overcharged for the anaesthetic" });
         expect(refund.res.status).toBe(201);
+        expect(refund.json.payment.receiptNumber).toMatch(/-RF-\d{6}$/);
         const res = await getProcedureRoute(request(`/api/procedures/${planned}`, { cookie: ownerCookie }), params(planned));
         expect((await res.json()).procedure).toMatchObject({ paid: 34_000, balance: 23_000 });
       });

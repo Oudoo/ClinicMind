@@ -187,6 +187,11 @@ model Tenant {
   priceItems              PriceItem[]
   priceItemPrices         PriceItemPrice[]
   charges                 Charge[]
+  invoices                Invoice[]
+  invoiceLines            InvoiceLine[]
+  creditNotes             CreditNote[]
+  paymentAllocations      PaymentAllocation[]
+  documentSequences       DocumentSequence[]
 
   @@index([status])
   @@map("tenants")
@@ -224,6 +229,8 @@ model Clinic {
   tenantId  String
   tenant    Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   name      String
+  /// Short branch code printed in its document numbers ("ZAM-INV-000042"); from the name when not set.
+  code      String?
   address   String?
   phone     String?
   timezone  String    @default("Africa/Cairo")
@@ -235,7 +242,9 @@ model Clinic {
   users        User[]
   appointments Appointment[]
   prices       PriceItemPrice[]
+  invoices     Invoice[]
 
+  @@unique([tenantId, code])
   @@index([tenantId])
   @@map("clinics")
 }
@@ -377,6 +386,7 @@ model Patient {
   procedures       Procedure[]
   payments         Payment[]
   charges          Charge[]
+  invoices         Invoice[]
   enrolments       ConciergeEnrolment[]
   checkIns         CheckIn[]
   appointmentNotes AppointmentNote[]
@@ -822,7 +832,18 @@ enum PaymentMethod {
   BANK_TRANSFER
   WALLET
   POS
+  INSTAPAY
+  CHEQUE
   OTHER
+}
+
+/// DRAFT (no number yet) → ISSUED (numbered) → PART_PAID → PAID as payments are allocated; CANCELLED only with a reason and a credit note.
+enum InvoiceStatus {
+  DRAFT
+  ISSUED
+  PART_PAID
+  PAID
+  CANCELLED
 }
 
 enum ProtocolStatus {
@@ -1195,6 +1216,8 @@ model Charge {
   createdById   String?
   createdAt     DateTime   @default(now())
 
+  invoiceLines InvoiceLine[]
+
   @@index([tenantId, chargedAt])
   @@index([tenantId, patientId])
   @@index([tenantId, appointmentId])
@@ -1202,29 +1225,150 @@ model Charge {
   @@map("charges")
 }
 
+/// A branch's running number for one kind of document (INVOICE, CREDIT_NOTE, RECEIPT, REFUND). Taken inside
+/// the transaction that issues the document, so a number is spent only when the document exists: no gaps.
+model DocumentSequence {
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  clinicId String
+  kind     String
+  next     Int    @default(1)
+
+  @@id([tenantId, clinicId, kind])
+  @@map("document_sequences")
+}
+
+/// What a patient is billed: charges of one branch on numbered lines. A draft has no number and can be
+/// discarded; issuing gives it the branch's next number, and from then on it is never deleted, only
+/// cancelled with a reason and a credit note.
+model Invoice {
+  id             String        @id @default(cuid())
+  tenantId       String
+  tenant         Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  clinicId       String
+  clinic         Clinic        @relation(fields: [clinicId], references: [id], onDelete: NoAction)
+  patientId      String
+  patient        Patient       @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  status         InvoiceStatus @default(DRAFT)
+  /// Set when issued: the branch's running number and how it prints.
+  sequence       Int?
+  number         String?
+  /// "ar" | "en": the language it is printed and sent in.
+  language       String        @default("en")
+  total          Int           @default(0)
+  note           String?
+  issuedAt       DateTime?
+  issuedById     String?
+  cancelledAt    DateTime?
+  cancelledById  String?
+  cancelReason   String?
+  /// The patient's copy online, behind a token (stored hashed) that the WhatsApp message links to.
+  shareTokenHash String?       @unique
+  sentAt         DateTime?
+  createdById    String?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  lines       InvoiceLine[]
+  creditNote  CreditNote?
+  allocations PaymentAllocation[]
+
+  @@unique([tenantId, clinicId, sequence])
+  @@unique([tenantId, number])
+  @@index([tenantId, patientId])
+  @@index([tenantId, status])
+  @@map("invoices")
+}
+
+/// One charge on an invoice, as it read when invoiced.
+model InvoiceLine {
+  id          String   @id @default(cuid())
+  tenantId    String
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  invoiceId   String
+  invoice     Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  /// NoAction: checked at the end of the statement, so removing a whole tenant works.
+  chargeId    String
+  charge      Charge   @relation(fields: [chargeId], references: [id], onDelete: NoAction)
+  description String
+  amount      Int
+  chargedAt   DateTime
+  position    Int
+
+  @@index([tenantId, invoiceId])
+  @@index([chargeId])
+  @@map("invoice_lines")
+}
+
+/// The credit note that cancels an issued invoice, numbered in its branch's own sequence.
+model CreditNote {
+  id         String   @id @default(cuid())
+  tenantId   String
+  tenant     Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  clinicId   String
+  invoiceId  String   @unique
+  invoice    Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  sequence   Int
+  number     String
+  amount     Int
+  reason     String
+  issuedAt   DateTime
+  issuedById String?
+  createdAt  DateTime @default(now())
+
+  @@unique([tenantId, clinicId, sequence])
+  @@unique([tenantId, number])
+  @@map("credit_notes")
+}
+
+/// Money a payment puts towards an invoice. What a patient paid and is not allocated is their credit.
+model PaymentAllocation {
+  id          String   @id @default(cuid())
+  tenantId    String
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  paymentId   String
+  payment     Payment  @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  invoiceId   String
+  invoice     Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  amount      Int
+  createdById String?
+  createdAt   DateTime @default(now())
+
+  @@index([tenantId, invoiceId])
+  @@index([paymentId])
+  @@map("payment_allocations")
+}
+
 /// Money in or out, whole EGP: deposits, payments, refunds and consultation fees.
 model Payment {
-  id            String        @id @default(cuid())
-  tenantId      String
-  tenant        Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  patientId     String
-  patient       Patient       @relation(fields: [patientId], references: [id], onDelete: Cascade)
-  procedureId   String?
-  procedure     Procedure?    @relation(fields: [procedureId], references: [id])
-  appointmentId String?
-  leadId        String?
-  kind          PaymentKind
-  method        PaymentMethod @default(CASH)
-  amount        Int
-  currency      String        @default("EGP")
-  paidAt        DateTime
-  reference     String?
-  note          String?
-  importBatchId String?
-  createdById   String?
-  createdAt     DateTime      @default(now())
-  deletedAt     DateTime?
+  id              String        @id @default(cuid())
+  tenantId        String
+  tenant          Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  patientId       String
+  patient         Patient       @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  procedureId     String?
+  procedure       Procedure?    @relation(fields: [procedureId], references: [id])
+  appointmentId   String?
+  leadId          String?
+  kind            PaymentKind
+  method          PaymentMethod @default(CASH)
+  amount          Int
+  currency        String        @default("EGP")
+  paidAt          DateTime
+  reference       String?
+  note            String?
+  importBatchId   String?
+  /// The branch that took it, and its receipt (money in) or refund voucher (money out) number there, gapless.
+  clinicId        String?
+  receiptSequence Int?
+  receiptNumber   String?
+  createdById     String?
+  createdAt       DateTime      @default(now())
+  deletedAt       DateTime?
 
+  allocations PaymentAllocation[]
+
+  @@unique([tenantId, receiptNumber])
   @@index([tenantId, paidAt])
   @@index([tenantId, patientId])
   @@index([tenantId, appointmentId])

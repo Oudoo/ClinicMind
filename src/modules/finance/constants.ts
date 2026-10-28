@@ -5,7 +5,7 @@
 export const PAYMENT_KINDS = ["DEPOSIT", "PAYMENT", "REFUND", "CONSULTATION_FEE"] as const;
 export type PaymentKindValue = (typeof PAYMENT_KINDS)[number];
 
-export const PAYMENT_METHODS = ["CASH", "CARD", "BANK_TRANSFER", "WALLET", "POS", "OTHER"] as const;
+export const PAYMENT_METHODS = ["CASH", "CARD", "BANK_TRANSFER", "WALLET", "POS", "INSTAPAY", "CHEQUE", "OTHER"] as const;
 export type PaymentMethodValue = (typeof PAYMENT_METHODS)[number];
 
 export const PROCEDURE_STATUSES = ["PLANNED", "STARTED", "SIGNED", "CANCELLED"] as const;
@@ -24,6 +24,8 @@ export const METHOD_LABELS: Record<PaymentMethodValue, string> = {
   BANK_TRANSFER: "Bank transfer",
   WALLET: "Wallet",
   POS: "POS",
+  INSTAPAY: "InstaPay",
+  CHEQUE: "Cheque",
   OTHER: "Other",
 };
 

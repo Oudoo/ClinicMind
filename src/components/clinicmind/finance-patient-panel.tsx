@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Plus, Receipt } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -13,6 +14,7 @@ import { RecordProcedureDialog } from "./procedure-record-dialog";
 import { ProcedureCancelButton, ProcedureSignButton, ProcedureStageButton, ProcedureStartButton } from "./procedure-actions";
 import { stageShare } from "@/modules/finance/charges";
 import { PaymentVoidButton } from "./payment-void-button";
+import { CreateInvoiceButton } from "./invoice-actions";
 import {
   KIND_LABELS,
   KIND_TONE,
@@ -21,6 +23,7 @@ import {
   STATUS_TONE,
   signedAmount,
   type DoctorOption,
+  type InvoiceItem,
   type PaymentItem,
   type PriceOption,
   type ProcedureChoice,
@@ -29,6 +32,8 @@ import {
 } from "./finance-shared";
 
 const SHOWN = 6;
+const INVOICE_LABEL: Record<string, string> = { DRAFT: "Draft", ISSUED: "Issued", PART_PAID: "Part-paid", PAID: "Paid", CANCELLED: "Cancelled" };
+const INVOICE_TONE: Record<string, "default" | "warning" | "accent" | "success" | "danger"> = { DRAFT: "default", ISSUED: "warning", PART_PAID: "accent", PAID: "success", CANCELLED: "danger" };
 
 /**
  * The patient's procedures (treatment, date, doctor, price, status, balance)
@@ -42,6 +47,9 @@ export function FinancePatientPanel({
   timezone,
   procedures,
   payments,
+  invoices = null,
+  billable = null,
+  credit = null,
   treatments,
   priceItems = [],
   doctors,
@@ -55,6 +63,12 @@ export function FinancePatientPanel({
   procedures: ProcedureItem[];
   /** null when the role may not see the payment list. */
   payments: PaymentItem[] | null;
+  /** The patient's invoices (null when the role may not see them). */
+  invoices?: InvoiceItem[] | null;
+  /** Charges on no invoice yet (for the roles that invoice). */
+  billable?: { count: number; total: number } | null;
+  /** Paid ahead, not yet put towards an invoice. */
+  credit?: number | null;
   treatments: TreatmentOption[];
   /** The price list as of today (the dialog reprices for another day). */
   priceItems?: PriceOption[];
@@ -129,7 +143,13 @@ export function FinancePatientPanel({
               Record a payment
             </Button>
           ) : null}
+          {canPay && billable && billable.count > 0 ? <CreateInvoiceButton patientId={patient.id} count={billable.count} total={billable.total} /> : null}
         </div>
+      ) : null}
+      {credit && credit > 0 ? (
+        <p className="text-xs text-muted-foreground">
+          <span className="font-medium text-foreground">{formatNumber(credit)} EGP paid ahead</span>: held as credit, it goes towards the next invoice.
+        </p>
       ) : null}
 
       <section aria-label="Procedures" className="space-y-2">
@@ -229,6 +249,31 @@ export function FinancePatientPanel({
         ) : null}
       </section>
 
+      {invoices && invoices.length ? (
+        <section aria-label="Invoices" className="space-y-2">
+          <h3 className="data-label">Invoices</h3>
+          <ul className="divide-y divide-border rounded-md border border-border">
+            {invoices.map((inv) => (
+              <li key={inv.id} className="flex items-center justify-between gap-2 p-3">
+                <div className="min-w-0">
+                  <Link href={`/dashboard/finance/invoices/${inv.id}`} className="font-mono text-xs font-medium underline-offset-2 hover:underline">
+                    {inv.number ?? "Draft"}
+                  </Link>
+                  <p className="text-xs text-muted-foreground">
+                    {date(inv.date)}
+                    {inv.status === "PART_PAID" ? ` · ${formatNumber(inv.paid)} of ${formatNumber(inv.total)} paid` : ""}
+                  </p>
+                </div>
+                <div className="flex shrink-0 items-center gap-2">
+                  <span className="font-mono text-sm tabular-nums">{formatNumber(inv.total)}</span>
+                  <Badge tone={INVOICE_TONE[inv.status] ?? "default"}>{INVOICE_LABEL[inv.status] ?? inv.status}</Badge>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+
       {payments ? (
         <section aria-label="Payments" className="space-y-2">
           <h3 className="data-label">Payments</h3>
@@ -246,6 +291,7 @@ export function FinancePatientPanel({
                       </div>
                       <p className="mt-0.5 flex flex-wrap gap-x-1.5 text-xs text-muted-foreground">
                         <span className="whitespace-nowrap font-mono">{date(p.paidAt)}</span>
+                        {p.receiptNumber ? <span className="whitespace-nowrap font-mono">· {p.receiptNumber}</span> : null}
                         {p.procedureLabel ? <span className="whitespace-nowrap">· {p.procedureLabel}</span> : null}
                         {p.reference ? <span className="whitespace-nowrap font-mono">· {p.reference}</span> : null}
                       </p>
@@ -291,6 +337,7 @@ export function FinancePatientPanel({
           patient={patient}
           procedures={choices}
           defaults={{ procedureId: dialog.procedureId, amount: dialog.amount }}
+          canRefund={canVoid}
           onOpenChange={(v) => (!v ? setDialog(null) : undefined)}
           onDone={() => done("Payment recorded")}
         />

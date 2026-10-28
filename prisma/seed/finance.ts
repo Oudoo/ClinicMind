@@ -62,7 +62,7 @@ const FEE_METHODS: readonly (readonly [PaymentMethod, number])[] = [
   ["WALLET", 0.1],
 ];
 const KIND_WORD: Record<PaymentKind, string> = { DEPOSIT: "Deposit", PAYMENT: "Payment", REFUND: "Refund", CONSULTATION_FEE: "Consultation fee" };
-const METHOD_WORD: Record<PaymentMethod, string> = { CASH: "cash", CARD: "card", BANK_TRANSFER: "bank transfer", WALLET: "wallet", POS: "pos", OTHER: "other" };
+const METHOD_WORD: Record<PaymentMethod, string> = { CASH: "cash", CARD: "card", BANK_TRANSFER: "bank transfer", WALLET: "wallet", POS: "pos", INSTAPAY: "InstaPay", CHEQUE: "cheque", OTHER: "other" };
 const REFUND_NOTES = ["Session shortened — partial refund agreed", "Goodwill refund after a scheduling mix-up", "Package downgraded at the patient's request", "Duplicate card charge reversed"];
 
 /** A cuid-shaped id, so the rows can reference each other inside one createMany. */

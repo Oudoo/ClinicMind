@@ -9,7 +9,7 @@ import { env } from "@/lib/env";
  * replayed without the server secret, and rotating AUTH_SECRET invalidates every
  * outstanding session and link at once.
  */
-export type TokenPurpose = "session" | "auth-token" | "check-in";
+export type TokenPurpose = "session" | "auth-token" | "check-in" | "invoice";
 
 /** 256 bits of randomness, URL-safe (43 characters). */
 export function generateToken(bytes = 32): string {

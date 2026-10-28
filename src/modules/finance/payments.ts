@@ -7,28 +7,39 @@ import { TenantScopeError } from "@/lib/tenant-scope";
 import { zDateTime, zOptionalText, zText } from "@/lib/validation";
 import { notify } from "@/modules/notifications/service";
 import { KIND_LABELS, LARGE_PAYMENT_THRESHOLD, MAX_AMOUNT, METHOD_LABELS, PAYMENT_KINDS, PAYMENT_METHODS } from "./constants";
-import { PaymentNotFoundError } from "./errors";
+import { FinanceError, PaymentNotFoundError } from "./errors";
 import { requireTenantAppointment, type Actor } from "./procedures";
+import { clinicForPayment, takeNumber } from "./documents";
+import { allocateCredit, CREDITING_KINDS, patientCredit, releasePayment } from "./allocations";
 
 /**
  * Payments: money in or out, whole EGP. Deposits and payments are linked to a
- * procedure when there is one, consultation fees to an appointment. A voided
- * payment is soft-deleted (kept for the audit trail, out of every total).
+ * procedure when there is one, consultation fees to an appointment. Each gets
+ * its branch's next receipt number (a refund, a refund voucher number) as it
+ * is recorded; money in goes towards the patient's open invoices, oldest
+ * first (a deposit for a procedure waits for the invoice that bills it). A
+ * refund needs a reason and the patient's credit to cover it. A voided
+ * payment is soft-deleted (kept for the audit trail, out of every total) and
+ * gives back what it had paid on invoices.
  */
 
 const zId = zText(64).min(1);
 
-export const PaymentInput = z.object({
-  patientId: zId,
-  kind: z.enum(PAYMENT_KINDS),
-  method: z.enum(PAYMENT_METHODS).default("CASH"),
-  amount: z.number().int().positive().max(MAX_AMOUNT),
-  paidAt: zDateTime.optional(),
-  procedureId: zOptionalText(64),
-  appointmentId: zOptionalText(64),
-  reference: zOptionalText(120),
-  note: zOptionalText(1000),
-});
+export const PaymentInput = z
+  .object({
+    patientId: zId,
+    kind: z.enum(PAYMENT_KINDS),
+    method: z.enum(PAYMENT_METHODS).default("CASH"),
+    amount: z.number().int().positive().max(MAX_AMOUNT),
+    paidAt: zDateTime.optional(),
+    procedureId: zOptionalText(64),
+    appointmentId: zOptionalText(64),
+    reference: zOptionalText(120),
+    note: zOptionalText(1000),
+  })
+  .superRefine((v, ctx) => {
+    if (v.kind === "REFUND" && !v.note) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["note"], message: "Say why the money is refunded" });
+  });
 export type PaymentInput = z.infer<typeof PaymentInput>;
 
 export const PaymentVoidInput = z.object({ reason: zText(300).min(1, "A reason is required") });
@@ -92,7 +103,18 @@ export async function recordPayment(tenantId: string, rawInput: unknown, actor: 
   if (input.appointmentId) await requireTenantAppointment(tenantId, input.appointmentId, input.patientId);
 
   const paidAt = input.paidAt ?? new Date();
-  const payment = await db.$transaction(async (tx) => {
+  const created = await db.$transaction(async (tx) => {
+    if (input.kind === "REFUND") {
+      const { credit } = await patientCredit(tx, tenantId, input.patientId);
+      if (input.amount > credit) {
+        throw new FinanceError(409, "not_enough_credit", "a refund cannot exceed the patient's credit", {
+          credit,
+          message: credit > 0 ? `The patient's credit is ${credit.toLocaleString("en-US")} EGP: refund at most that.` : "The patient has no credit to refund: cancel the invoice it paid first.",
+        });
+      }
+    }
+    const clinicId = await clinicForPayment(tx, tenantId, input);
+    const receipt = clinicId ? await takeNumber(tx, tenantId, clinicId, input.kind === "REFUND" ? "REFUND" : "RECEIPT") : null;
     const payment = await tx.payment.create({
       data: {
         tenantId,
@@ -105,6 +127,9 @@ export async function recordPayment(tenantId: string, rawInput: unknown, actor: 
         paidAt,
         reference: input.reference ?? null,
         note: input.note ?? null,
+        clinicId,
+        receiptSequence: receipt?.sequence ?? null,
+        receiptNumber: receipt?.number ?? null,
         createdById: actor.id ?? null,
       },
       include: paymentInclude,
@@ -120,8 +145,10 @@ export async function recordPayment(tenantId: string, rawInput: unknown, actor: 
         occurredAt: paidAt,
       },
     });
-    return payment;
+    const allocated = (CREDITING_KINDS as readonly string[]).includes(payment.kind) ? await allocateCredit(tx, tenantId, payment.patientId, actor.id ?? null) : 0;
+    return { payment, allocated };
   });
+  const { payment } = created;
 
   await audit({
     tenantId,
@@ -140,6 +167,8 @@ export async function recordPayment(tenantId: string, rawInput: unknown, actor: 
       amount: payment.amount,
       paidAt: payment.paidAt.toISOString(),
       reference: payment.reference,
+      receiptNumber: payment.receiptNumber,
+      allocated: created.allocated,
     },
   });
 
@@ -166,6 +195,9 @@ export async function voidPayment(tenantId: string, id: string, rawInput: unknow
     const before = await tx.payment.findFirst({ where: { id, tenantId, ...notDeleted }, include: paymentInclude });
     if (!before) throw new PaymentNotFoundError(id);
     const after = await tx.payment.update({ where: { id, tenantId }, data: { deletedAt: now }, include: paymentInclude });
+    // What it paid on invoices is taken back; a voided refund gives the credit back. Either way, re-allocate.
+    await releasePayment(tx, tenantId, id, before.patientId, actor.id ?? null);
+    await allocateCredit(tx, tenantId, before.patientId, actor.id ?? null);
     await tx.timelineEvent.create({
       data: {
         tenantId,

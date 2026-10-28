@@ -8,6 +8,8 @@ import { zDateTime, zOptionalText, zText } from "@/lib/validation";
 import { getTenantTimezone } from "@/modules/appointments/service";
 import { KIND_LABELS, MAX_AMOUNT, METHOD_LABELS, PAYMENT_KINDS, PAYMENT_METHODS, type PaymentKindValue, type PaymentMethodValue } from "./constants";
 import type { Actor } from "./procedures";
+import { numberPayments } from "./documents";
+import { allocateCredit } from "./allocations";
 
 /**
  * POS CSV import: the front desk pastes (or uploads) the day's export from the
@@ -143,7 +145,9 @@ export function parseMethod(text: string | undefined): PaymentMethodValue {
   if (/cash|نقد|كاش/.test(t)) return "CASH";
   if (/card|visa|master|meeza|credit|debit|بطاقة|فيزا/.test(t)) return "CARD";
   if (/transfer|bank|iban|تحويل|بنك/.test(t)) return "BANK_TRANSFER";
-  if (/wallet|vodafone|instapay|fawry|orange|etisalat|محفظة|فودافون/.test(t)) return "WALLET";
+  if (/instapay|انستا ?باي/.test(t)) return "INSTAPAY";
+  if (/cheque|check|شيك/.test(t)) return "CHEQUE";
+  if (/wallet|vodafone|fawry|orange|etisalat|محفظة|فودافون/.test(t)) return "WALLET";
   if (/pos|terminal|ماكينة/.test(t)) return "POS";
   return "OTHER";
 }
@@ -232,6 +236,8 @@ export function parseImportRows(text: string, timeZone: string): { rows: ParsedI
     else if (amount > MAX_AMOUNT) problems.push("Amount is implausibly large");
     const reference = col(row, "reference").slice(0, 120) || null;
     const name = col(row, "name").slice(0, 120) || null;
+    const kind = parseKind(col(row, "kind"));
+    if (kind === "REFUND") problems.push("A refund is recorded by the owner, with the reason");
     rows.push({
       line: hasHeader ? i + 2 : i + 1,
       paidAt,
@@ -239,7 +245,7 @@ export function parseImportRows(text: string, timeZone: string): { rows: ParsedI
       phone,
       phoneText,
       amount,
-      kind: parseKind(col(row, "kind")),
+      kind,
       method: parseMethod(col(row, "method")),
       reference,
       name,
@@ -356,7 +362,7 @@ export const ImportConfirmInput = z.object({
         patientId: zId,
         paidAt: zDateTime,
         amount: z.number().int().positive().max(MAX_AMOUNT),
-        kind: z.enum(PAYMENT_KINDS),
+        kind: z.enum(PAYMENT_KINDS).refine((k) => k !== "REFUND", "A refund is recorded by the owner, with the reason"),
         method: z.enum(PAYMENT_METHODS).default("POS"),
         reference: zOptionalText(120),
         note: zOptionalText(500),
@@ -411,6 +417,9 @@ export async function confirmImport(tenantId: string, rawInput: unknown, actor: 
     }));
     const result = await tx.payment.createMany({ data });
     const createdRows = await tx.payment.findMany({ where: { tenantId, importBatchId }, select: { id: true, patientId: true, kind: true, amount: true, method: true, paidAt: true, reference: true } });
+    // Each gets its receipt number, in the order the money came in, and goes towards the patient's open invoices.
+    await numberPayments(tx, tenantId, createdRows.map((p) => p.id));
+    for (const patientId of new Set(createdRows.map((p) => p.patientId))) await allocateCredit(tx, tenantId, patientId, actor.id ?? null);
     await tx.timelineEvent.createMany({
       data: createdRows.map((p) => ({
         tenantId,

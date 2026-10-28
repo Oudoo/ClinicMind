@@ -96,6 +96,7 @@ export default async function FinancePage({ searchParams }: { searchParams: Prom
             doctors={doctors}
             canPay={canPay}
             canRecordProcedure={canRecordProcedure}
+            canRefund={canVoid}
           />
         }
       />

@@ -27,8 +27,10 @@ export async function GET(req: Request) {
 }
 
 /**
- * Record a payment (`payments:write`). Body: `{ patientId, kind, method?, amount, paidAt?,
- * procedureId?, appointmentId?, reference?, note? }`. 201 `{ payment }`.
+ * Record a payment (`payments:write`; a refund only the owner, `tenant:manage`,
+ * with the reason in `note`). Body: `{ patientId, kind, method?, amount,
+ * paidAt?, procedureId?, appointmentId?, reference?, note? }`. 201 `{ payment }`
+ * with its receipt number; money in goes towards the patient's open invoices.
  * Amounts of 10,000 EGP or more notify the clinic owner.
  */
 export async function POST(req: Request) {
@@ -37,7 +39,12 @@ export async function POST(req: Request) {
     const ctx = await getActingContext(req);
     if (!ctx) return unauthorized();
     assertCan(ctx.role, "payments:write");
-    const payment = await recordPayment(ctx.tenantId, await req.json().catch(() => null), { id: ctx.userId, email: ctx.email, ip: clientIp(req) });
+    const body = await req.json().catch(() => null);
+    // Money going back out is the owner's to give.
+    if (body && typeof body === "object" && (body as { kind?: unknown }).kind === "REFUND" && !can(ctx.role, "tenant:manage")) {
+      throw new RbacError("Only the clinic owner refunds money");
+    }
+    const payment = await recordPayment(ctx.tenantId, body, { id: ctx.userId, email: ctx.email, ip: clientIp(req) });
     return ok({ payment }, { status: 201 });
   } catch (err) {
     return financeErrorResponse(err) ?? handleApiError(err);
