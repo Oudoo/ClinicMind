@@ -10,7 +10,8 @@ import { formatDateInTz } from "@/lib/time";
 import { formatNumber } from "@/lib/utils";
 import { RecordPaymentDialog } from "./payment-record-dialog";
 import { RecordProcedureDialog } from "./procedure-record-dialog";
-import { ProcedureCancelButton, ProcedureSignButton } from "./procedure-actions";
+import { ProcedureCancelButton, ProcedureSignButton, ProcedureStageButton, ProcedureStartButton } from "./procedure-actions";
+import { stageShare } from "@/modules/finance/charges";
 import { PaymentVoidButton } from "./payment-void-button";
 import {
   KIND_LABELS,
@@ -32,8 +33,9 @@ const SHOWN = 6;
 /**
  * The patient's procedures (treatment, date, doctor, price, status, balance)
  * and payments, with the actions each role may take: record a procedure,
- * sign it (clinicians), record a payment (front desk, nurse, owner), void a
- * payment (owner).
+ * start a course and cancel (patients:write), mark a session done or sign
+ * (clinicians), record a payment (front desk, nurse, owner), void a payment
+ * (owner).
  */
 export function FinancePatientPanel({
   patient,
@@ -69,8 +71,10 @@ export function FinancePatientPanel({
   const [allPayments, setAllPayments] = useState(false);
 
   const signed = procedures.filter((p) => p.status === "SIGNED");
-  const billed = signed.reduce((s, p) => s + p.price - p.discount, 0);
-  const owing = signed.reduce((s, p) => s + Math.max(0, p.balance), 0);
+  const started = procedures.filter((p) => p.status === "STARTED");
+  // Billed: signed work, and the sessions of courses under way charged so far.
+  const billed = signed.reduce((s, p) => s + p.price - p.discount, 0) + started.reduce((s, p) => s + p.charged, 0);
+  const owing = [...signed, ...started].reduce((s, p) => s + Math.max(0, p.balance), 0);
   const paid = payments ? payments.reduce((s, p) => s + signedAmount(p), 0) : null;
   const date = (iso: string) => formatDateInTz(new Date(iso), timezone);
   const choices: ProcedureChoice[] = procedures
@@ -78,7 +82,7 @@ export function FinancePatientPanel({
     .map((p) => ({
       id: p.id,
       balance: p.balance,
-      label: `${p.treatmentName} · ${date(p.performedAt)}${p.status === "PLANNED" ? " · planned" : p.balance > 0 ? ` · owes ${formatNumber(p.balance)} EGP` : " · paid"}`,
+      label: `${p.treatmentName} · ${date(p.performedAt)}${p.status === "PLANNED" ? " · planned" : p.balance > 0 ? ` · owes ${formatNumber(p.balance)} EGP` : p.status === "STARTED" ? " · paid ahead" : " · paid"}`,
     }));
   const done = (title: string) => {
     setDialog(null);
@@ -134,6 +138,7 @@ export function FinancePatientPanel({
           <ul className="space-y-2">
             {shownProcedures.map((p) => {
               const label = `${p.treatmentName} on ${date(p.performedAt)}`;
+              const net = p.price - p.discount;
               return (
                 <li key={p.id} className="rounded-md border border-border p-3">
                   <div className="flex items-start justify-between gap-2">
@@ -146,15 +151,33 @@ export function FinancePatientPanel({
                         <span className="font-mono">{date(p.performedAt)}</span>
                         {p.doctorName ? ` · ${p.doctorName}` : ""}
                       </p>
+                      {p.stages > 1 && (p.status === "PLANNED" || p.status === "STARTED") ? (
+                        <p className="mt-0.5 text-xs text-muted-foreground">
+                          {p.status === "PLANNED"
+                            ? `${p.stages} sessions, each charged as it is done`
+                            : p.stagesDone
+                              ? `${p.stagesDone} of ${p.stages} sessions done · ${formatNumber(p.charged)} of ${formatNumber(net)} EGP charged`
+                              : `Started ${p.startedAt ? date(p.startedAt) : ""} · no session done yet`}
+                        </p>
+                      ) : null}
+                      {p.zeroChargeReason ? <p className="mt-0.5 text-xs text-muted-foreground">No charge: {p.zeroChargeReason}</p> : null}
                     </div>
                     <div className="shrink-0 text-right">
-                      <div className="font-mono text-sm tabular-nums">{formatNumber(p.price - p.discount)} EGP</div>
+                      <div className="font-mono text-sm tabular-nums">{formatNumber(net)} EGP</div>
                       {p.discount ? <div className="font-mono text-[11px] text-muted-foreground">−{formatNumber(p.discount)} discount</div> : null}
                     </div>
                   </div>
                   {p.status !== "CANCELLED" ? (
                     <p className="mt-1 text-xs">
-                      {p.balance > 0 ? (
+                      {p.status === "STARTED" ? (
+                        p.balance > 0 ? (
+                          <span className="text-warning">Due {formatNumber(p.balance)} EGP for the sessions done</span>
+                        ) : p.balance < 0 ? (
+                          <span className="text-muted-foreground">Paid ahead by {formatNumber(-p.balance)} EGP</span>
+                        ) : (
+                          <span className="text-success">Paid up to date</span>
+                        )
+                      ) : p.balance > 0 ? (
                         <span className="text-warning">Balance {formatNumber(p.balance)} EGP</span>
                       ) : p.balance < 0 ? (
                         <span className="text-muted-foreground">Overpaid by {formatNumber(-p.balance)} EGP</span>
@@ -169,13 +192,27 @@ export function FinancePatientPanel({
                   {p.notes ? <p className="mt-1 text-xs text-muted-foreground">{p.notes}</p> : null}
                   {p.status !== "CANCELLED" && (canSign || canRecordProcedure || canPay) ? (
                     <div className="mt-2 flex flex-wrap gap-1.5">
-                      {p.status === "PLANNED" && canSign ? <ProcedureSignButton procedureId={p.id} label={label} /> : null}
+                      {p.status === "PLANNED" && p.stages > 1 && canRecordProcedure ? <ProcedureStartButton procedureId={p.id} label={label} stages={p.stages} timezone={timezone} /> : null}
+                      {p.status === "PLANNED" && p.stages === 1 && canSign ? <ProcedureSignButton procedureId={p.id} label={label} /> : null}
+                      {p.status === "STARTED" && canSign ? (
+                        <>
+                          <ProcedureStageButton
+                            procedureId={p.id}
+                            label={label}
+                            nextStage={p.stagesDone + 1}
+                            stages={p.stages}
+                            share={stageShare(net, p.stages, p.stagesDone + 1)}
+                            timezone={timezone}
+                          />
+                          {p.stages - p.stagesDone > 1 ? <ProcedureSignButton procedureId={p.id} label={label} left={{ sessions: p.stages - p.stagesDone, amount: net - p.charged }} /> : null}
+                        </>
+                      ) : null}
                       {canPay && p.balance > 0 ? (
                         <Button size="sm" variant="outline" onClick={() => setDialog({ kind: "payment", procedureId: p.id, amount: p.balance })}>
                           Pay balance
                         </Button>
                       ) : null}
-                      {p.status === "PLANNED" && canRecordProcedure ? <ProcedureCancelButton procedureId={p.id} label={label} /> : null}
+                      {(p.status === "PLANNED" || p.status === "STARTED") && canRecordProcedure ? <ProcedureCancelButton procedureId={p.id} label={label} /> : null}
                     </div>
                   ) : null}
                 </li>

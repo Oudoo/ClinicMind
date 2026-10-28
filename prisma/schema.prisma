@@ -186,6 +186,7 @@ model Tenant {
   safetyOverrides         SafetyOverride[]
   priceItems              PriceItem[]
   priceItemPrices         PriceItemPrice[]
+  charges                 Charge[]
 
   @@index([status])
   @@map("tenants")
@@ -375,6 +376,7 @@ model Patient {
   leads            Lead[]
   procedures       Procedure[]
   payments         Payment[]
+  charges          Charge[]
   enrolments       ConciergeEnrolment[]
   checkIns         CheckIn[]
   appointmentNotes AppointmentNote[]
@@ -799,8 +801,10 @@ enum MessageDelivery {
   LOGGED
 }
 
+/// PLANNED → (STARTED, for work done in stages) → SIGNED (done, charged), or CANCELLED.
 enum ProcedureStatus {
   PLANNED
+  STARTED
   SIGNED
   CANCELLED
 }
@@ -1113,37 +1117,45 @@ model ChannelIntegration {
 /// A treatment performed (or planned) for a patient. Signing it is what enrols
 /// the patient in the concierge protocol and what the revenue reports count.
 model Procedure {
-  id             String          @id @default(cuid())
-  tenantId       String
-  tenant         Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  patientId      String
-  patient        Patient         @relation(fields: [patientId], references: [id], onDelete: Cascade)
-  treatmentId    String
-  treatment      Treatment       @relation(fields: [treatmentId], references: [id])
+  id               String          @id @default(cuid())
+  tenantId         String
+  tenant           Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  patientId        String
+  patient          Patient         @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  treatmentId      String
+  treatment        Treatment       @relation(fields: [treatmentId], references: [id])
   /// The price-list item billed, and how many of its unit (sessions, areas, grafts…); `price` is what that came to on the day.
-  priceItemId    String?
-  priceItem      PriceItem?      @relation(fields: [priceItemId], references: [id])
-  quantity       Int             @default(1)
-  doctorId       String?
-  appointmentId  String?
-  visitId        String?
-  consultationId String?
-  performedAt    DateTime
-  price          Int
-  discount       Int             @default(0)
-  currency       String          @default("EGP")
-  status         ProcedureStatus @default(PLANNED)
-  signedAt       DateTime?
-  signedById     String?
-  cancelledAt    DateTime?
-  cancelReason   String?
-  notes          String?
-  createdById    String?
-  createdAt      DateTime        @default(now())
-  updatedAt      DateTime        @updatedAt
-  deletedAt      DateTime?
+  priceItemId      String?
+  priceItem        PriceItem?      @relation(fields: [priceItemId], references: [id])
+  quantity         Int             @default(1)
+  doctorId         String?
+  appointmentId    String?
+  visitId          String?
+  consultationId   String?
+  performedAt      DateTime
+  price            Int
+  discount         Int             @default(0)
+  currency         String          @default("EGP")
+  status           ProcedureStatus @default(PLANNED)
+  /// Work done in stages (the sessions of a course): how many. Each stage's share is charged when it is done.
+  stages           Int             @default(1)
+  /// The day staged work started (required to start it).
+  startedAt        DateTime?
+  startedById      String?
+  /// Why it is charged nothing; required when price − discount is 0.
+  zeroChargeReason String?
+  signedAt         DateTime?
+  signedById       String?
+  cancelledAt      DateTime?
+  cancelReason     String?
+  notes            String?
+  createdById      String?
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+  deletedAt        DateTime?
 
   payments  Payment[]
+  charges   Charge[]
   enrolment ConciergeEnrolment?
 
   @@index([tenantId, performedAt])
@@ -1152,6 +1164,42 @@ model Procedure {
   @@index([tenantId, treatmentId])
   @@index([tenantId, status])
   @@map("procedures")
+}
+
+/// What a patient owes for work done, posted when the work is done: a procedure when it is signed, each
+/// stage of staged work as it is done, or a visit charged nothing (with the reason). Never edited (a
+/// trigger refuses it) and never deleted by the app: a correction is a reversing row.
+model Charge {
+  id            String     @id @default(cuid())
+  tenantId      String
+  tenant        Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  patientId     String
+  patient       Patient    @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  /// NoAction: checked at the end of the statement, so removing a whole tenant (which cascades to both) works.
+  procedureId   String?
+  procedure     Procedure? @relation(fields: [procedureId], references: [id], onDelete: NoAction)
+  appointmentId String?
+  /// The stage of staged work (1-based); null: the whole procedure, what remained of it, or a visit.
+  stage         Int?
+  /// Whole EGP; negative on a reversal.
+  amount        Int
+  description   String
+  /// When the work was done.
+  chargedAt     DateTime
+  doctorId      String?
+  /// The branch the work was done at.
+  clinicId      String?
+  reversalOfId  String?    @unique
+  reversalOf    Charge?    @relation("ChargeReversal", fields: [reversalOfId], references: [id], onDelete: NoAction)
+  reversedBy    Charge?    @relation("ChargeReversal")
+  createdById   String?
+  createdAt     DateTime   @default(now())
+
+  @@index([tenantId, chargedAt])
+  @@index([tenantId, patientId])
+  @@index([tenantId, appointmentId])
+  @@index([procedureId])
+  @@map("charges")
 }
 
 /// Money in or out, whole EGP: deposits, payments, refunds and consultation fees.

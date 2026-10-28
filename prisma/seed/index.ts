@@ -3,6 +3,7 @@ import { seedTreatments } from "./treatments";
 import { seedPrices } from "./prices";
 import { seedCrm } from "./crm";
 import { seedFinance } from "./finance";
+import { seedCourses } from "./courses";
 import { seedConcierge } from "./concierge";
 import { seedIntake } from "./intake";
 import { seedAppointmentNotes } from "./appointment-notes";
@@ -59,6 +60,7 @@ export async function seedRound2(ctx: SeedContext): Promise<void> {
     ["price list", seedPrices],
     ["crm", seedCrm],
     ["finance", seedFinance],
+    ["courses", seedCourses],
     ["concierge", seedConcierge],
     ["intake", seedIntake],
     ["appointment notes", seedAppointmentNotes],

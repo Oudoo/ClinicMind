@@ -54,7 +54,14 @@ export interface ProcedureItem {
   discount: number;
   status: ProcedureStatusValue;
   paid: number;
+  /** Signed: what is still owed; started: charged so far less paid (negative when paid ahead); planned: deposits short of the price. */
   balance: number;
+  /** Work done in stages: how many, how many done, and what has been charged so far. */
+  stages: number;
+  stagesDone: number;
+  charged: number;
+  startedAt: string | null;
+  zeroChargeReason: string | null;
   notes: string | null;
   cancelReason: string | null;
 }
@@ -80,7 +87,7 @@ export interface ProcedureChoice {
   balance: number;
 }
 
-export const STATUS_TONE: Record<ProcedureStatusValue, BadgeTone> = { PLANNED: "warning", SIGNED: "success", CANCELLED: "danger" };
+export const STATUS_TONE: Record<ProcedureStatusValue, BadgeTone> = { PLANNED: "warning", STARTED: "accent", SIGNED: "success", CANCELLED: "danger" };
 export const KIND_TONE: Record<PaymentKindValue, BadgeTone> = { DEPOSIT: "accent", PAYMENT: "success", REFUND: "danger", CONSULTATION_FEE: "default" };
 
 export { KIND_LABELS, METHOD_LABELS, PROCEDURE_STATUS_LABELS };

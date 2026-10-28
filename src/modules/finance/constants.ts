@@ -8,7 +8,7 @@ export type PaymentKindValue = (typeof PAYMENT_KINDS)[number];
 export const PAYMENT_METHODS = ["CASH", "CARD", "BANK_TRANSFER", "WALLET", "POS", "OTHER"] as const;
 export type PaymentMethodValue = (typeof PAYMENT_METHODS)[number];
 
-export const PROCEDURE_STATUSES = ["PLANNED", "SIGNED", "CANCELLED"] as const;
+export const PROCEDURE_STATUSES = ["PLANNED", "STARTED", "SIGNED", "CANCELLED"] as const;
 export type ProcedureStatusValue = (typeof PROCEDURE_STATUSES)[number];
 
 export const KIND_LABELS: Record<PaymentKindValue, string> = {
@@ -29,6 +29,7 @@ export const METHOD_LABELS: Record<PaymentMethodValue, string> = {
 
 export const PROCEDURE_STATUS_LABELS: Record<ProcedureStatusValue, string> = {
   PLANNED: "Planned",
+  STARTED: "Started",
   SIGNED: "Signed",
   CANCELLED: "Cancelled",
 };

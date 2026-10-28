@@ -11,6 +11,7 @@ import { apiFetch, fieldErrors } from "@/lib/http";
 import { dateKeyInTz, formatDateInTz, fromDateKey, fromLocalInput } from "@/lib/time";
 import { formatNumber } from "@/lib/utils";
 import { CATEGORY_LABELS, METHOD_LABELS, PAYMENT_METHODS, PRICE_CATEGORIES, unitPhrase, type PaymentMethodValue } from "@/modules/finance/constants";
+import { stagesFor } from "@/modules/finance/charges";
 import { financeErrorMessage, toPriceOptions, type DoctorOption, type PriceOption, type TreatmentOption } from "./finance-shared";
 
 /**
@@ -52,6 +53,7 @@ export function RecordProcedureDialog({
   const [price, setPrice] = useState(first?.priceFrom ? String(first.priceFrom) : "");
   const [discount, setDiscount] = useState("0");
   const [notes, setNotes] = useState("");
+  const [zeroReason, setZeroReason] = useState("");
   const [takeDeposit, setTakeDeposit] = useState(false);
   const [depositAmount, setDepositAmount] = useState(first?.depositAmount ? String(first.depositAmount) : "");
   const [depositMethod, setDepositMethod] = useState<PaymentMethodValue>("CASH");
@@ -114,6 +116,9 @@ export function RecordProcedureDialog({
 
   const toInt = (s: string) => Number(s.replace(/[,\s]/g, ""));
   const net = Math.max(0, (Number.isFinite(toInt(shownPrice)) ? toInt(shownPrice) : 0) - (Number.isFinite(toInt(discount)) ? toInt(discount) : 0));
+  // Nothing to pay once a price is set (or chosen): the reason is required.
+  const free = net === 0 && shownPrice.trim() !== "" && (!usesList || item !== null);
+  const stages = usesList && item ? stagesFor(item, qty) : 1;
 
   async function submit(e: FormEvent) {
     e.preventDefault();
@@ -130,6 +135,7 @@ export function RecordProcedureDialog({
     if (!performedAt) next.performedAt = "Enter a valid date and time.";
     const dep = toInt(depositAmount);
     if (takeDeposit && (!Number.isInteger(dep) || dep <= 0)) next.deposit = "Whole EGP, more than zero.";
+    if (free && !zeroReason.trim()) next.zeroChargeReason = "Say why nothing is charged.";
     setIssues(next);
     if (Object.keys(next).length || !patient || !performedAt) return;
     setBusy(true);
@@ -145,6 +151,7 @@ export function RecordProcedureDialog({
           performedAt: performedAt.toISOString(),
           discount: d,
           notes: notes.trim() || undefined,
+          zeroChargeReason: free ? zeroReason.trim() : undefined,
           deposit: takeDeposit ? { amount: dep, method: depositMethod, reference: depositReference.trim() || undefined } : undefined,
         },
       });
@@ -176,7 +183,14 @@ export function RecordProcedureDialog({
 
           {usesList ? (
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_7rem]">
-              <Field label="Item" htmlFor={`${id}-item`} hint={issue("priceItemId") ?? (treatment ? `Treatment: ${treatment.name}` : undefined)}>
+              <Field
+                label="Item"
+                htmlFor={`${id}-item`}
+                hint={
+                  issue("priceItemId") ??
+                  (treatment ? `Treatment: ${treatment.name}${stages > 1 ? ` · done in ${stages} sessions: start it on the first one's day, and each is charged its share as it is done` : ""}` : undefined)
+                }
+              >
                 <Select id={`${id}-item`} value={itemId} onChange={(e) => pickItem(e.target.value)} aria-invalid={issues.priceItemId ? true : undefined}>
                   <option value="" disabled>
                     Choose an item…
@@ -268,6 +282,20 @@ export function RecordProcedureDialog({
             ) : null}
           </p>
 
+          {free ? (
+            <Field label="Why is nothing charged?" htmlFor={`${id}-zero`} hint={issue("zeroChargeReason") ?? "Kept with the charge, e.g. a touch-up included in the course"}>
+              <Input
+                id={`${id}-zero`}
+                value={zeroReason}
+                onChange={(e) => {
+                  setZeroReason(e.target.value);
+                  if (issues.zeroChargeReason) setIssues(({ zeroChargeReason: _answered, ...rest }) => rest);
+                }}
+                maxLength={300}
+                aria-invalid={issues.zeroChargeReason ? true : undefined}
+              />
+            </Field>
+          ) : null}
           <Field label="Notes" htmlFor={`${id}-notes`} hint={issue("notes") ?? "Optional · e.g. graft count, areas, package"}>
             <DictationField onDictated={setNotes} disabled={busy} patientId={patient?.id ?? null}>
               <Textarea id={`${id}-notes`} value={notes} onChange={(e) => setNotes(e.target.value)} maxLength={2000} className="min-h-[4.5rem]" />

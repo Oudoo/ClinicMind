@@ -47,7 +47,12 @@ export async function PatientFinanceCard({ tenantId, role, patientId, canWrite }
     discount: p.discount,
     status: p.status,
     paid: p.paid,
-    balance: p.status === "SIGNED" ? p.balance : p.status === "PLANNED" ? Math.max(0, p.balance) : 0,
+    balance: p.status === "SIGNED" ? p.balance : p.status === "STARTED" ? p.charged - p.paid : p.status === "PLANNED" ? Math.max(0, p.balance) : 0,
+    stages: p.stages,
+    stagesDone: p.stagesDone,
+    charged: p.charged,
+    startedAt: p.startedAt ? p.startedAt.toISOString() : null,
+    zeroChargeReason: p.zeroChargeReason,
     notes: p.notes,
     cancelReason: p.cancelReason,
   }));

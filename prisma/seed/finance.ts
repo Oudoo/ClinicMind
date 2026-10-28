@@ -24,9 +24,9 @@ import { makeRandom, type Random } from "./util";
  *   registration. Hair-transplant patients had PRP sessions before; their
  *   transplant is the first procedure booking of the last six weeks.
  *
- * Deterministic (makeRandom(51)); everything goes in with createMany. The
- * concierge seed enrols the signed procedures; this module does not call
- * `enrolOnSignedProcedure`.
+ * Deterministic (makeRandom(51)); everything goes in with createMany, each
+ * signed procedure with its charge. The concierge seed enrols the signed
+ * procedures; this module does not call `enrolOnSignedProcedure`.
  */
 
 const DAY = 86_400_000;
@@ -514,6 +514,25 @@ export async function seedFinance(ctx: SeedContext): Promise<void> {
   await db.procedure.createMany({ data: procedures });
   await db.payment.createMany({ data: payments });
   await db.timelineEvent.createMany({ data: timeline });
+  // Every signed procedure is charged on the day it was done, as signing does.
+  const treatmentName = new Map(treatmentRows.map((t) => [t.id, t.name]));
+  await db.charge.createMany({
+    data: procedures
+      .filter((p) => p.status === "SIGNED")
+      .map((p) => ({
+        tenantId,
+        patientId: p.patientId,
+        procedureId: p.id!,
+        appointmentId: p.appointmentId ?? null,
+        amount: p.price - (p.discount ?? 0),
+        description: treatmentName.get(p.treatmentId) ?? "Procedure",
+        chargedAt: p.performedAt,
+        doctorId: p.doctorId ?? null,
+        clinicId: ctx.clinicId,
+        createdById: p.signedById ?? null,
+        createdAt: p.signedAt ?? p.performedAt,
+      })),
+  });
 
   // A patient is registered no later than their first paid visit.
   const earliest = new Map<string, number>();

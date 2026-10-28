@@ -9,14 +9,19 @@ import { enrolOnSignedProcedure } from "@/modules/concierge/service";
 import { MAX_AMOUNT, PAYMENT_METHODS, PROCEDURE_STATUSES, procedureBalance } from "./constants";
 import { FinanceError, ProcedureNotFoundError, ProcedureStateError } from "./errors";
 import { priceOn } from "./prices";
+import { fromDateKey, startOfDayInTz } from "@/lib/time";
+import { getTenantTimezone } from "@/modules/appointments/service";
+import { postCharge, procedureLabel, reverseProcedureCharges, stagePhrase, stageShare, stagesFor, summarizeCharges } from "./charges";
 
 /**
  * Procedures: a treatment planned for or performed on a patient, with its
  * price. Signing a procedure is the clinical act that makes it count as
- * revenue and enrols the patient in the concierge protocol of the treatment
- * (`enrolOnSignedProcedure`, owned by the concierge module). Every query is
- * tenant-scoped, every client-supplied id is proven to belong to the tenant
- * and every mutation is audited.
+ * revenue, charges it to the patient and enrols the patient in the concierge
+ * protocol of the treatment (`enrolOnSignedProcedure`, owned by the concierge
+ * module). Work done in stages (the sessions of a course) is started on a
+ * day, each stage is charged its share as it is done and the last one signs
+ * it. Every query is tenant-scoped, every client-supplied id is proven to
+ * belong to the tenant and every mutation is audited.
  */
 
 type Client = Prisma.TransactionClient;
@@ -61,6 +66,8 @@ export const ProcedureInput = z
     price: zMoney.optional(),
     discount: zMoney.default(0),
     notes: zOptionalText(2000),
+    /** Why nothing is charged; required when price − discount is 0. */
+    zeroChargeReason: zOptionalText(300),
     /** Record a deposit in the same call (requires payments:write at the route). */
     deposit: DepositInput.optional(),
   })
@@ -87,6 +94,7 @@ export const ProcedureUpdateInput = z
     price: zMoney.optional(),
     discount: zMoney.optional(),
     notes: zClearableText(2000),
+    zeroChargeReason: zClearableText(300),
   })
   .superRefine((v, ctx) => {
     if (isNum(v.price) && isNum(v.discount) && v.discount > v.price) {
@@ -96,6 +104,18 @@ export const ProcedureUpdateInput = z
 export type ProcedureUpdateInput = z.infer<typeof ProcedureUpdateInput>;
 
 export const ProcedureCancelInput = z.object({ reason: zText(300).min(1, "A reason is required") });
+
+const zDateKey = z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/, "Use YYYY-MM-DD");
+
+/** Start work done in stages: the day it started. */
+export const ProcedureStartInput = z.object({ startedAt: zDateKey });
+
+/** One stage done: when, by whom, at which visit. */
+export const ProcedureStageInput = z.object({
+  performedAt: zDateTime,
+  doctorId: zOptionalText(64),
+  appointmentId: zOptionalText(64),
+});
 
 export const ProcedureListQuery = z.object({
   patientId: zOptionalText(64),
@@ -115,7 +135,16 @@ export type ProcedureListQuery = z.infer<typeof ProcedureListQuery>;
 const procedureInclude = {
   patient: { select: { id: true, fullName: true } },
   treatment: { select: { id: true, key: true, name: true } },
+  priceItem: { select: { id: true, code: true, name: true, unit: true, unitLabel: true, sessions: true } },
   payments: { where: { deletedAt: null }, select: { id: true, kind: true, amount: true, method: true, paidAt: true, reference: true, note: true } },
+  charges: { select: { amount: true, stage: true, reversalOfId: true } },
+} as const;
+
+/** What charging a procedure reads. */
+const chargeableInclude = {
+  treatment: { select: { name: true } },
+  priceItem: { select: { name: true } },
+  charges: { select: { amount: true, stage: true, reversalOfId: true } },
 } as const;
 
 type ProcedureRecord = Prisma.ProcedureGetPayload<{ include: typeof procedureInclude }>;
@@ -130,6 +159,9 @@ export type ProcedureView = ProcedureRecord & {
   signedBy: PersonSummary | null;
   paid: number;
   balance: number;
+  /** Charged so far (stages done, or the whole procedure once signed), net of reversals. */
+  charged: number;
+  stagesDone: number;
 };
 
 /** Resolve user names (doctor, signer) in one tenant-scoped lookup. */
@@ -151,6 +183,7 @@ async function attachPeople(tenantId: string, rows: ProcedureRecord[], client: C
       signedBy: r.signedById ? (byId.get(r.signedById) ?? null) : null,
       paid,
       balance: procedureBalance(r.price, r.discount, r.payments),
+      ...summarizeCharges(r.charges),
     };
   });
 }
@@ -210,6 +243,8 @@ function snapshot(p: {
   treatmentId: string;
   priceItemId?: string | null;
   quantity?: number;
+  stages?: number;
+  zeroChargeReason?: string | null;
   doctorId: string | null;
   appointmentId: string | null;
   performedAt: Date;
@@ -223,6 +258,8 @@ function snapshot(p: {
     treatmentId: p.treatmentId,
     priceItemId: p.priceItemId ?? null,
     quantity: p.quantity ?? 1,
+    stages: p.stages ?? 1,
+    zeroChargeReason: p.zeroChargeReason ?? null,
     doctorId: p.doctorId,
     appointmentId: p.appointmentId,
     performedAt: p.performedAt.toISOString(),
@@ -242,19 +279,20 @@ async function fromPriceList(
   tenantId: string,
   input: { priceItemId: string; quantity: number; treatmentId?: string; price?: number; performedAt: Date },
   clinicId: string | null,
-): Promise<{ treatmentId: string; price: number }> {
-  const item = await db.priceItem.findFirst({ where: { id: input.priceItemId, tenantId }, select: { id: true, treatmentId: true, active: true, name: true } });
+): Promise<{ treatmentId: string; price: number; stages: number }> {
+  const item = await db.priceItem.findFirst({ where: { id: input.priceItemId, tenantId }, select: { id: true, treatmentId: true, active: true, name: true, unit: true, sessions: true } });
   if (!item) throw new TenantScopeError("price_item", input.priceItemId);
   if (!item.active) throw new FinanceError(422, "price_item_inactive", `${item.name} is no longer on the price list`, { issues: { fieldErrors: { priceItemId: ["No longer on the price list"] } } });
   if (input.treatmentId && input.treatmentId !== item.treatmentId) {
     throw new z.ZodError([{ code: "custom", path: ["treatmentId"], message: "The price-list item bills for another treatment" }]);
   }
-  if (input.price !== undefined) return { treatmentId: item.treatmentId, price: input.price };
+  const stages = stagesFor(item, input.quantity);
+  if (input.price !== undefined) return { treatmentId: item.treatmentId, price: input.price, stages };
   const unitPrice = await priceOn(tenantId, item.id, input.performedAt, clinicId);
   if (unitPrice === null) {
     throw new FinanceError(422, "no_price", `${item.name} has no price on that day`, { issues: { fieldErrors: { priceItemId: ["No price on that day: enter one"] } } });
   }
-  return { treatmentId: item.treatmentId, price: unitPrice * input.quantity };
+  return { treatmentId: item.treatmentId, price: unitPrice * input.quantity, stages };
 }
 
 export async function createProcedure(tenantId: string, rawInput: unknown, actor: Actor = {}) {
@@ -266,10 +304,12 @@ export async function createProcedure(tenantId: string, rawInput: unknown, actor
   const appointment = parsed.appointmentId ? await requireTenantAppointment(tenantId, parsed.appointmentId, parsed.patientId) : null;
   const priced = parsed.priceItemId
     ? await fromPriceList(tenantId, { ...parsed, priceItemId: parsed.priceItemId }, appointment?.clinicId ?? null)
-    : { treatmentId: parsed.treatmentId!, price: parsed.price! };
+    : { treatmentId: parsed.treatmentId!, price: parsed.price!, stages: 1 };
   if (parsed.discount > priced.price) {
     throw new z.ZodError([{ code: "custom", path: ["discount"], message: "Discount cannot exceed the price" }]);
   }
+  const free = priced.price - parsed.discount === 0;
+  if (free && !parsed.zeroChargeReason) throw zeroReasonMissing();
   const input = { ...parsed, ...priced };
   const treatment = await requireTenantTreatment(tenantId, input.treatmentId);
 
@@ -286,6 +326,8 @@ export async function createProcedure(tenantId: string, rawInput: unknown, actor
         performedAt: input.performedAt,
         price: input.price,
         discount: input.discount,
+        stages: input.stages,
+        zeroChargeReason: free ? (input.zeroChargeReason ?? null) : null,
         notes: input.notes ?? null,
         status: "PLANNED",
         createdById: actor.id ?? null,
@@ -369,6 +411,8 @@ export async function updateProcedure(tenantId: string, id: string, rawInput: un
     if (discount > price) {
       throw new z.ZodError([{ code: "custom", path: ["discount"], message: "Discount cannot exceed the price" }]);
     }
+    const zeroChargeReason = input.zeroChargeReason === undefined ? before.zeroChargeReason : input.zeroChargeReason;
+    if (price - discount === 0 && !zeroChargeReason) throw zeroReasonMissing();
     const after = await tx.procedure.update({
       where: { id, tenantId },
       data: {
@@ -378,6 +422,7 @@ export async function updateProcedure(tenantId: string, id: string, rawInput: un
         performedAt: input.performedAt,
         price,
         discount,
+        zeroChargeReason: price - discount === 0 ? zeroChargeReason : null,
         notes: input.notes,
       },
       include: procedureInclude,
@@ -400,42 +445,77 @@ export async function updateProcedure(tenantId: string, id: string, rawInput: un
   return view!;
 }
 
-/**
- * Sign a planned procedure: it becomes revenue, lands on the patient timeline
- * and enrols the patient in the treatment's concierge protocol. The enrolment
- * is the concierge module's contract; a failure there is logged and never
- * undoes the signature.
- */
-export async function signProcedure(tenantId: string, id: string, actor: Actor = {}) {
-  const now = new Date();
-  const { after, doctorName } = await db.$transaction(async (tx) => {
-    const before = await tx.procedure.findFirst({ where: { id, tenantId, ...notDeleted }, include: { treatment: { select: { name: true } } } });
-    if (!before) throw new ProcedureNotFoundError(id);
-    if (before.status !== "PLANNED") throw new ProcedureStateError(before.status, "signed");
-    const doctorId = before.doctorId ?? actor.id ?? null;
-    const doctor = doctorId
-      ? await tx.user.findFirst({ where: { id: doctorId, tenantId }, select: { fullName: true, email: true } })
-      : null;
-    const doctorName = doctor ? (doctor.fullName ?? doctor.email) : null;
-    const after = await tx.procedure.update({
-      where: { id, tenantId },
-      data: { status: "SIGNED", signedAt: now, signedById: actor.id ?? null, doctorId },
-      include: procedureInclude,
-    });
-    await tx.timelineEvent.create({
-      data: {
-        tenantId,
-        patientId: before.patientId,
-        kind: "PROCEDURE",
-        title: doctorName ? `${before.treatment.name} performed by Dr ${doctorName.replace(/^Dr\.?\s+/i, "")}` : `${before.treatment.name} performed`,
-        body: `${(before.price - before.discount).toLocaleString("en-US")} EGP${before.notes ? ` · ${before.notes}` : ""}`,
-        refId: before.id,
-        occurredAt: before.performedAt,
-      },
-    });
-    return { after, doctorName };
-  });
+// ── Charging ─────────────────────────────────────────────────────────────────
 
+function zeroReasonMissing() {
+  return new z.ZodError([{ code: "custom", path: ["zeroChargeReason"], message: "Say why nothing is charged" }]);
+}
+
+function issue(path: string, message: string) {
+  return new z.ZodError([{ code: "custom", path: [path], message }]);
+}
+
+/** The branch an appointment was at. */
+async function clinicOf(tx: Client, tenantId: string, appointmentId: string | null): Promise<string | null> {
+  if (!appointmentId) return null;
+  const row = await tx.appointment.findFirst({ where: { id: appointmentId, tenantId }, select: { clinicId: true } });
+  return row?.clinicId ?? null;
+}
+
+type Chargeable = Prisma.ProcedureGetPayload<{ include: typeof chargeableInclude }>;
+
+/**
+ * Sign inside the caller's transaction: charge what is left (the whole
+ * procedure, or the stages not charged yet; a procedure charged nothing gets
+ * one row with the reason), mark it signed and write the timeline.
+ */
+async function signInTx(tx: Client, tenantId: string, before: Chargeable, actor: Actor, now: Date) {
+  const net = before.price - before.discount;
+  if (net === 0 && !before.zeroChargeReason) throw zeroReasonMissing();
+  const doctorId = before.doctorId ?? actor.id ?? null;
+  const doctor = doctorId ? await tx.user.findFirst({ where: { id: doctorId, tenantId }, select: { fullName: true, email: true } }) : null;
+  const doctorName = doctor ? (doctor.fullName ?? doctor.email) : null;
+
+  const { charged, stagesDone } = summarizeCharges(before.charges);
+  const label = procedureLabel(before);
+  const left = net - charged;
+  if (left !== 0 || before.charges.length === 0) {
+    const staged = before.stages > 1;
+    await postCharge(tx, {
+      tenantId,
+      patientId: before.patientId,
+      procedureId: before.id,
+      appointmentId: before.appointmentId,
+      amount: left,
+      description: staged ? `${label} · ${stagePhrase(stagesDone + 1, before.stages, before.stages)}` : net === 0 ? `${label} · no charge: ${before.zeroChargeReason}` : label,
+      // Work done at once is charged on its day; what was left of staged work, the day it is signed.
+      chargedAt: staged ? now : before.performedAt,
+      doctorId,
+      clinicId: await clinicOf(tx, tenantId, before.appointmentId),
+      createdById: actor.id ?? null,
+    });
+  }
+  const after = await tx.procedure.update({
+    where: { id: before.id, tenantId },
+    data: { status: "SIGNED", signedAt: now, signedById: actor.id ?? null, doctorId },
+    include: procedureInclude,
+  });
+  await tx.timelineEvent.create({
+    data: {
+      tenantId,
+      patientId: before.patientId,
+      kind: "PROCEDURE",
+      title: doctorName ? `${before.treatment.name} performed by Dr ${doctorName.replace(/^Dr\.?\s+/i, "")}` : `${before.treatment.name} performed`,
+      body: `${net.toLocaleString("en-US")} EGP${before.notes ? ` · ${before.notes}` : ""}`,
+      refId: before.id,
+      occurredAt: before.stages > 1 ? now : before.performedAt,
+    },
+  });
+  return { after, doctorName, from: before.status };
+}
+
+/** After a signature: the audit row, and the concierge enrolment (its failure must not undo the signature). */
+async function afterSigning(tenantId: string, signed: { after: ProcedureRecord; doctorName: string | null; from: string }, actor: Actor, now: Date) {
   await audit({
     tenantId,
     actorId: actor.id,
@@ -443,21 +523,169 @@ export async function signProcedure(tenantId: string, id: string, actor: Actor =
     ip: actor.ip,
     action: "procedure.sign",
     entity: "Procedure",
-    entityId: id,
-    before: { status: "PLANNED" },
-    after: { status: "SIGNED", signedAt: now.toISOString(), signedById: actor.id ?? null, doctor: doctorName },
+    entityId: signed.after.id,
+    before: { status: signed.from },
+    after: { status: "SIGNED", signedAt: now.toISOString(), signedById: actor.id ?? null, doctor: signed.doctorName },
   });
-
-  // The concierge module owns what happens next; its failure must not undo the signature.
-  const enrolment = await enrolOnSignedProcedure(tenantId, after.id, actor).catch((err: unknown) => {
-    console.error(`[finance] concierge enrolment failed for procedure ${after.id}`, err);
+  return enrolOnSignedProcedure(tenantId, signed.after.id, actor).catch((err: unknown) => {
+    console.error(`[finance] concierge enrolment failed for procedure ${signed.after.id}`, err);
     return null;
   });
+}
 
-  const [view] = await attachPeople(tenantId, [after]);
+/**
+ * Sign a procedure: it becomes revenue, is charged to the patient, lands on
+ * the timeline and enrols the patient in the treatment's concierge protocol.
+ * Work done at once is signed from PLANNED; work done in stages is started
+ * first, and signing it early charges the stages left.
+ */
+export async function signProcedure(tenantId: string, id: string, actor: Actor = {}) {
+  const now = new Date();
+  const signed = await db.$transaction(async (tx) => {
+    const before = await tx.procedure.findFirst({ where: { id, tenantId, ...notDeleted }, include: chargeableInclude });
+    if (!before) throw new ProcedureNotFoundError(id);
+    if (before.status !== "PLANNED" && before.status !== "STARTED") throw new ProcedureStateError(before.status, "signed");
+    if (before.status === "PLANNED" && before.stages > 1) {
+      throw new FinanceError(409, "not_started", "staged work is started before it is signed", {
+        message: `This is done in ${before.stages} sessions: start it on the day of the first one, then mark each session done.`,
+      });
+    }
+    return signInTx(tx, tenantId, before, actor, now);
+  });
+  const enrolment = await afterSigning(tenantId, signed, actor, now);
+  const [view] = await attachPeople(tenantId, [signed.after]);
   return { procedure: view!, enrolment };
 }
 
+/** Start work done in stages, on the day it started (today or earlier). */
+export async function startProcedure(tenantId: string, id: string, rawInput: unknown, actor: Actor = {}) {
+  const input = ProcedureStartInput.parse(rawInput);
+  const timezone = await getTenantTimezone(tenantId);
+  const startedAt = fromDateKey(input.startedAt, timezone);
+  if (!startedAt) throw issue("startedAt", "Not a real date");
+  if (startedAt.getTime() > startOfDayInTz(new Date(), timezone).getTime()) throw issue("startedAt", "Today or earlier: the day it started");
+  const after = await db.$transaction(async (tx) => {
+    const before = await tx.procedure.findFirst({ where: { id, tenantId, ...notDeleted }, include: chargeableInclude });
+    if (!before) throw new ProcedureNotFoundError(id);
+    if (before.status !== "PLANNED") throw new ProcedureStateError(before.status, "started");
+    if (before.stages <= 1) {
+      throw new FinanceError(409, "not_staged", "only work done in stages is started", { message: "This is done in one go: sign it once it is done." });
+    }
+    const after = await tx.procedure.update({
+      where: { id, tenantId },
+      data: { status: "STARTED", startedAt, startedById: actor.id ?? null },
+      include: procedureInclude,
+    });
+    await tx.timelineEvent.create({
+      data: {
+        tenantId,
+        patientId: before.patientId,
+        kind: "PROCEDURE",
+        title: `${procedureLabel(before)} started`,
+        body: `${before.stages} sessions, charged as each is done`,
+        refId: before.id,
+        occurredAt: startedAt,
+      },
+    });
+    return after;
+  });
+  await audit({
+    tenantId,
+    actorId: actor.id,
+    actorEmail: actor.email,
+    ip: actor.ip,
+    action: "procedure.start",
+    entity: "Procedure",
+    entityId: id,
+    before: { status: "PLANNED" },
+    after: { status: "STARTED", startedAt: input.startedAt, stages: after.stages },
+  });
+  const [view] = await attachPeople(tenantId, [after]);
+  return view!;
+}
+
+/**
+ * One stage of started work is done: it is charged its share on the day it
+ * was done (by whoever did it, at the visit's branch). The last stage signs
+ * the procedure.
+ */
+export async function completeStage(tenantId: string, id: string, rawInput: unknown, actor: Actor = {}) {
+  const input = ProcedureStageInput.parse(rawInput);
+  const performedAt = new Date(input.performedAt);
+  const now = new Date();
+  if (performedAt.getTime() > now.getTime() + 5 * 60_000) throw issue("performedAt", "Not in the future: mark a session done once it is");
+  if (input.doctorId) await requireTenantUser(tenantId, input.doctorId);
+  const timezone = await getTenantTimezone(tenantId);
+
+  const result = await db.$transaction(async (tx) => {
+    const before = await tx.procedure.findFirst({ where: { id, tenantId, ...notDeleted }, include: chargeableInclude });
+    if (!before) throw new ProcedureNotFoundError(id);
+    if (before.status !== "STARTED") {
+      throw new ProcedureStateError(before.status, before.status === "PLANNED" ? "charged by the session before it is started" : "given another session");
+    }
+    if (before.startedAt && performedAt.getTime() < startOfDayInTz(before.startedAt, timezone).getTime()) {
+      throw issue("performedAt", "Not before the day it started");
+    }
+    const appointment = input.appointmentId ? await requireTenantAppointment(tenantId, input.appointmentId, before.patientId, tx) : null;
+    const { stagesDone } = summarizeCharges(before.charges);
+    if (stagesDone >= before.stages) throw new ProcedureStateError(before.status, "given another session");
+    const stage = stagesDone + 1;
+    const amount = stageShare(before.price - before.discount, before.stages, stage);
+    const label = procedureLabel(before);
+    const charge = await postCharge(tx, {
+      tenantId,
+      patientId: before.patientId,
+      procedureId: before.id,
+      appointmentId: appointment?.id ?? null,
+      stage,
+      amount,
+      description: `${label} · ${stagePhrase(stage, stage, before.stages)}`,
+      chargedAt: performedAt,
+      doctorId: input.doctorId ?? appointment?.doctorId ?? before.doctorId ?? actor.id ?? null,
+      clinicId: appointment?.clinicId ?? (await clinicOf(tx, tenantId, before.appointmentId)),
+      createdById: actor.id ?? null,
+    });
+    await tx.timelineEvent.create({
+      data: {
+        tenantId,
+        patientId: before.patientId,
+        kind: "PROCEDURE",
+        title: `${label}: ${stagePhrase(stage, stage, before.stages)} done`,
+        body: `${amount.toLocaleString("en-US")} EGP`,
+        refId: before.id,
+        occurredAt: performedAt,
+      },
+    });
+    if (stage < before.stages) {
+      const after = await tx.procedure.findFirstOrThrow({ where: { id, tenantId }, include: procedureInclude });
+      return { stage, of: before.stages, amount, chargeId: charge.id, after, signed: null };
+    }
+    // The last stage: the work is done.
+    const signed = await signInTx(tx, tenantId, { ...before, charges: [...before.charges, { amount, stage, reversalOfId: null }] }, actor, now);
+    return { stage, of: before.stages, amount, chargeId: charge.id, after: signed.after, signed };
+  });
+
+  await audit({
+    tenantId,
+    actorId: actor.id,
+    actorEmail: actor.email,
+    ip: actor.ip,
+    action: "procedure.stage",
+    entity: "Procedure",
+    entityId: id,
+    after: { stage: result.stage, of: result.of, amount: result.amount, chargeId: result.chargeId, performedAt: performedAt.toISOString() },
+  });
+  const enrolment = result.signed ? await afterSigning(tenantId, result.signed, actor, now) : null;
+  const [view] = await attachPeople(tenantId, [result.after]);
+  return { procedure: view!, stage: result.stage, of: result.of, amount: result.amount, enrolment };
+}
+
+/**
+ * Cancel a procedure with a reason. Planned or started work needs no
+ * clinician; what a started course was already charged stays (those sessions
+ * were done). A signed procedure is cancelled only by a clinician
+ * (`allowSigned`), and its charges are reversed on the day of the cancellation.
+ */
 export async function cancelProcedure(
   tenantId: string,
   id: string,
@@ -467,11 +695,12 @@ export async function cancelProcedure(
 ) {
   const input = ProcedureCancelInput.parse(rawInput);
   const now = new Date();
-  const { before, after } = await db.$transaction(async (tx) => {
+  const { before, after, reversed } = await db.$transaction(async (tx) => {
     const before = await tx.procedure.findFirst({ where: { id, tenantId, ...notDeleted }, include: { treatment: { select: { name: true } } } });
     if (!before) throw new ProcedureNotFoundError(id);
     if (before.status === "CANCELLED") throw new ProcedureStateError(before.status, "cancelled again");
     if (before.status === "SIGNED" && !opts.allowSigned) throw new ProcedureStateError(before.status, "cancelled without a clinician");
+    const reversed = before.status === "SIGNED" ? await reverseProcedureCharges(tx, tenantId, id, now, actor.id ?? null) : 0;
     const after = await tx.procedure.update({
       where: { id, tenantId },
       data: { status: "CANCELLED", cancelledAt: now, cancelReason: input.reason },
@@ -483,12 +712,12 @@ export async function cancelProcedure(
         patientId: before.patientId,
         kind: "PROCEDURE",
         title: `${before.treatment.name} cancelled`,
-        body: input.reason,
+        body: reversed ? `${input.reason} · ${reversed.toLocaleString("en-US")} EGP charge reversed` : input.reason,
         refId: before.id,
         occurredAt: now,
       },
     });
-    return { before, after };
+    return { before, after, reversed };
   });
   await audit({
     tenantId,
@@ -499,7 +728,7 @@ export async function cancelProcedure(
     entity: "Procedure",
     entityId: id,
     before: { status: before.status },
-    after: { status: "CANCELLED", reason: input.reason },
+    after: { status: "CANCELLED", reason: input.reason, ...(reversed ? { chargeReversed: reversed } : {}) },
   });
   const [view] = await attachPeople(tenantId, [after]);
   return view!;
