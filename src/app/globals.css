@@ -82,6 +82,10 @@
   .data-label {
     @apply font-mono text-[11px] uppercase tracking-[0.08em] text-muted-foreground;
   }
+  /* Arabic is joined-up writing: no letter-spacing, and the text face (an Arabic invoice or statement). */
+  .data-label:lang(ar) {
+    @apply font-sans text-xs normal-case tracking-normal;
+  }
 
   .metric-value {
     @apply font-display text-3xl font-semibold tracking-tightest tabular-nums;

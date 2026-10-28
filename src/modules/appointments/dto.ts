@@ -45,6 +45,8 @@ export interface AppointmentDTO {
   notesCount: number;
   patient: PersonSummaryDTO;
   doctor: PersonSummaryDTO | null;
+  /** What the patient owes now (negative: credit); only for the roles that take payments. */
+  patientBalance?: number;
   /** Present when one appointment is read (`GET /api/appointments/[id]`). */
   dictatedNotes?: AppointmentNoteDTO[];
 }

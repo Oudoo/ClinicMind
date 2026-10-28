@@ -90,6 +90,18 @@ test.describe("signed-in clinic owner", () => {
     expect(errors).toEqual([]);
   });
 
+  test("a patient's account: who pays for them, the ledger and the family statement", async ({ page }) => {
+    await page.goto("/dashboard/patients?q=Sherif%20Hany");
+    await page.getByRole("link", { name: "Sherif Hany", exact: true }).first().click();
+    await expect(page.getByText("Paid for by")).toBeVisible();
+    await page.getByRole("tab", { name: "Account" }).click();
+    await expect(page.getByTestId("account-balance")).toHaveText(/^(Owes|In credit) [\d,]+ EGP$|^Settled$/);
+    await expect(page.getByRole("table", { name: "Ledger" })).toContainText("Paid by Hany Nabil");
+    await page.getByRole("link", { name: "Family statement" }).click();
+    await expect(page.locator("article.print-area h1")).toHaveText(/Family statement of account|كشف حساب العائلة/);
+    await page.screenshot({ path: "e2e/artifacts/family-statement.png", fullPage: true });
+  });
+
   test("the assistant answers from the clinic's records", async ({ page }) => {
     await page.goto("/dashboard/assistant");
     const input = page.getByPlaceholder(/ask/i);

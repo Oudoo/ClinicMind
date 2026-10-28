@@ -9,6 +9,7 @@ import { Select } from "@/components/ui/input";
 import { Card, EmptyState, SectionTitle } from "@/components/ui/primitives";
 import { ToastProvider, useToast } from "@/components/ui/toast";
 import { apiFetch } from "@/lib/http";
+import { balanceWords } from "@/modules/finance/ledger-copy";
 import { dateKeyInTz } from "@/lib/time";
 import { cn } from "@/lib/utils";
 import type { AppointmentDTO } from "@/modules/appointments/dto";
@@ -100,9 +101,11 @@ function Calendar({
     if (pendingId) return;
     setPendingId(appointment.id);
     try {
-      await apiFetch(`/api/appointments/${appointment.id}/transition`, { method: "POST", body: { status } });
+      const res = await apiFetch<{ balance?: number }>(`/api/appointments/${appointment.id}/transition`, { method: "POST", body: { status } });
       toast({
         title: `${appointment.patient.fullName} · ${STATUS_LABEL[status]}`,
+        // Checked in: what the patient owes (or has in credit), there and then.
+        ...(res.balance ? { description: balanceWords(res.balance) } : {}),
         tone: "success",
       });
       router.refresh();

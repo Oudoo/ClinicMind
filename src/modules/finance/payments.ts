@@ -10,14 +10,15 @@ import { KIND_LABELS, LARGE_PAYMENT_THRESHOLD, MAX_AMOUNT, METHOD_LABELS, PAYMEN
 import { FinanceError, PaymentNotFoundError } from "./errors";
 import { requireTenantAppointment, type Actor } from "./procedures";
 import { clinicForPayment, takeNumber } from "./documents";
-import { allocateCredit, CREDITING_KINDS, patientCredit, refreshInvoiceStatus, releasePayment } from "./allocations";
+import { allocateCredit, CREDITING_KINDS, patientCredit, payableBy, refreshInvoiceStatus, releasePayment } from "./allocations";
 
 /**
  * Payments: money in or out, whole EGP. Deposits and payments are linked to a
  * procedure when there is one, consultation fees to an appointment. Each gets
  * its branch's next receipt number (a refund, a refund voucher number) as it
  * is recorded; money in goes towards the patient's open invoices, oldest
- * first (a deposit for a procedure waits for the invoice that bills it). A
+ * first (a deposit for a procedure waits for the invoice that bills it; the
+ * head of a family's money goes on to the members' invoices). A
  * refund needs a reason and the patient's credit to cover it. A voided
  * payment is soft-deleted (kept for the audit trail, out of every total) and
  * gives back what it had paid on invoices.
@@ -116,8 +117,12 @@ export async function recordPayment(tenantId: string, rawInput: unknown, actor: 
         });
       }
     }
+    // Matched by hand: one of the patient's invoices or, for the head of a family, a member's.
     const invoice = input.invoiceId
-      ? await tx.invoice.findFirst({ where: { id: input.invoiceId, tenantId, patientId: input.patientId }, select: { id: true, status: true, total: true, number: true } })
+      ? await tx.invoice.findFirst({
+          where: { id: input.invoiceId, tenantId, patientId: { in: await payableBy(tx, tenantId, input.patientId) } },
+          select: { id: true, status: true, total: true, number: true },
+        })
       : null;
     if (input.invoiceId && !invoice) throw new TenantScopeError("invoice", input.invoiceId);
     if (invoice && invoice.status !== "ISSUED" && invoice.status !== "PART_PAID") {

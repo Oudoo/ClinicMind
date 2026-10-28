@@ -15,6 +15,7 @@ import {
   type AppointmentStatus,
 } from "@/modules/appointments/transitions";
 import { AppointmentKindBadge, AppointmentStatusBadge } from "./appointment-status";
+import { BalanceChip } from "./patient-balance";
 
 export interface AppointmentActions {
   onTransition: (appointment: AppointmentDTO, status: AppointmentStatus) => void;
@@ -56,6 +57,8 @@ export function AppointmentCard({
   const transitions = allowedTransitions(appointment.status);
   const showMenu = canWrite && (transitions.length > 0 || isReschedulable(appointment.status) || Boolean(actions.onNotes));
   const muted = appointment.status === "CANCELLED" || appointment.status === "NO_SHOW";
+  // What the patient owes, for the desk (roles that take payments), on visits still to happen or under way.
+  const balance = muted || appointment.status === "COMPLETED" || appointment.status === "WAITLISTED" ? null : appointment.patientBalance;
 
   const menu = showMenu ? (
     <AppointmentActionsMenu appointment={appointment} timezone={timezone} pending={pending} actions={actions} />
@@ -114,6 +117,7 @@ export function AppointmentCard({
         <div className="min-w-0 flex-1">{details}</div>
         <div className="flex flex-wrap items-center justify-between gap-2 sm:justify-end">
           {notesBadge}
+          <BalanceChip balance={balance} />
           <AppointmentKindBadge kind={appointment.kind} />
           <AppointmentStatusBadge status={appointment.status} awaitingSince={appointment.confirmationRequestedAt} />
           {menu}
@@ -139,8 +143,9 @@ export function AppointmentCard({
         </div>
       </div>
       <div className="mt-1 space-y-0.5">{details}</div>
-      <div className="mt-1.5">
+      <div className="mt-1.5 flex flex-wrap items-center gap-1">
         <AppointmentKindBadge kind={appointment.kind} />
+        <BalanceChip balance={balance} />
       </div>
     </article>
   );

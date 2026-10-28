@@ -2,6 +2,7 @@ import type { UserRole } from "@prisma/client";
 import { can } from "@/lib/auth/rbac";
 import { db } from "@/lib/db";
 import { getNextAppointment } from "@/modules/appointments/service";
+import { nextWithBalances } from "@/modules/finance/ledger";
 import { NextAppointmentCard } from "./appointment-next-card";
 
 /**
@@ -26,7 +27,7 @@ export async function PatientNextAppointment({
 }) {
   if (!can(role, "appointments:read")) return null;
   const [initial, patient] = await Promise.all([
-    getNextAppointment(tenantId, { userId, role, patientId }),
+    getNextAppointment(tenantId, { userId, role, patientId }).then((next) => nextWithBalances(tenantId, role, next)),
     db.patient.findFirst({ where: { id: patientId, tenantId }, select: { fullName: true } }),
   ]);
   if (!patient) return null;

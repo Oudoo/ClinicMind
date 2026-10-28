@@ -348,27 +348,33 @@ model AuthToken {
 // ── Patients & clinical records ──────────────────────────────────────────────
 
 model Patient {
-  id               String      @id @default(cuid())
-  tenantId         String
-  tenant           Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  fullName         String
-  gender           Gender      @default(UNDISCLOSED)
-  dateOfBirth      DateTime?
-  phone            String?
-  whatsapp         String?
-  email            String?
-  emergencyContact String?
-  address          String?
+  id                String      @id @default(cuid())
+  tenantId          String
+  tenant            Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  fullName          String
+  gender            Gender      @default(UNDISCLOSED)
+  dateOfBirth       DateTime?
+  phone             String?
+  whatsapp          String?
+  email             String?
+  emergencyContact  String?
+  address           String?
   /// Preferred language for communication: "ar" | "en".
-  language         String      @default("ar")
-  tags             String[]    @default([])
-  notes            String?
+  language          String      @default("ar")
+  tags              String[]    @default([])
+  notes             String?
   /// National ID or passport number, for the front desk's exact lookup.
-  nationalId       String?
-  city             String?
+  nationalId        String?
+  city              String?
   /// First-touch source when the patient came through the CRM.
-  source           LeadSource?
-  referredBy       String?
+  source            LeadSource?
+  referredBy        String?
+  /// The family member who pays for this patient: their payments go towards this patient's invoices too.
+  /// One level only (a head has no head of their own and a member heads no one; a trigger enforces it).
+  householdHeadId   String?
+  householdHead     Patient?    @relation("Household", fields: [householdHeadId], references: [id], onDelete: SetNull)
+  /// How the patient is related to the head: SPOUSE, CHILD, PARENT, SIBLING or OTHER.
+  householdRelation String?
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -391,8 +397,10 @@ model Patient {
   checkIns         CheckIn[]
   appointmentNotes AppointmentNote[]
   intakeLinks      IntakeLink[]
+  householdMembers Patient[]            @relation("Household")
 
   @@index([tenantId])
+  @@index([tenantId, householdHeadId])
   @@index([tenantId, nationalId])
   @@index([tenantId, phone])
   @@index([tenantId, createdAt])

@@ -117,6 +117,8 @@ jobs:
           APP_DB_PASSWORD: ci-e2e-app-role-0123456789abcdef
         run: npx tsx scripts/db-app-role.ts
       - run: npm run db:seed
+      - name: Check the seeded demo (plausible clinical data, every account adding up)
+        run: npx vitest run src/__tests__/seed.consistency.test.ts
       - name: Rehearse a backup and restore of the seeded database
         env:
           PGHOST: localhost

@@ -12,6 +12,7 @@ import {
 } from "@/lib/time";
 import { getTenantTimezone, getWorkingHours, listAppointments, listStaff } from "@/modules/appointments/service";
 import { toAppointmentDTO } from "@/modules/appointments/dto";
+import { withPatientBalances } from "@/modules/finance/ledger";
 import { AppointmentCalendar, type CalendarView } from "@/components/clinicmind/appointment-calendar";
 
 export const dynamic = "force-dynamic";
@@ -73,7 +74,7 @@ export default async function AppointmentsPage({
       todayKey={dateKeyInTz(now, timezone)}
       rangeLabel={rangeLabel}
       days={days}
-      appointments={appointments.map(toAppointmentDTO)}
+      appointments={await withPatientBalances(ctx.tenantId, ctx.role, appointments.map(toAppointmentDTO))}
       doctors={doctors}
       hours={hours}
       doctorId={doctorFilter ?? ""}

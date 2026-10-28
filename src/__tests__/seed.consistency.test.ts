@@ -29,6 +29,7 @@ import {
   drugClasses,
   medicationStartDays,
 } from "../../prisma/seed/clinical";
+import { accountPosition } from "@/modules/finance/ledger";
 
 const FEMALE_ONLY = /\b(PCOS|polycystic|hirsutism|melasma)\b/i;
 
@@ -234,5 +235,35 @@ describe("the seeded demo database (when DATABASE_URL points at one)", () => {
       return false;
     });
     expect(wrong.map((n) => `${n.patient.fullName}: ${n.body}`)).toEqual([]);
+  });
+  it("keeps every patient's account adding up: the balance is what is due on invoices, plus what is not invoiced, less the credit", async (ctx) => {
+    if (!demo) return ctx.skip();
+    const tenantId = demo.id;
+    const patients = await db.patient.findMany({ where: { tenantId }, select: { id: true, fullName: true } });
+    expect(patients.length).toBeGreaterThan(0);
+    const wrong: string[] = [];
+    for (const p of patients) {
+      const position = await db.$transaction((tx) => accountPosition(tx, tenantId, [p]));
+      if (position.balance !== position.dueOnInvoices + position.notInvoiced - position.credit || position.credit < 0) wrong.push(`${p.fullName}: ${JSON.stringify(position)}`);
+    }
+    expect(wrong).toEqual([]);
+    // Every invoice's status says what was allocated to it.
+    const invoices = await db.invoice.findMany({ where: { tenantId, status: { in: ["ISSUED", "PART_PAID", "PAID"] } }, select: { number: true, status: true, total: true, allocations: { select: { amount: true } } } });
+    const misstated = invoices.filter((i) => {
+      const paid = i.allocations.reduce((s, a) => s + a.amount, 0);
+      return i.status !== (paid >= i.total ? "PAID" : paid > 0 ? "PART_PAID" : "ISSUED");
+    });
+    expect(misstated.map((i) => i.number)).toEqual([]);
+  });
+
+  it("has a family account: Hany Nabil pays for his children, and paid towards their invoices", async (ctx) => {
+    if (!demo) return ctx.skip();
+    const head = await db.patient.findFirstOrThrow({ where: { tenantId: demo.id, fullName: "Hany Nabil" }, select: { id: true, householdMembers: { select: { fullName: true, householdRelation: true } } } });
+    expect(head.householdMembers.map((m) => [m.fullName, m.householdRelation]).sort()).toEqual([
+      ["Nesma Hany", "CHILD"],
+      ["Sherif Hany", "CHILD"],
+    ]);
+    const paidForThem = await db.paymentAllocation.count({ where: { tenantId: demo.id, payment: { patientId: head.id }, invoice: { patient: { householdHeadId: head.id } } } });
+    expect(paidForThem).toBeGreaterThan(0);
   });
 });

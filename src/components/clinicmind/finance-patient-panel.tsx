@@ -50,6 +50,7 @@ export function FinancePatientPanel({
   invoices = null,
   billable = null,
   credit = null,
+  account = null,
   treatments,
   priceItems = [],
   doctors,
@@ -69,6 +70,8 @@ export function FinancePatientPanel({
   billable?: { count: number; total: number } | null;
   /** Paid ahead, not yet put towards an invoice. */
   credit?: number | null;
+  /** The account as the ledger has it (for the roles that see payments): what was billed, received, and the balance. */
+  account?: { billed: number; received: number; balance: number } | null;
   treatments: TreatmentOption[];
   /** The price list as of today (the dialog reprices for another day). */
   priceItems?: PriceOption[];
@@ -86,10 +89,11 @@ export function FinancePatientPanel({
 
   const signed = procedures.filter((p) => p.status === "SIGNED");
   const started = procedures.filter((p) => p.status === "STARTED");
-  // Billed: signed work, and the sessions of courses under way charged so far.
-  const billed = signed.reduce((s, p) => s + p.price - p.discount, 0) + started.reduce((s, p) => s + p.charged, 0);
-  const owing = [...signed, ...started].reduce((s, p) => s + Math.max(0, p.balance), 0);
-  const paid = payments ? payments.reduce((s, p) => s + signedAmount(p), 0) : null;
+  // From the ledger when the role sees payments; otherwise from the procedures: signed work, and the
+  // sessions of courses under way charged so far.
+  const billed = account ? account.billed : signed.reduce((s, p) => s + p.price - p.discount, 0) + started.reduce((s, p) => s + p.charged, 0);
+  const owing = account ? account.balance : [...signed, ...started].reduce((s, p) => s + Math.max(0, p.balance), 0);
+  const paid = account ? account.received : payments ? payments.reduce((s, p) => s + signedAmount(p), 0) : null;
   const date = (iso: string) => formatDateInTz(new Date(iso), timezone);
   const choices: ProcedureChoice[] = procedures
     .filter((p) => p.status !== "CANCELLED")
@@ -112,7 +116,15 @@ export function FinancePatientPanel({
       <SectionTitle
         title="Procedures & payments"
         description="What was done, what it cost and what is still owed."
-        action={owing > 0 ? <Badge tone="warning">owes {formatNumber(owing)} EGP</Badge> : signed.length ? <Badge tone="success">settled</Badge> : null}
+        action={
+          owing > 0 ? (
+            <Badge tone="warning">owes {formatNumber(owing)} EGP</Badge>
+          ) : owing < 0 ? (
+            <Badge tone="accent">in credit {formatNumber(-owing)} EGP</Badge>
+          ) : signed.length ? (
+            <Badge tone="success">settled</Badge>
+          ) : null
+        }
       />
       <dl className="grid grid-cols-3 gap-2 rounded-lg bg-muted/60 p-3 text-center">
         <div>
@@ -120,12 +132,12 @@ export function FinancePatientPanel({
           <dd className="font-mono text-sm tabular-nums">{formatNumber(billed)}</dd>
         </div>
         <div>
-          <dt className="data-label" title="Everything received, consultation fees and deposits included, net of refunds">Received</dt>
+          <dt className="data-label" title="Everything received for this patient, consultation fees and deposits included, net of refunds (and what family paid for them)">Received</dt>
           <dd className="font-mono text-sm tabular-nums">{paid === null ? "—" : formatNumber(paid)}</dd>
         </div>
         <div>
           <dt className="data-label">Balance</dt>
-          <dd className={owing > 0 ? "font-mono text-sm tabular-nums text-warning" : "font-mono text-sm tabular-nums"}>{formatNumber(owing)}</dd>
+          <dd className={owing > 0 ? "font-mono text-sm tabular-nums text-warning" : owing < 0 ? "font-mono text-sm tabular-nums text-accent" : "font-mono text-sm tabular-nums"}>{formatNumber(owing)}</dd>
         </div>
       </dl>
 

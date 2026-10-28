@@ -9,7 +9,7 @@ import { zOptionalText, zText } from "@/lib/validation";
 import { getTenantTimezone } from "@/modules/appointments/service";
 import { publicBaseUrl, looksLikeToken } from "@/modules/concierge/tokens";
 import { sendPatientMessage } from "@/modules/messaging/outbound";
-import { allocateCredit, refreshInvoiceStatus } from "./allocations";
+import { allocateCredit, allocateFor, payableBy, refreshInvoiceStatus } from "./allocations";
 import { defaultClinicId, takeNumber } from "./documents";
 import { FinanceError } from "./errors";
 
@@ -55,6 +55,8 @@ export const InvoiceCancelInput = z.object({ reason: zText(300).min(3, "Say why 
 
 export const InvoiceListQuery = z.object({
   patientId: zOptionalText(64),
+  /** With patientId: the invoices that patient's payments can go towards (a head's include the family's). */
+  payable: z.preprocess((v) => v === "1" || v === "true" || v === true, z.boolean()).default(false),
   status: z.enum(["DRAFT", "ISSUED", "PART_PAID", "PAID", "CANCELLED", "OPEN"]).optional(),
   q: zOptionalText(60),
   page: z.coerce.number().int().min(1).default(1),
@@ -202,9 +204,10 @@ export interface InvoiceListRow {
 
 export async function listInvoices(tenantId: string, rawQuery: unknown = {}) {
   const query = InvoiceListQuery.parse(rawQuery);
+  const patients = query.patientId && query.payable ? await db.$transaction((tx) => payableBy(tx, tenantId, query.patientId!)) : null;
   const where: Prisma.InvoiceWhereInput = {
     tenantId,
-    ...(query.patientId ? { patientId: query.patientId } : {}),
+    ...(patients ? { patientId: { in: patients } } : query.patientId ? { patientId: query.patientId } : {}),
     ...(query.status === "OPEN" ? { status: { in: ["ISSUED", "PART_PAID"] } } : query.status ? { status: query.status } : {}),
     ...(query.q ? { OR: [{ number: { contains: query.q, mode: "insensitive" } }, { patient: { fullName: { contains: query.q, mode: "insensitive" } } }] } : {}),
   };
@@ -386,10 +389,12 @@ export async function cancelInvoice(tenantId: string, id: string, rawInput: unkn
     await tx.creditNote.create({
       data: { tenantId, clinicId: invoice.clinicId, invoiceId: id, sequence, number, amount: invoice.total, reason: input.reason, issuedAt: now, issuedById: actor.id ?? null },
     });
-    const released = (await tx.paymentAllocation.aggregate({ where: { tenantId, invoiceId: id }, _sum: { amount: true } }))._sum.amount ?? 0;
+    const allocations = await tx.paymentAllocation.findMany({ where: { tenantId, invoiceId: id }, select: { amount: true, payment: { select: { patientId: true } } } });
+    const released = allocations.reduce((s, a) => s + a.amount, 0);
     await tx.paymentAllocation.deleteMany({ where: { tenantId, invoiceId: id } });
     await tx.invoice.update({ where: { id }, data: { status: "CANCELLED", cancelledAt: now, cancelledById: actor.id ?? null, cancelReason: input.reason } });
-    await allocateCredit(tx, tenantId, invoice.patientId, actor.id ?? null);
+    // What it had been paid goes back to whoever paid it (the patient, or the head of their family) and on to open invoices.
+    await allocateFor(tx, tenantId, [invoice.patientId, ...allocations.map((a) => a.payment.patientId)], actor.id ?? null);
     await tx.timelineEvent.create({
       data: { tenantId, patientId: invoice.patientId, kind: "PAYMENT", title: `Invoice ${invoice.number} cancelled by credit note ${number}`, body: input.reason, refId: id, occurredAt: now },
     });

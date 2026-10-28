@@ -4,9 +4,9 @@ import { cache } from "react";
 import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 import { after } from "next/server";
-import { ArrowLeft, Mail, MessageCircle, Phone, ScrollText } from "lucide-react";
+import { ArrowLeft, Mail, MessageCircle, Phone, ScrollText, Users } from "lucide-react";
 import type { AppointmentStatus } from "@prisma/client";
-import { withTenant } from "@/lib/db";
+import { db, withTenant } from "@/lib/db";
 import { getActingContext } from "@/lib/auth/session";
 import { can } from "@/lib/auth/rbac";
 import { clientIp, userAgent } from "@/lib/auth/request";
@@ -26,6 +26,10 @@ import { PatientConciergeCard } from "@/components/clinicmind/patient-concierge-
 import { PatientFinanceCard } from "@/components/clinicmind/patient-finance-card";
 import { PatientLeadCard } from "@/components/clinicmind/patient-lead-card";
 import { PatientIntakeCard } from "@/components/clinicmind/patient-intake-card";
+import { PatientAccount } from "@/components/clinicmind/patient-account";
+import { BalanceChip } from "@/components/clinicmind/patient-balance";
+import { canSeeAccounts, patientBalances } from "@/modules/finance/ledger";
+import { getHousehold } from "@/modules/finance/household";
 import {
   GENDER_LABELS,
   languageLabel,
@@ -86,6 +90,11 @@ export default async function PatientPage({ params }: { params: Promise<{ id: st
   const activeMeds = patient.medications.filter((m) => m.active);
   const stoppedMeds = patient.medications.filter((m) => !m.active);
   const lastVisit = patient.visits[0] ?? null;
+  // What the patient owes and who pays for them: for the roles that take payments and the owner.
+  const seesAccounts = canSeeAccounts(ctx.role);
+  const [balance, household] = seesAccounts
+    ? await Promise.all([patientBalances(db, ctx.tenantId, [patient.id]).then((b) => b.get(patient.id) ?? 0), getHousehold(ctx.tenantId, patient.id)])
+    : [null, null];
 
   const visitRows: VisitRow[] = [
     ...patient.visits.map(
@@ -136,6 +145,7 @@ export default async function PatientPage({ params }: { params: Promise<{ id: st
                 <div className="flex flex-wrap items-center gap-2">
                   <h1 className="font-display text-2xl font-semibold tracking-tight">{patient.fullName}</h1>
                   {archived ? <Badge tone="danger">archived</Badge> : null}
+                  <BalanceChip balance={balance} />
                 </div>
                 <p className="text-sm text-muted-foreground">
                   {age !== null ? `${age} years` : "Age unknown"} · {GENDER_LABELS[patient.gender]}
@@ -152,6 +162,21 @@ export default async function PatientPage({ params }: { params: Promise<{ id: st
                     <Badge key={t}>{t}</Badge>
                   ))}
                 </div>
+                {household && household.role !== "none" ? (
+                  <p className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+                    <Users className="h-3.5 w-3.5" aria-hidden="true" />
+                    {household.role === "member" && household.head ? (
+                      <>
+                        Paid for by{" "}
+                        <Link href={`/dashboard/patients/${household.head.id}`} className="text-accent underline-offset-2 hover:underline">
+                          {household.head.fullName}
+                        </Link>
+                      </>
+                    ) : (
+                      `Pays for ${household.members.length} family member${household.members.length === 1 ? "" : "s"}`
+                    )}
+                  </p>
+                ) : null}
                 {can(ctx.role, "audit:read") ? (
                   <Link
                     href={auditHref({ patient: patient.id })}
@@ -198,6 +223,7 @@ export default async function PatientPage({ params }: { params: Promise<{ id: st
             <TabsTrigger value="overview">Overview</TabsTrigger>
             <TabsTrigger value="timeline">Timeline</TabsTrigger>
             <TabsTrigger value="visits">Visits &amp; consultations</TabsTrigger>
+            {seesAccounts ? <TabsTrigger value="account">Account</TabsTrigger> : null}
             <TabsTrigger value="documents">Documents</TabsTrigger>
           </TabsList>
 
@@ -343,6 +369,12 @@ export default async function PatientPage({ params }: { params: Promise<{ id: st
               <PatientVisitsTable rows={visitRows} />
             </Card>
           </TabsContent>
+
+          {seesAccounts ? (
+            <TabsContent value="account">
+              <PatientAccount tenantId={ctx.tenantId} role={ctx.role} patientId={patient.id} canWrite={canWrite && !archived} />
+            </TabsContent>
+          ) : null}
 
           <TabsContent value="documents">
             <Card>

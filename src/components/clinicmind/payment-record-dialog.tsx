@@ -55,7 +55,7 @@ export function RecordPaymentDialog({
   const [note, setNote] = useState("");
   const [choices, setChoices] = useState<ProcedureChoice[] | null>(presetProcedures ?? null);
   // The patient's invoices still to be paid: a payment can be matched to one by hand.
-  const [openInvoices, setOpenInvoices] = useState<{ id: string; number: string | null; due: number }[]>([]);
+  const [openInvoices, setOpenInvoices] = useState<{ id: string; number: string | null; due: number; patientId: string; patientName: string }[]>([]);
   const [invoiceId, setInvoiceId] = useState("");
   const [issues, setIssues] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
@@ -89,9 +89,12 @@ export function RecordPaymentDialog({
   useEffect(() => {
     if (!patient) return;
     let cancelled = false;
-    apiFetch<{ invoices: { id: string; number: string | null; total: number; paid: number }[] }>(`/api/invoices?patientId=${encodeURIComponent(patient.id)}&status=OPEN&pageSize=50`)
+    // The head of a family can pay the members' invoices too.
+    apiFetch<{ invoices: { id: string; number: string | null; total: number; paid: number; patientId: string; patientName: string }[] }>(
+      `/api/invoices?patientId=${encodeURIComponent(patient.id)}&payable=1&status=OPEN&pageSize=50`,
+    )
       .then((res) => {
-        if (!cancelled) setOpenInvoices(res.invoices.map((i) => ({ id: i.id, number: i.number, due: i.total - i.paid })).filter((i) => i.due > 0));
+        if (!cancelled) setOpenInvoices(res.invoices.map((i) => ({ id: i.id, number: i.number, due: i.total - i.paid, patientId: i.patientId, patientName: i.patientName })).filter((i) => i.due > 0));
       })
       .catch(() => undefined);
     return () => {
@@ -161,6 +164,8 @@ export function RecordPaymentDialog({
                 setPatient(p);
                 setProcedureId("");
                 setChoices(null);
+                setInvoiceId("");
+                setOpenInvoices([]);
               }}
               error={issues.patientId}
             />
@@ -214,7 +219,7 @@ export function RecordPaymentDialog({
                   <option value="">Oldest open invoice first</option>
                   {openInvoices.map((i) => (
                     <option key={i.id} value={i.id}>
-                      {i.number} · {formatNumber(i.due)} EGP to pay
+                      {i.number} · {formatNumber(i.due)} EGP to pay{i.patientId !== patient.id ? ` · ${i.patientName}` : ""}
                     </option>
                   ))}
                 </Select>

@@ -687,6 +687,33 @@ export async function completeStage(tenantId: string, id: string, rawInput: unkn
 }
 
 /**
+ * Before a signed procedure's charges are reversed: while an issued invoice
+ * bills them, refuse (409 `invoiced`) until that invoice is cancelled with
+ * its credit note, so no invoice asks for work that was taken back; a draft
+ * just loses those lines (and goes, when nothing is left on it).
+ */
+async function releaseFromInvoices(tx: Prisma.TransactionClient, tenantId: string, procedureId: string) {
+  const lines = await tx.invoiceLine.findMany({
+    where: { tenantId, charge: { procedureId }, invoice: { status: { not: "CANCELLED" } } },
+    select: { id: true, invoiceId: true, invoice: { select: { status: true, number: true } } },
+  });
+  const issued = lines.find((l) => l.invoice.status !== "DRAFT");
+  if (issued) {
+    throw new FinanceError(409, "invoiced", "the procedure is on an issued invoice", {
+      invoiceId: issued.invoiceId,
+      message: `This work is billed on invoice ${issued.invoice.number ?? ""}: cancel that invoice with a credit note first.`,
+    });
+  }
+  for (const invoiceId of new Set(lines.map((l) => l.invoiceId))) {
+    await tx.invoiceLine.deleteMany({ where: { tenantId, invoiceId, id: { in: lines.filter((l) => l.invoiceId === invoiceId).map((l) => l.id) } } });
+    const left = await tx.invoiceLine.findMany({ where: { tenantId, invoiceId }, select: { amount: true } });
+    const sum = left.reduce((s, l) => s + l.amount, 0);
+    if (!left.length || sum <= 0) await tx.invoice.delete({ where: { id: invoiceId } });
+    else await tx.invoice.update({ where: { id: invoiceId }, data: { total: sum } });
+  }
+}
+
+/**
  * Cancel a procedure with a reason. Planned or started work needs no
  * clinician; what a started course was already charged stays (those sessions
  * were done). A signed procedure is cancelled only by a clinician
@@ -706,6 +733,7 @@ export async function cancelProcedure(
     if (!before) throw new ProcedureNotFoundError(id);
     if (before.status === "CANCELLED") throw new ProcedureStateError(before.status, "cancelled again");
     if (before.status === "SIGNED" && !opts.allowSigned) throw new ProcedureStateError(before.status, "cancelled without a clinician");
+    if (before.status === "SIGNED") await releaseFromInvoices(tx, tenantId, id);
     const reversed = before.status === "SIGNED" ? await reverseProcedureCharges(tx, tenantId, id, now, actor.id ?? null) : 0;
     const after = await tx.procedure.update({
       where: { id, tenantId },

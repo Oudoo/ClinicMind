@@ -34,6 +34,8 @@ import { AppointmentNotesDialog } from "./appointment-notes-dialog";
 import { RescheduleAppointmentDialog } from "./appointment-reschedule-dialog";
 import { describeApiError, describeConfirmation, shortDayLabel } from "./appointment-shared";
 import { AppointmentKindBadge, AppointmentStatusBadge } from "./appointment-status";
+import { BalanceChip } from "./patient-balance";
+import { balanceWords } from "@/modules/finance/ledger-copy";
 
 /** The card asks the server for a fresh answer this often (while the tab is visible). */
 export const REFRESH_MS = 30_000;
@@ -128,8 +130,9 @@ export function NextAppointmentCard({ initial, timezone, variant, patientId, pat
     if (pending) return;
     setPending(`${a.id}:${status}`);
     try {
-      await apiFetch(`/api/appointments/${a.id}/transition`, { method: "POST", body: { status } });
-      toast({ title: `${a.patient.fullName} · ${STATUS_LABEL[status]}`, tone: "success" });
+      const res = await apiFetch<{ balance?: number }>(`/api/appointments/${a.id}/transition`, { method: "POST", body: { status } });
+      // Checked in: what the patient owes (or has in credit) is said there and then.
+      toast({ title: `${a.patient.fullName} · ${STATUS_LABEL[status]}`, ...(res.balance ? { description: balanceWords(res.balance) } : {}), tone: "success" });
       if (then) {
         then();
         return;
@@ -325,6 +328,7 @@ export function NextAppointmentCard({ initial, timezone, variant, patientId, pat
               </span>
               <AppointmentKindBadge kind={a.kind} />
               <AppointmentStatusBadge status={a.status} awaitingSince={a.confirmationRequestedAt} />
+              <BalanceChip balance={a.patientBalance} />
               {a.notesCount ? (
                 <button
                   type="button"

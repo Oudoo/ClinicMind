@@ -28,10 +28,15 @@ export function PatientPicker({
   value,
   onChange,
   error,
+  label = "Patient",
+  excludeId,
 }: {
   value: PatientOption | null;
   onChange: (patient: PatientOption | null) => void;
   error?: string;
+  label?: string;
+  /** A patient not to offer (the one whose record this is). */
+  excludeId?: string;
 }) {
   const id = useId();
   const inputId = `${id}-patient`;
@@ -48,13 +53,13 @@ export function PatientPicker({
     apiFetch<{ patients: PatientOption[] }>(`/api/patients?q=${encodeURIComponent(debounced)}`, {
       signal: controller.signal,
     })
-      .then((res) => setResult({ q: debounced, items: res.patients.slice(0, 8), failed: false }))
+      .then((res) => setResult({ q: debounced, items: res.patients.filter((p) => p.id !== excludeId).slice(0, 8), failed: false }))
       .catch((err: unknown) => {
         if (err instanceof DOMException && err.name === "AbortError") return;
         setResult({ q: debounced, items: [], failed: true });
       });
     return () => controller.abort();
-  }, [debounced]);
+  }, [debounced, excludeId]);
 
   const current = result && result.q === debounced ? result : null;
   const items = current?.items ?? [];
@@ -87,7 +92,7 @@ export function PatientPicker({
 
   if (value) {
     return (
-      <Field label="Patient" htmlFor={inputId} hint={hint}>
+      <Field label={label} htmlFor={inputId} hint={hint}>
         <div className="flex h-10 items-center justify-between gap-2 rounded-lg border border-input bg-muted px-3 text-sm">
           <span className="truncate font-medium">{value.fullName}</span>
           <button
@@ -105,7 +110,7 @@ export function PatientPicker({
   }
 
   return (
-    <Field label="Patient" htmlFor={inputId} hint={hint}>
+    <Field label={label} htmlFor={inputId} hint={hint}>
       <div className="relative">
         <Input
           id={inputId}

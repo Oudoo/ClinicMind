@@ -3,6 +3,7 @@ import { assertCan } from "@/lib/auth/rbac";
 import { handleApiError, ok, unauthorized } from "@/lib/api";
 import { requireTenantPatient } from "@/lib/tenant-scope";
 import { getNextAppointment, NextAppointmentQuery } from "@/modules/appointments/service";
+import { nextWithBalances } from "@/modules/finance/ledger";
 
 export const dynamic = "force-dynamic";
 
@@ -14,7 +15,8 @@ export const dynamic = "force-dynamic";
  * the default scope a doctor or the owner gets their own next booking (and the
  * clinic's when they have none); reception, nurses and assistants get the
  * clinic's. `patientId` (proven to belong to the tenant) returns that
- * patient's next booking and their following ones instead.
+ * patient's next booking and their following ones instead. For the roles that
+ * take payments, each appointment carries its patient's balance.
  */
 export async function GET(req: Request) {
   try {
@@ -23,7 +25,8 @@ export async function GET(req: Request) {
     assertCan(ctx.role, "appointments:read");
     const q = NextAppointmentQuery.parse(Object.fromEntries(new URL(req.url).searchParams));
     if (q.patientId) await requireTenantPatient(ctx.tenantId, q.patientId);
-    return ok(await getNextAppointment(ctx.tenantId, { userId: ctx.userId, role: ctx.role, scope: q.scope, patientId: q.patientId }));
+    const next = await getNextAppointment(ctx.tenantId, { userId: ctx.userId, role: ctx.role, scope: q.scope, patientId: q.patientId });
+    return ok(await nextWithBalances(ctx.tenantId, ctx.role, next));
   } catch (err) {
     return handleApiError(err);
   }
