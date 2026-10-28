@@ -2,6 +2,7 @@ import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypt
 import type { ChannelType, MessageDelivery } from "@prisma/client";
 import { db } from "@/lib/db";
 import { decryptSecret, encryptSecret } from "@/lib/ai/tenant-config";
+import { resolvedUrlProblem } from "./url-guard";
 
 /**
  * Delivery adapters behind `sendPatientMessage`. The tenant's ChannelIntegration
@@ -12,9 +13,11 @@ import { decryptSecret, encryptSecret } from "@/lib/ai/tenant-config";
  *     from `WHATSAPP_CLOUD_TOKEN` (server env, never stored per tenant).
  *   - `inbox_webhook` — the clinic's own inbox: POST the message JSON to the
  *     configured URL, signed with HMAC-SHA256 (`X-ClinicMind-Signature`) under
- *     the integration's secret. The secret is kept encrypted (AES-256-GCM via
- *     lib/ai/tenant-config) because signing needs the raw value; its hash and
- *     prefix are stored beside it for display and inbound verification.
+ *     the integration's secret (no secret, no send). The secret is kept
+ *     encrypted (AES-256-GCM via lib/ai/tenant-config) because signing needs
+ *     the raw value; its hash and prefix are stored beside it for display and
+ *     inbound verification. The URL passes the SSRF guard (url-guard.ts) and
+ *     redirects are never followed.
  *   - `manual` or nothing configured — the message is LOGGED on the record.
  *
  * A failed send never throws: it comes back as FAILED with a reason.
@@ -26,6 +29,8 @@ export const SIGNATURE_HEADER = "x-clinicmind-signature";
 export const META_SIGNATURE_HEADER = "x-hub-signature-256";
 export const GRAPH_API_BASE = "https://graph.facebook.com/v20.0";
 export const PROVIDER_TIMEOUT_MS = 10_000;
+/** Meta's error for a free-form message more than 24 hours after the customer's last message. */
+export const WHATSAPP_WINDOW_CLOSED = 131047;
 
 export interface IntegrationConfig {
   phoneNumberId?: string;
@@ -141,7 +146,11 @@ export async function deliverOutbound(req: DeliveryRequest): Promise<DeliveryRes
   const result =
     integration.provider === "whatsapp_cloud" ? await sendViaWhatsAppCloud(req, config) : await sendViaInboxWebhook(req, config, integration.secretHash);
   if (result.delivery === "SENT") {
-    db.channelIntegration.update({ where: { id: integration.id }, data: { lastOutboundAt: new Date() } }).catch(() => undefined);
+    try {
+      await db.channelIntegration.update({ where: { id: integration.id }, data: { lastOutboundAt: new Date() } });
+    } catch (err) {
+      console.error("[messaging] could not stamp lastOutboundAt", err);
+    }
   }
   return result;
 }
@@ -160,6 +169,9 @@ async function sendViaWhatsAppCloud(req: DeliveryRequest, config: IntegrationCon
       body: JSON.stringify({ messaging_product: "whatsapp", recipient_type: "individual", to, type: "text", text: { preview_url: false, body: req.body } }),
     });
     const json = (await res.json().catch(() => null)) as { messages?: { id?: string }[]; error?: { message?: string; code?: number } } | null;
+    if (json?.error?.code === WHATSAPP_WINDOW_CLOSED) {
+      return fail("Outside WhatsApp's 24-hour window: the patient has to write first, or Meta needs an approved template");
+    }
     if (!res.ok) return fail(`HTTP ${res.status}${json?.error?.message ? `: ${json.error.message}` : ""}`);
     return { delivery: "SENT", externalId: json?.messages?.[0]?.id ?? null, failedReason: null, provider: "whatsapp_cloud" };
   } catch (err) {
@@ -170,8 +182,11 @@ async function sendViaWhatsAppCloud(req: DeliveryRequest, config: IntegrationCon
 async function sendViaInboxWebhook(req: DeliveryRequest, config: IntegrationConfig, secretHash: string | null): Promise<DeliveryResult> {
   const fail = (reason: string): DeliveryResult => ({ delivery: "FAILED", externalId: null, failedReason: reason, provider: "inbox_webhook" });
   if (!config.outboundUrl) return fail("No outbound URL configured");
+  // Every outbound call is signed so the clinic's inbox can tell it came from us.
   const secret = integrationSecret(config);
-  if (!secret && secretHash) return fail("The webhook secret cannot be read; generate a new one");
+  if (!secret) return fail(secretHash ? "The webhook secret cannot be read; generate a new one" : "Generate the webhook secret first (Settings → Messaging)");
+  const unsafe = await resolvedUrlProblem(config.outboundUrl);
+  if (unsafe) return fail(`Outbound URL refused: ${unsafe}`);
   const payload = JSON.stringify({
     event: "message.outbound",
     messageId: req.messageId,
@@ -185,13 +200,16 @@ async function sendViaInboxWebhook(req: DeliveryRequest, config: IntegrationConf
   try {
     const res = await timedFetch(config.outboundUrl, {
       method: "POST",
+      // A redirect could point anywhere (including the server's own network): never follow one.
+      redirect: "manual",
       headers: {
         "content-type": "application/json",
         "x-clinicmind-event": "message.outbound",
-        ...(secret ? { [SIGNATURE_HEADER]: signBody(secret, payload) } : {}),
+        [SIGNATURE_HEADER]: signBody(secret, payload),
       },
       body: payload,
     });
+    if (res.status >= 300 && res.status < 400) return fail(`HTTP ${res.status}: redirects are not followed`);
     if (!res.ok) return fail(`HTTP ${res.status}`);
     const json = (await res.json().catch(() => null)) as { id?: string; externalId?: string } | null;
     return { delivery: "SENT", externalId: json?.externalId ?? json?.id ?? null, failedReason: null, provider: "inbox_webhook" };

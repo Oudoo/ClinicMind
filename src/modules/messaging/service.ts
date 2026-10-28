@@ -1,12 +1,22 @@
-import type { ObjectionTag, Prisma } from "@prisma/client";
+import type { ChannelType, ObjectionTag, Prisma } from "@prisma/client";
 import { z } from "zod";
 import { db, notDeleted } from "@/lib/db";
 import { audit } from "@/lib/audit";
 import { TenantScopeError, requireTenantPatient, requireTenantUser } from "@/lib/tenant-scope";
 import { zText } from "@/lib/validation";
 import { CHANNELS, OBJECTION_TAGS } from "@/modules/crm/shared";
-import { CONVERSATION_STATUSES, INBOX_FILTERS, type ConversationRowDTO, type ConversationThreadDTO, type InboxCountsDTO, type MessageDTO } from "./dto";
+import {
+  CONVERSATION_STATUSES,
+  INBOX_FILTERS,
+  type ConversationRowDTO,
+  type ConversationThreadDTO,
+  type DeliveryModeKey,
+  type InboxCountsDTO,
+  type MessageDTO,
+} from "./dto";
 import { sendPatientMessage } from "./outbound";
+import { unfilledPlaceholders } from "./placeholders";
+import { getIntegration, isProvider } from "./provider";
 import { templateContext } from "./templates";
 
 /**
@@ -37,8 +47,15 @@ export const ConversationListQuery = z.object({
 export type ConversationListFilter = z.infer<typeof ConversationListQuery>;
 
 export const ReplyInput = z.object({
-  body: zText(4000).min(1, "Write a message first"),
-  templateKey: z.preprocess(blankToUndefined, zText(80).optional()),
+  body: zText(4000)
+    .min(1, "Write a message first")
+    .superRefine((body, ctx) => {
+      // A patient must never receive "{{date}}": the receptionist fills what the template could not.
+      const left = unfilledPlaceholders(body);
+      if (left.length) ctx.addIssue({ code: "custom", message: `Replace ${left.map((p) => `{{${p}}}`).join(", ")} before sending` });
+    }),
+  /** The template the reply started from; blank or null means none. */
+  templateKey: z.preprocess((v) => (v === null ? undefined : blankToUndefined(v)), zText(80).optional()),
 });
 
 export const ConversationPatchInput = z.object({
@@ -175,14 +192,32 @@ export async function inboxCounts(tenantId: string): Promise<InboxCountsDTO> {
   return { open, waitingClinic, waitingPatient, closed, unread };
 }
 
-const MAX_THREAD_MESSAGES = 300;
+export const MAX_THREAD_MESSAGES = 300;
+
+/** How replies on `channel` are delivered for the tenant right now (see provider.ts). */
+export async function deliveryModeFor(tenantId: string, channel: ChannelType): Promise<DeliveryModeKey> {
+  const integration = await getIntegration(tenantId, channel).catch(() => null);
+  if (!integration?.enabled || !isProvider(integration.provider) || integration.provider === "manual") return "logged";
+  return integration.provider;
+}
 
 export async function getConversation(tenantId: string, id: string): Promise<ConversationThreadDTO | null> {
   const row = await db.conversation.findFirst({ where: { id, tenantId }, include: rowInclude });
   if (!row) return null;
-  const messages = await db.message.findMany({ where: { tenantId, conversationId: id }, orderBy: { createdAt: "asc" }, take: MAX_THREAD_MESSAGES });
-  const [staff, vars] = await Promise.all([userNames(tenantId, [row.assignedToId, ...messages.map((m) => m.authorId)]), templateContext(tenantId, id)]);
-  const unread = messages.filter((m) => m.direction === "INBOUND" && !m.readAt).length;
+  // The latest messages, oldest first: a long thread shows its newest part, not its first 300 lines.
+  const latest = await db.message.findMany({
+    where: { tenantId, conversationId: id },
+    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+    take: MAX_THREAD_MESSAGES + 1,
+  });
+  const truncated = latest.length > MAX_THREAD_MESSAGES;
+  const messages = latest.slice(0, MAX_THREAD_MESSAGES).reverse();
+  const [staff, vars, deliveryMode, unread] = await Promise.all([
+    userNames(tenantId, [row.assignedToId, ...messages.map((m) => m.authorId)]),
+    templateContext(tenantId, id),
+    deliveryModeFor(tenantId, row.channel),
+    db.message.count({ where: { tenantId, conversationId: id, direction: "INBOUND", readAt: null } }),
+  ]);
   const dto: MessageDTO[] = messages.map((m) => ({
     id: m.id,
     direction: m.direction,
@@ -196,7 +231,7 @@ export async function getConversation(tenantId: string, id: string): Promise<Con
     readAt: m.readAt?.toISOString() ?? null,
     createdAt: m.createdAt.toISOString(),
   }));
-  return { ...toRow(row, unread, staff), messages: dto, templateContext: vars };
+  return { ...toRow(row, unread, staff), messages: dto, truncated, templateContext: vars, deliveryMode };
 }
 
 // ── Writes ───────────────────────────────────────────────────────────────────

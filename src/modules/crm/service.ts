@@ -5,8 +5,8 @@ import { audit } from "@/lib/audit";
 import { TenantScopeError, requireTenantPatient, requireTenantUser } from "@/lib/tenant-scope";
 import { zDateTime, zOptionalText, zText } from "@/lib/validation";
 import { endOfDayInTz, formatDateInTz, fromDateKey, startOfDayInTz } from "@/lib/time";
-import { listTreatments, requireTenantTreatment } from "@/modules/treatments/service";
-import { createAppointment, getTenantTimezone } from "@/modules/appointments/service";
+import { listTreatments, requireTenantTreatment, treatmentNames } from "@/modules/treatments/service";
+import { AppointmentConflictError, createAppointment, findConflicts, getTenantTimezone } from "@/modules/appointments/service";
 import { notify } from "@/modules/notifications/service";
 import type { BoardColumnDTO, CampaignDTO, CostImportPreviewDTO, FollowUpDTO, LeadCardDTO } from "./dto";
 import {
@@ -280,7 +280,7 @@ async function requireCampaign(tenantId: string, id: string, client: Client = db
 }
 
 async function requireConversation(tenantId: string, id: string, client: Client = db) {
-  const row = await client.conversation.findFirst({ where: { id, tenantId }, select: { id: true, leadId: true } });
+  const row = await client.conversation.findFirst({ where: { id, tenantId }, select: { id: true, leadId: true, contactPhone: true } });
   if (!row) throw new TenantScopeError("conversation", id);
   return row;
 }
@@ -471,7 +471,9 @@ export async function createLead(tenantId: string, rawInput: unknown, actor: Act
   const treatments = await checkInterests(tenantId, input.interests);
   if (input.campaignId) await requireCampaign(tenantId, input.campaignId);
   if (input.ownerId) await requireTenantUser(tenantId, input.ownerId);
-  if (input.conversationId) await requireConversation(tenantId, input.conversationId);
+  const thread = input.conversationId ? await requireConversation(tenantId, input.conversationId) : null;
+  // A lead made from an inbox thread keeps the thread's number unless another is typed.
+  const phone = input.phone ?? thread?.contactPhone ?? null;
 
   const now = new Date();
   const lead = await db.$transaction(async (tx) => {
@@ -479,8 +481,8 @@ export async function createLead(tenantId: string, rawInput: unknown, actor: Act
       data: {
         tenantId,
         fullName: input.fullName,
-        phone: input.phone ?? null,
-        whatsapp: input.whatsapp ?? input.phone ?? null,
+        phone,
+        whatsapp: input.whatsapp ?? phone,
         email: input.email ?? null,
         source: input.source,
         campaignId: input.campaignId ?? null,
@@ -511,19 +513,24 @@ export async function createLead(tenantId: string, rawInput: unknown, actor: Act
     after: { ...leadSnapshot(lead), via: opts.via ?? "staff" },
   });
 
+  // Awaited (the request is not done until the desk is told), but a failed
+  // notification never undoes or fails the lead itself.
   const interestNames = input.interests.map((k) => treatments.get(k)?.name ?? k);
-  // Awaited (errors swallowed) so the lead is never reported created before reception is told.
-  await notify(tenantId, {
-    kind: "LEAD_NEW",
-    title: `New lead: ${lead.fullName}`,
-    body: [SOURCE_LABELS[lead.source], interestNames.join(", ")].filter(Boolean).join(" · "),
-    href: `/dashboard/leads/${lead.id}`,
-    entity: "Lead",
-    entityId: lead.id,
-    roles: ["RECEPTIONIST"],
-    userIds: lead.ownerId ? [lead.ownerId] : [],
-    excludeUserId: actor.id ?? null,
-  }).catch((err) => console.error("[crm] LEAD_NEW notification failed", err));
+  try {
+    await notify(tenantId, {
+      kind: "LEAD_NEW",
+      title: `New lead: ${lead.fullName}`,
+      body: [SOURCE_LABELS[lead.source], interestNames.join(", ")].filter(Boolean).join(" · "),
+      href: `/dashboard/leads/${lead.id}`,
+      entity: "Lead",
+      entityId: lead.id,
+      roles: ["RECEPTIONIST"],
+      userIds: lead.ownerId ? [lead.ownerId] : [],
+      excludeUserId: actor.id ?? null,
+    });
+  } catch (err) {
+    console.error("[crm] LEAD_NEW notification failed", err);
+  }
 
   const owners = await userNames(tenantId, [lead.ownerId]);
   return toCard(lead, owners);
@@ -657,6 +664,8 @@ export async function convertLead(tenantId: string, id: string, rawInput: unknow
   const lead = await requireLead(tenantId, id);
   if (lead.patientId) throw new LeadStateError("already_converted", "This lead is already linked to a patient.");
   if (input.patientId) await requireTenantPatient(tenantId, input.patientId);
+  const names = await treatmentNames(tenantId);
+  const interestLine = lead.interests.map((k) => names.get(k) ?? k).join(", ");
 
   const { patient, created } = await db.$transaction(async (tx) => {
     let patientId = input.patientId ?? null;
@@ -692,7 +701,7 @@ export async function convertLead(tenantId: string, id: string, rawInput: unknow
         patientId,
         kind: "LEAD",
         title: `Came in as a lead (${SOURCE_LABELS[lead.source]})`,
-        body: lead.interests.length ? `Interested in: ${lead.interests.join(", ")}` : null,
+        body: interestLine ? `Interested in: ${interestLine}` : null,
         refId: lead.id,
         occurredAt: lead.firstTouchAt,
       },
@@ -727,6 +736,12 @@ export async function bookConsultation(tenantId: string, id: string, rawInput: u
   await requireTenantUser(tenantId, input.doctorId);
 
   if (!lead.patientId) {
+    // Look before converting: a slot that is already taken must not leave a
+    // brand-new patient record behind. The booking re-checks under its lock.
+    if (!input.allowWaitlist) {
+      const taken = await findConflicts(tenantId, { doctorId: input.doctorId, room: input.room ?? null, startsAt: input.startsAt, endsAt: input.endsAt });
+      if (taken.length) throw new AppointmentConflictError(taken);
+    }
     await convertLead(tenantId, id, {}, actor);
     lead = await requireLead(tenantId, id);
   }
@@ -1101,6 +1116,39 @@ export async function addCampaignCost(tenantId: string, campaignId: string, rawI
   return cost;
 }
 
+/**
+ * Cells of one CSV line: comma, semicolon or tab separated; a double-quoted
+ * cell may contain separators (`"12,000"`) and doubled quotes. Pure.
+ */
+export function splitCsvLine(line: string): string[] {
+  const cells: string[] = [];
+  let cell = "";
+  let quoted = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i]!;
+    if (quoted) {
+      if (ch === '"' && line[i + 1] === '"') {
+        cell += '"';
+        i += 1;
+      } else if (ch === '"') {
+        quoted = false;
+      } else {
+        cell += ch;
+      }
+    } else if (ch === '"' && cell.trim() === "") {
+      quoted = true;
+      cell = "";
+    } else if (ch === "," || ch === ";" || ch === "\t") {
+      cells.push(cell.trim());
+      cell = "";
+    } else {
+      cell += ch;
+    }
+  }
+  cells.push(cell.trim());
+  return cells;
+}
+
 /** Parse `periodStart,periodEnd,amount` rows (a header line and blank lines are skipped). Pure. */
 export function parseCostCsv(text: string): { rows: { line: number; periodStart: string; periodEnd: string; amount: number }[]; errors: { line: number; message: string }[] } {
   const rows: { line: number; periodStart: string; periodEnd: string; amount: number }[] = [];
@@ -1110,7 +1158,7 @@ export function parseCostCsv(text: string): { rows: { line: number; periodStart:
     const line = i + 1;
     const trimmed = raw.trim();
     if (!trimmed) return;
-    const cells = trimmed.split(/[,;\t]/).map((c) => c.trim().replace(/^"|"$/g, ""));
+    const cells = splitCsvLine(trimmed);
     if (i === 0 && /period|start|amount|cost/i.test(trimmed) && !/^\d/.test(cells[0] ?? "")) return; // header
     if (cells.length < 3) {
       errors.push({ line, message: "Expected three columns: periodStart,periodEnd,amount" });
@@ -1152,6 +1200,18 @@ export async function importCampaignCosts(tenantId: string, campaignId: string, 
     after: { rows: result.count, total: rows.reduce((s, r) => s + r.amount, 0) },
   });
   return { rows, errors, imported: result.count };
+}
+
+/** The four numbers above the leads page: open pipeline, new this week, won this month, overdue follow-ups. */
+export async function leadOverview(tenantId: string, now = new Date()) {
+  const live = { tenantId, ...notDeleted };
+  const [open, newThisWeek, wonThisMonth, overdue] = await db.$transaction([
+    db.lead.count({ where: { ...live, stage: { notIn: ["WON", "LOST"] } } }),
+    db.lead.count({ where: { ...live, createdAt: { gte: new Date(now.getTime() - 7 * 24 * 3_600_000) } } }),
+    db.lead.count({ where: { ...live, wonAt: { gte: new Date(now.getTime() - 30 * 24 * 3_600_000) } } }),
+    db.leadFollowUp.count({ where: { tenantId, doneAt: null, dueAt: { lt: now }, lead: { ...notDeleted, stage: { not: "LOST" } } } }),
+  ]);
+  return { open, newThisWeek, wonThisMonth, overdue };
 }
 
 // ── Lookups for pickers ──────────────────────────────────────────────────────

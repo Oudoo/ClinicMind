@@ -98,9 +98,28 @@ export interface TemplateVarsDTO {
   link: string;
 }
 
+/**
+ * How a reply on the thread's channel leaves the building: through WhatsApp
+ * Cloud, through the clinic's inbox webhook, or `logged` (no channel
+ * connected: written to the record only).
+ */
+export type DeliveryModeKey = "logged" | "whatsapp_cloud" | "inbox_webhook";
+
+export const DELIVERY_MODE_LABELS: Record<DeliveryModeKey, string> = {
+  logged: "No channel connected: replies are logged on the record",
+  whatsapp_cloud: "Replies go out through the WhatsApp Cloud API",
+  inbox_webhook: "Replies go out through the clinic's inbox webhook",
+};
+
+/** WhatsApp accepts free-form replies for this long after the patient's last message. */
+export const WHATSAPP_WINDOW_HOURS = 24;
+
 export interface ConversationThreadDTO extends ConversationRowDTO {
   messages: MessageDTO[];
+  /** True when older messages exist than the ones returned. */
+  truncated: boolean;
   templateContext: TemplateVarsDTO;
+  deliveryMode: DeliveryModeKey;
 }
 
 export interface TemplateDTO {

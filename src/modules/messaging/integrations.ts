@@ -7,6 +7,7 @@ import { zText } from "@/lib/validation";
 import type { IntegrationStatusDTO } from "./dto";
 import { PROVIDERS, configOf, generateWebhookSecret, isProvider, type IntegrationConfig } from "./provider";
 import { sendPatientMessage } from "./outbound";
+import { outboundUrlProblem } from "./url-guard";
 
 /**
  * The tenant's messaging connection (one ChannelIntegration row for WHATSAPP):
@@ -24,7 +25,18 @@ const blankToUndefined = (v: unknown) => (typeof v === "string" && v.trim() === 
 export const IntegrationInput = z.object({
   provider: z.enum(PROVIDERS),
   phoneNumberId: z.preprocess(blankToUndefined, z.string().trim().regex(/^[0-9]{6,32}$/, "Digits only").optional()),
-  outboundUrl: z.preprocess(blankToUndefined, z.string().trim().url().max(500).refine((u) => /^https?:\/\//.test(u), "Must be an http(s) URL").optional()),
+  outboundUrl: z.preprocess(
+    blankToUndefined,
+    z
+      .string()
+      .trim()
+      .max(500)
+      .superRefine((u, ctx) => {
+        const problem = outboundUrlProblem(u);
+        if (problem) ctx.addIssue({ code: "custom", message: problem });
+      })
+      .optional(),
+  ),
   enabled: z.boolean().optional(),
 });
 export type IntegrationInput = z.input<typeof IntegrationInput>;
@@ -35,14 +47,28 @@ export function inboundWebhookUrl(tenantSlug: string): string {
   return `${(env.PUBLIC_URL ?? env.APP_URL).replace(/\/$/, "")}/api/integrations/messaging/inbound/${tenantSlug}`;
 }
 
-export async function getIntegrationStatus(tenantId: string, tenantSlug: string): Promise<IntegrationStatusDTO> {
+/** Scheme and host only: a webhook URL's path or query may carry the receiver's own token. */
+function redactUrl(url: string): string {
+  try {
+    const u = new URL(url);
+    return `${u.protocol}//${u.host}/…`;
+  } catch {
+    return "…";
+  }
+}
+
+/**
+ * The connection as the settings page shows it (never the secret). `redact`
+ * (staff who cannot manage the tenant) shortens the outbound URL to its host.
+ */
+export async function getIntegrationStatus(tenantId: string, tenantSlug: string, opts: { redact?: boolean } = {}): Promise<IntegrationStatusDTO> {
   const row = await db.channelIntegration.findUnique({ where: { tenantId_channel: { tenantId, channel: "WHATSAPP" } } });
   const config = configOf(row?.config);
   return {
     provider: row && isProvider(row.provider) ? row.provider : "manual",
     enabled: row?.enabled ?? false,
     phoneNumberId: config.phoneNumberId ?? null,
-    outboundUrl: config.outboundUrl ?? null,
+    outboundUrl: config.outboundUrl ? (opts.redact ? redactUrl(config.outboundUrl) : config.outboundUrl) : null,
     secretPrefix: row?.secretPrefix ?? null,
     hasSecret: Boolean(row?.secretHash),
     lastInboundAt: row?.lastInboundAt?.toISOString() ?? null,

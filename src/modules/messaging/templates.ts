@@ -8,26 +8,17 @@ import { zOptionalText, zText } from "@/lib/validation";
 import { getTenantTimezone } from "@/modules/appointments/service";
 import { CHANNELS } from "@/modules/crm/shared";
 import type { TemplateDTO, TemplateVarsDTO } from "./dto";
+import { TEMPLATE_PLACEHOLDERS } from "./placeholders";
 
 /**
  * Reply templates for the reception inbox. A template body carries
  * `{{name}}`, `{{clinic}}`, `{{doctor}}`, `{{date}}` and `{{link}}`
  * placeholders that the inbox fills from the thread's context when the
  * template is inserted into the reply box; anything it cannot fill stays
- * visible so the receptionist completes it.
+ * visible so the receptionist completes it (a reply that still carries one
+ * is refused, see service.ts).
  */
-export const TEMPLATE_PLACEHOLDERS = ["name", "clinic", "doctor", "date", "link"] as const;
-export type TemplatePlaceholder = (typeof TEMPLATE_PLACEHOLDERS)[number];
-
-export type TemplateVars = Partial<Record<TemplatePlaceholder, string | null | undefined>>;
-
-/** Replace every `{{ key }}` whose value is known; unknown or empty ones are left in place. */
-export function renderTemplate(body: string, vars: TemplateVars): string {
-  return body.replace(/\{\{\s*([a-zA-Z_]+)\s*\}\}/g, (whole, key: string) => {
-    const value = vars[key as TemplatePlaceholder];
-    return value ? String(value) : whole;
-  });
-}
+export { TEMPLATE_PLACEHOLDERS, renderTemplate, unfilledPlaceholders, type TemplatePlaceholder, type TemplateVars } from "./placeholders";
 
 export interface Actor {
   id?: string | null;
@@ -35,75 +26,24 @@ export interface Actor {
   ip?: string | null;
 }
 
-export interface DefaultTemplate {
-  key: string;
-  name: string;
-  language: "ar" | "en";
-  category: string;
-  body: string;
-}
-
-/** The templates every demo clinic starts with (seeded; owners edit them). */
-export const DEFAULT_TEMPLATES: readonly DefaultTemplate[] = [
-  {
-    key: "booking-confirmation-ar",
-    name: "Booking confirmation (AR)",
-    language: "ar",
-    category: "booking",
-    body: "أهلاً {{name}} 👋 تم تأكيد حجزك في {{clinic}} مع {{doctor}} يوم {{date}}. لو احتجت تغيير الميعاد ابعتلنا هنا وإحنا نظبطه.",
-  },
-  {
-    key: "booking-confirmation-en",
-    name: "Booking confirmation (EN)",
-    language: "en",
-    category: "booking",
-    body: "Hi {{name}}, your appointment at {{clinic}} with {{doctor}} is confirmed for {{date}}. Reply here if you need to change the time.",
-  },
-  {
-    key: "price-reply-ar",
-    name: "Price reply (AR)",
-    language: "ar",
-    category: "price",
-    body: "أهلاً {{name}} 🌿 السعر النهائي بيتحدد بعد الكشف لأنه بيعتمد على حالتك، لكن نقدر نبعتلك نطاق الأسعار دلوقتي. تحب نحجزلك استشارة مع {{doctor}}؟",
-  },
-  {
-    key: "price-reply-en",
-    name: "Price reply (EN)",
-    language: "en",
-    category: "price",
-    body: "Hi {{name}}, the final price is confirmed at the consultation because it depends on your case, but we can share the price range now. Shall we book you a consultation with {{doctor}}?",
-  },
-  {
-    key: "follow-up-nudge-ar",
-    name: "Follow-up nudge (AR)",
-    language: "ar",
-    category: "follow-up",
-    body: "أهلاً {{name}}، معاك {{clinic}}. حابين نطمن إن كل حاجة واضحة بخصوص استفسارك. لو عندك أي سؤال أو حابب تحجز، إحنا هنا 🙏",
-  },
-  {
-    key: "follow-up-nudge-en",
-    name: "Follow-up nudge (EN)",
-    language: "en",
-    category: "follow-up",
-    body: "Hi {{name}}, this is {{clinic}}. Just checking whether you have any questions about your enquiry — happy to help or to book you in whenever suits you.",
-  },
-  {
-    key: "intake-link-ar",
-    name: "Intake link (AR)",
-    language: "ar",
-    category: "intake",
-    body: "أهلاً {{name}} 🙌 قبل زيارتك يوم {{date}}، من فضلك املأ نموذج البيانات من هنا: {{link}} — بياخد دقيقتين وبيوفر وقتك في العيادة.",
-  },
-  {
-    key: "intake-link-en",
-    name: "Intake link (EN)",
-    language: "en",
-    category: "intake",
-    body: "Hi {{name}}, before your visit on {{date}} please fill in your details here: {{link}} — it takes two minutes and saves time at the clinic.",
-  },
-];
+export { DEFAULT_TEMPLATES, type DefaultTemplate } from "./default-templates";
 
 const blankToUndefined = (v: unknown) => (typeof v === "string" && v.trim() === "" ? undefined : v);
+
+/** A template body may only use the placeholders the inbox knows how to fill. */
+const zTemplateBody = zText(2000)
+  .min(1, "Body is required")
+  .superRefine((body, ctx) => {
+    const unknown = [...body.matchAll(/\{\{\s*([^{}]*?)\s*\}\}/g)]
+      .map((m) => m[1]!.toLowerCase())
+      .filter((key) => !(TEMPLATE_PLACEHOLDERS as readonly string[]).includes(key));
+    if (unknown.length) {
+      ctx.addIssue({
+        code: "custom",
+        message: `Unknown placeholder {{${unknown[0]}}}: use ${TEMPLATE_PLACEHOLDERS.map((p) => `{{${p}}}`).join(", ")}`,
+      });
+    }
+  });
 
 export const TemplateInput = z.object({
   key: z
@@ -115,7 +55,7 @@ export const TemplateInput = z.object({
     .regex(/^[a-z0-9][a-z0-9-]*$/, "Use letters, digits and dashes"),
   name: zText(120).min(1, "Name is required"),
   language: z.enum(["ar", "en"]).default("ar"),
-  body: zText(2000).min(1, "Body is required"),
+  body: zTemplateBody,
   category: zOptionalText(40),
   channel: z.preprocess(blankToUndefined, z.enum(CHANNELS).optional()),
   active: z.boolean().default(true),
@@ -125,7 +65,7 @@ export type TemplateInput = z.input<typeof TemplateInput>;
 export const TemplateUpdateInput = z.object({
   name: zText(120).min(1).optional(),
   language: z.enum(["ar", "en"]).optional(),
-  body: zText(2000).min(1).optional(),
+  body: zTemplateBody.optional(),
   category: z.preprocess((v) => (typeof v === "string" && v.trim() === "" ? null : v), zText(40).nullable().optional()),
   channel: z.preprocess((v) => (typeof v === "string" && v.trim() === "" ? null : v), z.enum(CHANNELS).nullable().optional()),
   active: z.boolean().optional(),

@@ -42,12 +42,11 @@ export async function sendPatientMessage(tenantId: string, input: OutboundMessag
   const channel = input.channel ?? "WHATSAPP";
   const phone = input.phone ? normalisePhone(input.phone) : null;
 
+  const threadSelect = { id: true, contactPhone: true, patientId: true, leadId: true } as const;
   let conversation: { id: string; contactPhone: string | null; patientId: string | null; leadId: string | null } | null = null;
+  let createdConversation = false;
   if (input.conversationId) {
-    conversation = await db.conversation.findFirst({
-      where: { id: input.conversationId, tenantId },
-      select: { id: true, contactPhone: true, patientId: true, leadId: true },
-    });
+    conversation = await db.conversation.findFirst({ where: { id: input.conversationId, tenantId }, select: threadSelect });
   }
   if (!conversation && (input.patientId || phone)) {
     conversation = await db.conversation.findFirst({
@@ -57,7 +56,7 @@ export async function sendPatientMessage(tenantId: string, input: OutboundMessag
         ...(input.patientId ? { patientId: input.patientId } : { contactPhone: phone }),
       },
       orderBy: { updatedAt: "desc" },
-      select: { id: true, contactPhone: true, patientId: true, leadId: true },
+      select: threadSelect,
     });
   }
   if (!conversation) {
@@ -87,8 +86,9 @@ export async function sendPatientMessage(tenantId: string, input: OutboundMessag
         locale: patient?.language ?? "ar",
         status: "WAITING_ON_PATIENT",
       },
-      select: { id: true, contactPhone: true, patientId: true, leadId: true },
+      select: threadSelect,
     });
+    createdConversation = true;
   }
 
   const author = input.author ?? (input.authorId ? "HUMAN" : "SYSTEM");
@@ -118,6 +118,11 @@ export async function sendPatientMessage(tenantId: string, input: OutboundMessag
   });
 
   const now = new Date();
+  // A reply (staff or AI) hands the turn to the patient and reopens a closed
+  // thread. An automated message (reminder, concierge step, test) does not:
+  // a question the clinic still owes an answer to stays "waiting on clinic",
+  // and a closed thread stays closed until the patient writes back.
+  const answers = author !== "SYSTEM" || createdConversation;
   await db.$transaction([
     db.message.update({
       where: { id: message.id },
@@ -125,11 +130,15 @@ export async function sendPatientMessage(tenantId: string, input: OutboundMessag
     }),
     db.conversation.update({
       where: { id: conversation.id },
-      data: { lastOutboundAt: now, updatedAt: now, status: "WAITING_ON_PATIENT", closedAt: null },
+      data: { lastOutboundAt: now, updatedAt: now, ...(answers ? { status: "WAITING_ON_PATIENT" as const, closedAt: null } : {}) },
     }),
   ]);
   if (conversation.leadId && author === "HUMAN") {
-    db.lead.updateMany({ where: { id: conversation.leadId, tenantId }, data: { lastContactAt: now } }).catch(() => undefined);
+    try {
+      await db.lead.updateMany({ where: { id: conversation.leadId, tenantId }, data: { lastContactAt: now } });
+    } catch (err) {
+      console.error("[messaging] could not stamp the lead's last contact", err);
+    }
   }
 
   if (result.delivery === "LOGGED") {
