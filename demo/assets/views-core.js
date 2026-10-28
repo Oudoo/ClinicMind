@@ -75,7 +75,7 @@
     const t = C.tenantById(u.tenantId);
     return authCard({
       title: inv.kind === "reset" ? "Choose a new password" : `Welcome to ${t.name}`,
-      description: `${inv.kind === "reset" ? "Set a new password for" : "Choose a password for"} <span class="font-mono">${esc(u.email)}</span>. At least 12 characters.`,
+      descriptionHtml: `${inv.kind === "reset" ? "Set a new password for" : "Choose a password for"} <span class="font-mono">${esc(u.email)}</span>. At least 12 characters.`,
       body: `<form data-form="set-password" class="space-y-4" novalidate><input type="hidden" name="token" value="${esc(token)}"><div id="pw-error"></div>${field("Password", `<input id="password" name="password" type="password" class="input" autocomplete="new-password" required>`, null, "password")}${field("Confirm password", `<input id="confirm" name="confirm" type="password" class="input" autocomplete="new-password" required>`, null, "confirm")}<button type="submit" class="btn btn-primary w-full">${icon("check")} ${inv.kind === "reset" ? "Set password" : "Activate my account"}</button></form>`,
       brand: t && t.id !== "ten-platform" ? { name: (t.branding && t.branding.productName) || t.name, logoUrl: t.branding && t.branding.logoUrl } : null,
     });

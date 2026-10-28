@@ -15,6 +15,8 @@ const InviteInput = z.object({
   fullName: z.string().trim().min(1).max(120).optional(),
   role: z.enum(["SUPER_ADMIN", "CLINIC_OWNER", "DOCTOR", "NURSE", "RECEPTIONIST", "ASSISTANT"]),
   clinicId: z.string().optional(),
+  /** Defaults to true for doctors; the owner sets it for anyone else who signs clinical records. */
+  isClinician: z.boolean().optional(),
 });
 
 const userSelect = {
@@ -24,6 +26,7 @@ const userSelect = {
   role: true,
   status: true,
   clinicId: true,
+  isClinician: true,
   createdAt: true,
 } as const;
 
@@ -84,6 +87,7 @@ export async function POST(req: Request) {
         fullName: input.fullName,
         role: input.role,
         status: "INVITED",
+        isClinician: input.isClinician ?? input.role === "DOCTOR",
       },
       select: userSelect,
     });
@@ -103,7 +107,7 @@ export async function POST(req: Request) {
       action: "user.invite",
       entity: "User",
       entityId: user.id,
-      after: { email: user.email, role: user.role },
+      after: { email: user.email, role: user.role, isClinician: user.isClinician },
     });
 
     return ok({ user, inviteUrl: invite.url, inviteExpiresAt: invite.expiresAt.toISOString() }, { status: 201 });

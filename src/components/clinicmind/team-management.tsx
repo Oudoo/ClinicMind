@@ -22,6 +22,8 @@ export function InviteMemberForm({ roles }: { roles: readonly string[] }) {
   const [email, setEmail] = useState("");
   const [fullName, setFullName] = useState("");
   const [role, setRole] = useState(roles.includes("DOCTOR") ? "DOCTOR" : roles[0] ?? "");
+  // Doctors sign by default; anyone else only when the owner says so.
+  const [clinician, setClinician] = useState(role === "DOCTOR");
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<{ email: string; url: string } | null>(null);
   const [pending, setPending] = useState(false);
@@ -36,7 +38,7 @@ export function InviteMemberForm({ roles }: { roles: readonly string[] }) {
       const res = await fetch("/api/users", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, fullName: fullName.trim() || undefined, role }),
+        body: JSON.stringify({ email, fullName: fullName.trim() || undefined, role, isClinician: clinician }),
       });
       const data = (await res.json().catch(() => ({}))) as InviteResponse;
       if (res.ok && data.inviteUrl) {
@@ -97,7 +99,10 @@ export function InviteMemberForm({ roles }: { roles: readonly string[] }) {
           <select
             id="invite-role"
             value={role}
-            onChange={(e) => setRole(e.target.value)}
+            onChange={(e) => {
+              setRole(e.target.value);
+              setClinician(e.target.value === "DOCTOR");
+            }}
             className={inputClass}
           >
             {roles.map((r) => (
@@ -108,6 +113,18 @@ export function InviteMemberForm({ roles }: { roles: readonly string[] }) {
           </select>
         </Field>
       </div>
+      <label className="flex items-start gap-2 text-sm">
+        <input
+          type="checkbox"
+          className="mt-0.5 h-4 w-4"
+          checked={clinician}
+          onChange={(e) => setClinician(e.target.checked)}
+        />
+        <span>
+          Clinician
+          <span className="block text-xs text-muted-foreground">May sign consultation notes and procedures (doctors and the physician-owner).</span>
+        </span>
+      </label>
       <Button type="submit" size="sm" disabled={pending || !email}>
         <MailPlus className="h-4 w-4" />
         {pending ? "Inviting…" : "Send invitation"}
@@ -171,5 +188,56 @@ function InviteLink({ url }: { url: string }) {
         {copied ? "Copied" : "Copy"}
       </Button>
     </div>
+  );
+}
+
+/**
+ * The clinician mark in the team table: whether this person may sign
+ * clinical records. Nobody changes their own mark.
+ */
+export function ClinicianToggle({ userId, initial, self }: { userId: string; initial: boolean; self: boolean }) {
+  const router = useRouter();
+  const [value, setValue] = useState(initial);
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function toggle() {
+    if (pending || self) return;
+    setPending(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/users/${userId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isClinician: !value }),
+      });
+      if (res.ok) {
+        setValue(!value);
+        router.refresh();
+      } else {
+        const data = (await res.json().catch(() => ({}))) as { message?: string };
+        setError(data.message ?? "Could not change it.");
+      }
+    } finally {
+      setPending(false);
+    }
+  }
+
+  return (
+    <span className="inline-flex flex-col">
+      <button
+        type="button"
+        role="switch"
+        aria-checked={value}
+        aria-label={value ? "Clinician: may sign clinical records" : "Not a clinician: cannot sign"}
+        onClick={toggle}
+        disabled={pending || self}
+        title={self ? "Another owner or the platform administrator changes your own mark" : undefined}
+        className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors disabled:opacity-60 ${value ? "bg-accent" : "bg-muted"}`}
+      >
+        <span className={`inline-block h-4 w-4 rounded-full bg-card shadow transition-transform ${value ? "translate-x-4" : "translate-x-0.5"}`} />
+      </button>
+      {error ? <span className="mt-1 text-xs text-danger">{error}</span> : null}
+    </span>
   );
 }

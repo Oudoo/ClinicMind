@@ -4,7 +4,7 @@ import { env } from "@/lib/env";
 import { Card, SectionTitle, Badge } from "@/components/ui/primitives";
 import { EmbedInstructions } from "@/components/clinicmind/embed-instructions";
 import { EmbedSecretCard } from "@/components/clinicmind/embed-secret-card";
-import { InviteMemberForm, ResendInviteButton } from "@/components/clinicmind/team-management";
+import { ClinicianToggle, InviteMemberForm, ResendInviteButton } from "@/components/clinicmind/team-management";
 import { BrandingForm } from "@/components/platform/tenant-admin";
 import { brandingOf } from "@/modules/platform/service";
 import { can, grantableRoles } from "@/lib/auth/rbac";
@@ -40,7 +40,7 @@ export default async function SettingsPage() {
     ? await db.user.findMany({
         where: { tenantId: ctx.tenantId, deletedAt: null },
         orderBy: { createdAt: "asc" },
-        select: { id: true, email: true, fullName: true, role: true, status: true, createdAt: true },
+        select: { id: true, email: true, fullName: true, role: true, status: true, isClinician: true, createdAt: true },
       })
     : [];
 
@@ -114,6 +114,7 @@ export default async function SettingsPage() {
                 <th className="py-2 pr-4 data-label font-normal">Member</th>
                 <th className="py-2 pr-4 data-label font-normal">Role</th>
                 <th className="py-2 pr-4 data-label font-normal">Status</th>
+                <th className="py-2 pr-4 data-label font-normal" title="May sign clinical notes and procedures">Clinician</th>
                 <th className="py-2 pr-4 data-label font-normal">Since</th>
                 <th className="py-2 data-label font-normal text-right" />
               </tr>
@@ -132,6 +133,9 @@ export default async function SettingsPage() {
                   </td>
                   <td className="py-2.5 pr-4">
                     <Badge tone={STATUS_TONE[member.status] ?? "default"}>{member.status}</Badge>
+                  </td>
+                  <td className="py-2.5 pr-4">
+                    <ClinicianToggle userId={member.id} initial={member.isClinician} self={member.id === ctx.userId} />
                   </td>
                   <td className="py-2.5 pr-4 font-mono text-xs text-muted-foreground">
                     {formatDate(member.createdAt)}

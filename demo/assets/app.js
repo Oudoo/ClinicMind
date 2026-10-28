@@ -214,7 +214,9 @@ window.CM = (function () {
   }
 
   let dialogState = null;
-  function openDialog({ title, description, body, footer, size = "max-w-lg", onMount }) {
+  function openDialog({ title, description, descriptionHtml, body, footer, size = "max-w-lg", onMount }) {
+    // Descriptions are text (they often carry a patient's or a colleague's name); only trusted markup goes through descriptionHtml.
+    if (descriptionHtml) description = descriptionHtml; else if (description) description = esc(description);
     closeDialog();
     const wrap = document.createElement("div");
     wrap.id = "dialog"; wrap.className = "fixed inset-0 z-50";

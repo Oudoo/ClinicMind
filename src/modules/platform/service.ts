@@ -260,6 +260,7 @@ export async function provisionTenant(input: ProvisionRequest, actor: PlatformAc
         fullName: input.ownerFullName || null,
         role: "CLINIC_OWNER",
         status: "INVITED",
+        isClinician: true,
       },
       select: { id: true, email: true, fullName: true },
     });
@@ -416,7 +417,7 @@ export async function inviteOwner(id: string, input: OwnerInviteRequest, actor: 
     action = "tenant.owner.reinvite";
   } else {
     owner = await db.user.create({
-      data: { tenantId: tenant.id, email, fullName: input.fullName || null, role: "CLINIC_OWNER", status: "INVITED" },
+      data: { tenantId: tenant.id, email, fullName: input.fullName || null, role: "CLINIC_OWNER", status: "INVITED", isClinician: true },
       select: { id: true, email: true, fullName: true, status: true },
     });
     action = "tenant.owner.invite";
