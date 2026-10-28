@@ -7,12 +7,14 @@ import { seedIntake } from "./intake";
 import { seedAppointmentNotes } from "./appointment-notes";
 import { seedReporting } from "./reporting";
 import { seedNotifications } from "./notifications";
+import { seedSafety } from "./safety";
 
 /**
  * The second half of the demo seed: everything the PM round-2 modules need
  * (CRM leads and conversations, procedures and payments, concierge
  * enrolments, intake links, dictated appointment notes, campaign costs,
- * review snapshots, alert rules, notifications). Runs after the core clinic
+ * review snapshots, alert rules, prescribing-safety overrides, notifications).
+ * Runs after the core clinic
  * (staff, patients, appointments, visits) exists; each module reads what it
  * needs from the database and keeps its own deterministic random stream.
  */
@@ -59,6 +61,7 @@ export async function seedRound2(ctx: SeedContext): Promise<void> {
     ["intake", seedIntake],
     ["appointment notes", seedAppointmentNotes],
     ["reporting", seedReporting],
+    ["prescribing safety", seedSafety],
     ["notifications", seedNotifications],
   ];
   for (const [name, fn] of steps) {

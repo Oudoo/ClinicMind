@@ -59,6 +59,12 @@ const NAV: NavItem[] = [
   { href: "/dashboard/settings", label: "Settings", icon: Settings },
 ];
 
+/** Breadcrumb names of pages reached from inside a section rather than the menu. */
+const PAGE_TITLES: [prefix: string, title: string][] = [
+  ["/dashboard/safety", "Safety overrides"],
+  ["/dashboard/notifications", "Notifications"],
+];
+
 /** Shown to platform administrators (SUPER_ADMIN) above the clinic sections. */
 const PLATFORM_NAV: NavItem = { href: "/platform", label: "Platform", icon: Building2 };
 
@@ -92,6 +98,7 @@ export function DashboardShell({
   const visible = NAV.filter((n) => !n.permission || can(user.role as UserRole, n.permission));
   const items = platform ? [PLATFORM_NAV, ...visible] : visible;
   const current = items.find((n) => isActive(pathname, n.href));
+  const title = current?.label ?? PAGE_TITLES.find(([prefix]) => pathname.startsWith(prefix))?.[1] ?? "Overview";
   const [open, setOpen] = useState(false);
 
   // When someone signs out (or in) in another tab, or the browser restores this
@@ -190,7 +197,7 @@ export function DashboardShell({
               </DialogPrimitive.Trigger>
               <span className="hidden truncate font-mono text-xs text-muted-foreground sm:inline">{tenantName}</span>
               <span className="hidden text-muted-foreground sm:inline">/</span>
-              <span className="truncate text-sm font-medium">{current?.label ?? "Overview"}</span>
+              <span className="truncate text-sm font-medium">{title}</span>
             </div>
             <div className="flex items-center gap-1 sm:gap-2">
               <NotificationBell />

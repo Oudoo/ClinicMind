@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState, type KeyboardEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import Link from "next/link";
-import { CalendarCheck, Loader2, Plus, ShieldCheck, Trash2, Unlink, X } from "lucide-react";
+import { CalendarCheck, Loader2, Plus, ShieldAlert, ShieldCheck, Trash2, Unlink, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/dialog";
 import { Alert, Field } from "@/components/ui/field";
@@ -12,15 +12,26 @@ import { Badge, Card, SectionTitle } from "@/components/ui/primitives";
 import { useToast } from "@/components/ui/toast";
 import { apiFetch, ApiError, fieldErrors } from "@/lib/http";
 import { cn, formatDate, formatTime } from "@/lib/utils";
-import { normaliseClinicalTerm } from "@/modules/consultations/normalise";
+import { medicationKey, normaliseClinicalTerm } from "@/modules/consultations/normalise";
+import { findSummaryMentions, rebuildSummary } from "@/modules/consultations/summary";
 import {
   EXTRACTION_LIMITS,
   SUMMARY_MAX_LENGTH,
   type ActiveMedication,
   type AppointmentOption,
   type ClinicalExtraction,
+  type SafetyConflictBody,
+  type SafetyFinding,
   type SignResponse,
 } from "@/modules/consultations/types";
+import {
+  SafetyPanel,
+  overridesFor,
+  stopsResolved,
+  useSafetyCheck,
+  warningSignature,
+} from "./consultation-safety";
+import { SummaryCheck, mentionSignature } from "./consultation-summary-check";
 
 type ListKey = "symptoms" | "diagnoses" | "tests" | "followUps";
 
@@ -62,6 +73,12 @@ export interface ConsultationReviewProps {
  * symptoms / diagnoses / tests / follow-ups, rows for medications, a checklist
  * to stop the patient's current medications, and the visit summary. Nothing
  * is saved until the clinician confirms the signature.
+ *
+ * The prescription is checked live against the patient's record (allergies,
+ * interactions, duplicates, pregnancy, age, dose, conditions): every stop
+ * needs a typed reason and warnings an acknowledgement before the Sign button
+ * unlocks, and the summary may not mention items removed from the draft
+ * unless rewritten or confirmed. The server repeats every check on signing.
  */
 export function ConsultationReview(props: ConsultationReviewProps) {
   const { consultationId, patient, draft, draftSummary, empty, canDiscard, onSigned, onClosed, onNew } = props;
@@ -87,9 +104,20 @@ export function ConsultationReview(props: ConsultationReviewProps) {
   const [activeMedications, setActiveMedications] = useState<ActiveMedication[] | null>(null);
   const [medicationsError, setMedicationsError] = useState<string | null>(null);
   const [signOpen, setSignOpen] = useState(false);
+  /** When the clinician asked to sign: decides whether the linked appointment can be completed (not before its start). */
+  const [signRequestedAt, setSignRequestedAt] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [signed, setSigned] = useState<SignResponse | null>(null);
+  /** Override reasons by finding key ("rule|medication"). */
+  const [reasons, setReasons] = useState<Record<string, string>>({});
+  /** The warnings the clinician acknowledged (their signature), so new warnings need a new tick. */
+  const [acknowledgedSignature, setAcknowledgedSignature] = useState<string | null>(null);
+  /** The summary mismatch the clinician confirmed (its signature). */
+  const [confirmedMentions, setConfirmedMentions] = useState<string | null>(null);
+  /** Findings the server returned with a 409: they win over the live preview for the same prescription. */
+  const [serverSafety, setServerSafety] = useState<{ request: string; findings: SafetyFinding[]; notice: string } | null>(null);
+  const safetyRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -111,12 +139,43 @@ export function ConsultationReview(props: ConsultationReviewProps) {
     () => countEdits(draft, draftSummary, lists, medications, summary),
     [draft, draftSummary, lists, medications, summary],
   );
-  const prescribedNames = useMemo(
-    () => new Set(medications.map((m) => normaliseClinicalTerm(m.name)).filter(Boolean)),
+  const prescribedKeys = useMemo(
+    () => new Set(medications.filter((m) => m.name.trim()).map((m) => medicationKey(m))),
     [medications],
   );
   const blankMedicationRows = medications.filter((m) => !m.name.trim()).length;
   const nothingEntered = LIST_SECTIONS.every((s) => lists[s.key].length === 0) && medications.length === 0;
+
+  const extraction = useMemo(() => toExtraction(lists, medications), [lists, medications]);
+  const safetyRequest = useMemo(
+    () => ({ medications: extraction.medications, diagnoses: extraction.diagnoses, stopMedicationIds: [...stopIds].sort() }),
+    [extraction, stopIds],
+  );
+  const requestKey = JSON.stringify(safetyRequest);
+  const live = useSafetyCheck(consultationId, safetyRequest);
+  const fromServer = serverSafety && serverSafety.request === requestKey ? serverSafety : null;
+  const findings = fromServer ? fromServer.findings : live.findings;
+  const warningsKey = warningSignature(findings);
+  const warningsAcknowledged = warningsKey !== "" && acknowledgedSignature === warningsKey;
+  const stopCount = findings.filter((f) => f.severity === "stop").length;
+  const warningCount = findings.filter((f) => f.severity === "warn").length;
+  const safetyReady = !live.pending && stopsResolved(findings, reasons) && (warningCount === 0 || warningsAcknowledged);
+
+  const trimmedSummary = summary.trim();
+  const mentions = useMemo(
+    () => findSummaryMentions({ draft, signed: extraction, summary: trimmedSummary }),
+    [draft, extraction, trimmedSummary],
+  );
+  const mentionsKey = mentionSignature(mentions);
+  const summaryConfirmed = mentions.length > 0 && confirmedMentions === mentionsKey;
+  const summaryReady = mentions.length === 0 || summaryConfirmed;
+
+  const blockers = [
+    live.pending ? "the safety checks are still running" : null,
+    stopsResolved(findings, reasons) ? null : "give a reason for every stop",
+    warningCount && !warningsAcknowledged ? "confirm you reviewed the warnings" : null,
+    summaryReady ? null : "rewrite the summary or confirm it is correct",
+  ].filter((b): b is string => Boolean(b));
 
   function setList(key: ListKey, items: string[]) {
     setLists((prev) => ({ ...prev, [key]: items }));
@@ -131,20 +190,8 @@ export function ConsultationReview(props: ConsultationReviewProps) {
     });
   }
 
-  function buildExtraction(): ClinicalExtraction {
-    return {
-      symptoms: lists.symptoms,
-      diagnoses: lists.diagnoses,
-      tests: lists.tests,
-      followUps: lists.followUps,
-      medications: medications
-        .filter((m) => m.name.trim())
-        .map((m) => ({
-          name: m.name.trim(),
-          ...(m.dosage.trim() ? { dosage: m.dosage.trim() } : {}),
-          ...(m.frequency.trim() ? { frequency: m.frequency.trim() } : {}),
-        })),
-    };
+  function rewriteSummary() {
+    setSummary(rebuildSummary(extraction, { reason: appointment?.reason }).slice(0, SUMMARY_MAX_LENGTH));
   }
 
   async function sign() {
@@ -154,10 +201,13 @@ export function ConsultationReview(props: ConsultationReviewProps) {
       const result = await apiFetch<SignResponse>(`/api/consultations/${consultationId}/sign`, {
         method: "POST",
         body: {
-          summary: summary.trim(),
-          extraction: buildExtraction(),
+          summary: trimmedSummary,
+          extraction,
           appointmentId: appointment?.id,
           stopMedicationIds: [...stopIds],
+          overrides: overridesFor(findings, reasons),
+          acknowledgedWarnings: warningCount > 0 && warningsAcknowledged,
+          summaryConfirmed,
         },
       });
       setSignOpen(false);
@@ -168,6 +218,20 @@ export function ConsultationReview(props: ConsultationReviewProps) {
       setSignOpen(false);
       if (err instanceof ApiError && err.status === 409 && err.code === "appointment_already_signed") {
         setFormError("That appointment already has a signed visit. Unlink it to sign this consultation on its own.");
+      } else if (err instanceof ApiError && err.status === 409 && (err.code === "safety_stop" || err.code === "safety_warning")) {
+        // The server's findings win over the live preview.
+        const body = err.body as Partial<SafetyConflictBody> | null;
+        setServerSafety({
+          request: requestKey,
+          findings: Array.isArray(body?.findings) ? body.findings : findings,
+          notice:
+            err.code === "safety_stop"
+              ? "Signing was refused: give a reason for every stop below, or change the prescription."
+              : "Signing was refused: review the warnings below and tick “I have reviewed these warnings”.",
+        });
+        safetyRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+      } else if (err instanceof ApiError && err.status === 409 && err.code === "summary_mismatch") {
+        setFormError("The summary still mentions items you removed from the draft: rewrite it from the signed items or confirm it is correct.");
       } else if (err instanceof ApiError && err.status === 409) {
         toast({ title: "This consultation is no longer pending review", tone: "danger" });
         onClosed();
@@ -194,7 +258,13 @@ export function ConsultationReview(props: ConsultationReviewProps) {
     `${lists.diagnoses.length} ${plural(lists.diagnoses.length, "diagnosis", "diagnoses")},`,
     `${signedMedicationCount} ${plural(signedMedicationCount, "medication", "medications")}`,
     stopIds.size ? `and ${stopIds.size} stopped,` : "",
-    appointment ? "with the linked appointment marked completed." : "",
+    appointment
+      ? signRequestedAt !== null && new Date(appointment.startsAt).getTime() > signRequestedAt
+        ? "linked to an appointment that has not started yet, which stays as it is."
+        : "with the linked appointment marked completed."
+      : "",
+    stopCount ? `${stopCount} safety ${plural(stopCount, "stop is", "stops are")} overridden with your reason${plural(stopCount, "", "s")}.` : "",
+    warningCount ? `${warningCount} ${plural(warningCount, "warning", "warnings")} acknowledged.` : "",
     "The visit becomes part of the patient's history and cannot be unsigned.",
   ]
     .filter(Boolean)
@@ -229,7 +299,9 @@ export function ConsultationReview(props: ConsultationReviewProps) {
                 {formatDate(appointment.startsAt)} {formatTime(appointment.startsAt)}
               </span>
               {appointment.reason ? ` — ${appointment.reason}` : ""}
-              <span className="block text-xs text-muted-foreground">Marked completed when you sign.</span>
+              <span className="block text-xs text-muted-foreground">
+                Marked completed when you sign, once its start time has passed.
+              </span>
             </span>
           </span>
           <Button type="button" variant="ghost" size="sm" onClick={() => setAppointment(null)}>
@@ -239,7 +311,8 @@ export function ConsultationReview(props: ConsultationReviewProps) {
         </div>
       ) : null}
 
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+      {/* One column while the review shares the screen with the list (lg), two when there is room. */}
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
         {LIST_SECTIONS.map((section) => (
           <ChipList
             key={section.key}
@@ -260,13 +333,13 @@ export function ConsultationReview(props: ConsultationReviewProps) {
           medications={activeMedications}
           error={medicationsError}
           selected={stopIds}
-          prescribedNames={prescribedNames}
+          prescribedKeys={prescribedKeys}
           onToggle={toggleStop}
         />
         <p className="text-xs text-muted-foreground">
           Ticked medications are stopped when you sign. A current medication that also appears in the
-          prescription above is updated in place — unless it is ticked, in which case the current entry is
-          stopped and a fresh one started.
+          prescription above (same medicine, even under another name or strength) is updated in place —
+          unless it is ticked, in which case the current entry is stopped and a fresh one started.
         </p>
       </div>
 
@@ -294,20 +367,59 @@ export function ConsultationReview(props: ConsultationReviewProps) {
         </DictationField>
       </Field>
 
+      <SummaryCheck
+        summary={trimmedSummary}
+        mentions={mentions}
+        confirmed={summaryConfirmed}
+        onConfirmedChange={(value) => setConfirmedMentions(value ? mentionsKey : null)}
+        onRewrite={rewriteSummary}
+        disabled={busy}
+      />
+
       {blankMedicationRows ? (
         <Alert>
           Every medication needs a name — fill in or remove the{" "}
           {blankMedicationRows === 1 ? "empty row" : `${blankMedicationRows} empty rows`}.
         </Alert>
       ) : null}
+      <div ref={safetyRef} className="scroll-mt-4">
+        <SafetyPanel
+          findings={findings}
+          context={live.context}
+          pending={live.pending && !fromServer}
+          error={live.error}
+          hasMedications={extraction.medications.length > 0}
+          reasons={reasons}
+          onReasonChange={(key, reason) => setReasons((prev) => ({ ...prev, [key]: reason }))}
+          acknowledged={warningsAcknowledged}
+          onAcknowledgedChange={(value) => setAcknowledgedSignature(value ? warningsKey : null)}
+          serverNotice={fromServer?.notice ?? null}
+          disabled={busy}
+        />
+      </div>
+
       {formError ? <Alert>{formError}</Alert> : null}
 
       <div className="flex flex-col-reverse gap-2 border-t border-border pt-4 sm:flex-row sm:items-center sm:justify-between">
         {canDiscard ? <DiscardButton consultationId={consultationId} disabled={busy} onDone={onClosed} /> : <span />}
-        <Button type="button" onClick={() => setSignOpen(true)} disabled={busy || blankMedicationRows > 0}>
-          {busy ? <Loader2 className="animate-spin" /> : <ShieldCheck />}
-          Review complete — sign
-        </Button>
+        <div className="flex flex-col items-stretch gap-1 sm:items-end">
+          <Button
+            type="button"
+            onClick={() => {
+              setSignRequestedAt(Date.now());
+              setSignOpen(true);
+            }}
+            disabled={busy || blankMedicationRows > 0 || !safetyReady || !summaryReady}
+          >
+            {busy ? <Loader2 className="animate-spin" /> : <ShieldCheck />}
+            Review complete — sign
+          </Button>
+          {blockers.length && !busy ? (
+            <p className="text-xs text-muted-foreground sm:text-right" data-testid="sign-blockers">
+              To sign: {blockers.join("; ")}.
+            </p>
+          ) : null}
+        </div>
       </div>
 
       <ConfirmDialog
@@ -362,7 +474,7 @@ function ChipList({
         {items.length ? (
           <ul className="mb-2 flex flex-wrap gap-1.5" aria-label={label}>
             {items.map((item) => (
-              <li key={item}>
+              <li key={item} className="max-w-full">
                 <Chip text={item} onRemove={() => onChange(items.filter((x) => x !== item))} />
               </li>
             ))}
@@ -370,7 +482,8 @@ function ChipList({
         ) : (
           <p className="mb-2 px-1 text-xs text-muted-foreground">None.</p>
         )}
-        <div className="flex gap-2">
+        {/* Full-width rows on phones; the input takes the room it needs beside the button elsewhere. */}
+        <div className="flex flex-col gap-2 sm:flex-row">
           <Input
             id={id}
             value={draft}
@@ -379,13 +492,13 @@ function ChipList({
             disabled={full}
             onChange={(e) => setDraft(e.target.value)}
             onKeyDown={onKeyDown}
-            className="h-9"
+            className="h-9 min-w-0 sm:min-w-[10rem] sm:flex-1"
           />
           <Button
             type="button"
             variant="outline"
             size="sm"
-            className="h-9"
+            className="h-9 w-full sm:w-auto sm:shrink-0"
             onClick={add}
             disabled={!draft.trim() || full}
             aria-label={`Add to ${label}`}
@@ -401,14 +514,14 @@ function ChipList({
 
 export function Chip({ text, onRemove }: { text: string; onRemove?: () => void }) {
   return (
-    <span className="inline-flex max-w-full items-center gap-1 rounded-md bg-accent-muted px-2 py-1 text-xs font-medium text-accent">
-      <span className="truncate">{text}</span>
+    <span className="inline-flex max-w-full items-start gap-1 rounded-md bg-accent-muted px-2 py-1 text-xs font-medium text-accent">
+      <span className="min-w-0 break-words">{text}</span>
       {onRemove ? (
         <button
           type="button"
           onClick={onRemove}
           aria-label={`Remove ${text}`}
-          className="rounded p-0.5 hover:bg-accent/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="shrink-0 rounded p-0.5 hover:bg-accent/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           <X className="h-3 w-3" />
         </button>
@@ -426,7 +539,7 @@ function MedicationEditor({ rows, onChange }: { rows: MedicationRow[]; onChange:
     <fieldset className="space-y-2">
       <legend className="data-label mb-1.5">Medications</legend>
       {rows.length ? (
-        <div className="hidden grid-cols-[2fr_1fr_1fr_2.25rem] gap-2 px-1 sm:grid" aria-hidden="true">
+        <div className={cn("hidden gap-2 px-1 sm:grid lg:hidden xl:grid", MEDICATION_COLUMNS)} aria-hidden="true">
           <span className="data-label">Name</span>
           <span className="data-label">Dosage</span>
           <span className="data-label">Frequency</span>
@@ -436,14 +549,14 @@ function MedicationEditor({ rows, onChange }: { rows: MedicationRow[]; onChange:
         <p className="text-xs text-muted-foreground">No medications in this consultation.</p>
       )}
       {rows.map((row) => (
-        <div key={row.key} className="grid grid-cols-1 gap-2 rounded-lg border border-border p-2 sm:grid-cols-[2fr_1fr_1fr_2.25rem] sm:border-0 sm:p-0">
+        <div key={row.key} className={MEDICATION_ROW}>
           <Input
             aria-label="Medication name"
-            placeholder="Name"
+            placeholder="Name, e.g. Doxycycline 100 mg"
             value={row.name}
             maxLength={EXTRACTION_LIMITS.medicationName}
             onChange={(e) => update(row.key, { name: e.target.value })}
-            className="h-9"
+            className="h-9 min-w-0 lg:col-span-3 xl:col-span-1"
           />
           <Input
             aria-label="Dosage"
@@ -451,7 +564,7 @@ function MedicationEditor({ rows, onChange }: { rows: MedicationRow[]; onChange:
             value={row.dosage}
             maxLength={EXTRACTION_LIMITS.medicationField}
             onChange={(e) => update(row.key, { dosage: e.target.value })}
-            className="h-9"
+            className="h-9 min-w-0"
           />
           <Input
             aria-label="Frequency"
@@ -459,7 +572,7 @@ function MedicationEditor({ rows, onChange }: { rows: MedicationRow[]; onChange:
             value={row.frequency}
             maxLength={EXTRACTION_LIMITS.medicationField}
             onChange={(e) => update(row.key, { frequency: e.target.value })}
-            className="h-9"
+            className="h-9 min-w-0"
           />
           <Button
             type="button"
@@ -492,13 +605,13 @@ function StopMedicationList({
   medications,
   error,
   selected,
-  prescribedNames,
+  prescribedKeys,
   onToggle,
 }: {
   medications: ActiveMedication[] | null;
   error: string | null;
   selected: ReadonlySet<string>;
-  prescribedNames: ReadonlySet<string>;
+  prescribedKeys: ReadonlySet<string>;
   onToggle: (id: string) => void;
 }) {
   if (error) return <Alert tone="info">{error}</Alert>;
@@ -508,7 +621,7 @@ function StopMedicationList({
     <ul className="divide-y divide-border rounded-lg border border-border">
       {medications.map((m) => {
         const checked = selected.has(m.id);
-        const inPrescription = prescribedNames.has(normaliseClinicalTerm(m.name));
+        const inPrescription = prescribedKeys.has(medicationKey(m));
         const details = [m.dosage, m.frequency].filter(Boolean).join(" · ");
         return (
           <li key={m.id}>
@@ -633,9 +746,19 @@ function SignedState({
       {medications.continued.length ? (
         <p className="text-xs text-muted-foreground">Continued unchanged: {medications.continued.join(", ")}</p>
       ) : null}
-      {result.appointmentId ? (
+      {result.safety?.overrides ? (
         <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-          <CalendarCheck className="h-3.5 w-3.5" /> Linked appointment marked completed.
+          <ShieldAlert className="h-3.5 w-3.5 text-warning" />
+          {result.safety.overrides} prescribing-safety {plural(result.safety.overrides, "override", "overrides")} recorded with your
+          {plural(result.safety.overrides, " reason", " reasons")} for the clinic owner's review.
+        </p>
+      ) : null}
+      {result.appointment ? (
+        <p className="flex items-start gap-1.5 text-xs text-muted-foreground" data-testid="signed-appointment">
+          <CalendarCheck className="mt-px h-3.5 w-3.5 shrink-0" />
+          {result.appointment.completed
+            ? "Linked appointment marked completed."
+            : `Linked appointment left as ${result.appointment.status.toLowerCase().replace(/_/g, " ")}${result.appointment.reason ? `: ${result.appointment.reason}` : "."}`}
         </p>
       ) : null}
 
@@ -702,6 +825,32 @@ export function ExtractionChips({ extraction }: { extraction: ClinicalExtraction
     </div>
   );
 }
+
+/** The reviewed extraction as it will be signed (blank medication rows left out). */
+function toExtraction(lists: Record<ListKey, string[]>, medications: MedicationRow[]): ClinicalExtraction {
+  return {
+    symptoms: lists.symptoms,
+    diagnoses: lists.diagnoses,
+    tests: lists.tests,
+    followUps: lists.followUps,
+    medications: medications
+      .filter((m) => m.name.trim())
+      .map((m) => ({
+        name: m.name.trim(),
+        ...(m.dosage.trim() ? { dosage: m.dosage.trim() } : {}),
+        ...(m.frequency.trim() ? { frequency: m.frequency.trim() } : {}),
+      })),
+  };
+}
+
+/**
+ * Medication rows: stacked on phones; name · dosage · frequency · remove in a
+ * row when the review has the width (sm, xl); at lg the review shares the
+ * screen with the list, so the name gets its own line above dosage and frequency.
+ */
+const MEDICATION_COLUMNS = "sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)_2.25rem] xl:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)_2.25rem]";
+const MEDICATION_ROW =
+  "grid grid-cols-1 gap-2 rounded-lg border border-border p-2 sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)_2.25rem] sm:border-0 sm:p-0 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_2.25rem] lg:border lg:p-2 xl:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)_2.25rem] xl:border-0 xl:p-0";
 
 // ── Edit counting ────────────────────────────────────────────────────────────
 

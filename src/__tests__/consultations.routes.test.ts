@@ -20,6 +20,7 @@ import {
   parseClinicalExtraction,
 } from "@/lib/ai/extraction";
 import { STOP_REASON_ON_SIGN } from "@/modules/consultations/service";
+import { rebuildSummary } from "@/modules/consultations/summary";
 import { EXTRACTION_LIMITS } from "@/modules/consultations/types";
 import {
   createTenant,
@@ -128,8 +129,12 @@ describe.skipIf(!dbTestsEnabled)("consultations", () => {
 
     const soon = new Date(Date.now() + 60 * 60 * 1000);
     const later = new Date(soon.getTime() + 30 * 60 * 1000);
+    // Started half an hour ago, so signing may complete it (never before its start time).
+    const started = new Date(Date.now() - 30 * 60 * 1000);
     appointmentA = (
-      await db.appointment.create({ data: { tenantId: a.id, patientId: patientA, startsAt: soon, endsAt: later, reason: "Diabetes review" } })
+      await db.appointment.create({
+        data: { tenantId: a.id, patientId: patientA, startsAt: started, endsAt: new Date(started.getTime() + 60 * 60 * 1000), reason: "Diabetes review" },
+      })
     ).id;
     appointmentA2 = (
       await db.appointment.create({ data: { tenantId: a.id, patientId: patientA2, startsAt: soon, endsAt: later } })
@@ -172,6 +177,7 @@ describe.skipIf(!dbTestsEnabled)("consultations", () => {
         editedByClinician: true,
         addedDiagnoses: ["Type 2 diabetes mellitus"],
         appointmentId: appointmentA,
+        appointment: { id: appointmentA, status: "COMPLETED", completed: true, reason: null },
         medications: {
           started: ["Atorvastatin · 20 mg · at night"],
           adjusted: ["Metformin · 1000 mg · twice daily"],
@@ -540,6 +546,147 @@ describe.skipIf(!dbTestsEnabled)("consultations", () => {
       expect(foreign.status).toBe(404);
       const anonymous = await patientMedications(request(`/api/consultations/patient/${patientA}/medications`), patientParams(patientA));
       expect(anonymous.status).toBe(401);
+    });
+  });
+
+  describe("reconciliation by generic, the signed summary and who may sign", () => {
+    let hairPatient: string;
+    let acnePatient: string;
+    let minoxidilId: string;
+
+    const extractionOf = (medications: { name: string; dosage?: string; frequency?: string }[]) => ({
+      symptoms: [],
+      diagnoses: [],
+      medications,
+      tests: [],
+      followUps: [],
+    });
+
+    beforeAll(async () => {
+      const dob = new Date("1990-01-01T00:00:00Z");
+      hairPatient = (await db.patient.create({ data: { tenantId: a.id, fullName: "Hany Hair", gender: "MALE", dateOfBirth: dob } })).id;
+      acnePatient = (await db.patient.create({ data: { tenantId: a.id, fullName: "Adel Acne", gender: "MALE", dateOfBirth: dob } })).id;
+      minoxidilId = (
+        await db.medication.create({
+          data: { tenantId: a.id, patientId: hairPatient, name: "Minoxidil 5% solution", dosage: "1 ml", frequency: "Twice daily", active: true },
+        })
+      ).id;
+    });
+
+    it("updates the active 'Minoxidil 5% solution' when 'Minoxidil 5%' is signed, instead of duplicating it", async () => {
+      const consultation = await seedConsultation(a.id, hairPatient, doctorA.id, extractionOf([{ name: "Minoxidil 5%", dosage: "2 ml", frequency: "twice daily" }]));
+      // Same medicine under another name: a duplicate-therapy warning to acknowledge first.
+      const refused = await sign(request(`/api/consultations/${consultation.id}/sign`, { cookie: doctorCookie, body: {} }), idParams(consultation.id));
+      expect(refused.status).toBe(409);
+      const conflict = await refused.json();
+      expect(conflict.error).toBe("safety_warning");
+      expect(conflict.findings.map((f: { rule: string }) => f.rule)).toEqual(["duplicate.same-drug"]);
+
+      const res = await sign(request(`/api/consultations/${consultation.id}/sign`, { cookie: doctorCookie, body: { acknowledgedWarnings: true } }), idParams(consultation.id));
+      expect(res.status).toBe(200);
+      const json = await res.json();
+      expect(json.medications).toMatchObject({ started: [], adjusted: ["Minoxidil 5% solution · 2 ml · twice daily"], stopped: [] });
+      const active = await db.medication.findMany({ where: { patientId: hairPatient, active: true } });
+      expect(active).toHaveLength(1);
+      expect(active[0]).toMatchObject({ id: minoxidilId, name: "Minoxidil 5% solution", dosage: "2 ml", frequency: "twice daily", visitId: json.visitId });
+    });
+
+    it("matches a brand to its generic, but keeps oral minoxidil apart from the scalp solution", async () => {
+      const brand = await seedConsultation(a.id, hairPatient, doctorA.id, extractionOf([{ name: "Regaine", dosage: "2 ml", frequency: "twice daily" }]));
+      const brandRes = await sign(request(`/api/consultations/${brand.id}/sign`, { cookie: doctorCookie, body: { acknowledgedWarnings: true } }), idParams(brand.id));
+      expect(brandRes.status).toBe(200);
+      expect((await brandRes.json()).medications).toMatchObject({ started: [], continued: ["Minoxidil 5% solution · 2 ml · twice daily"] });
+      expect(await db.medication.count({ where: { patientId: hairPatient, active: true } })).toBe(1);
+
+      const oral = await seedConsultation(a.id, hairPatient, doctorA.id, extractionOf([{ name: "Minoxidil 2.5 mg tablets", dosage: "2.5 mg", frequency: "once daily" }]));
+      const oralRes = await sign(request(`/api/consultations/${oral.id}/sign`, { cookie: doctorCookie, body: { acknowledgedWarnings: true } }), idParams(oral.id));
+      expect(oralRes.status).toBe(200);
+      expect((await oralRes.json()).medications.started).toEqual(["Minoxidil 2.5 mg tablets · 2.5 mg · once daily"]);
+      expect(await db.medication.count({ where: { patientId: hairPatient, active: true } })).toBe(2);
+    });
+
+    it("refuses a summary that still mentions removed items until it is confirmed or rewritten", async () => {
+      const draft = {
+        symptoms: ["Inflammatory papules on cheeks"],
+        diagnoses: ["Acne vulgaris", "Rosacea"],
+        medications: [
+          { name: "Doxycycline", dosage: "100 mg", frequency: "once daily" },
+          { name: "Adapalene 0.1% gel", dosage: "Thin layer", frequency: "Nightly" },
+        ],
+        tests: [],
+        followUps: ["Review in 6 weeks"],
+      };
+      const aiSummary = "Acne consultation. Acne vulgaris; possible rosacea. Plan: Doxycycline 100 mg once daily; Adapalene 0.1% gel thin layer nightly. Review in 6 weeks.";
+      const reviewed = { ...draft, diagnoses: ["Acne vulgaris"], medications: [draft.medications[1]!] };
+      const create = () =>
+        db.consultation.create({
+          data: { tenantId: a.id, patientId: acnePatient, doctorId: doctorA.id, status: "PENDING_REVIEW", transcript: TRANSCRIPT, extraction: draft, summary: aiSummary },
+        });
+
+      const first = await create();
+      const refused = await sign(request(`/api/consultations/${first.id}/sign`, { cookie: doctorCookie, body: { extraction: reviewed } }), idParams(first.id));
+      expect(refused.status).toBe(409);
+      const conflict = await refused.json();
+      expect(conflict.error).toBe("summary_mismatch");
+      expect(conflict.mentions.map((m: { kind: string; item: string; term: string }) => [m.kind, m.item, m.term])).toEqual([
+        ["medication", "Doxycycline", "doxycycline"],
+        ["diagnosis", "Rosacea", "Rosacea"],
+      ]);
+      expect(await db.visit.count({ where: { patientId: acnePatient } })).toBe(0);
+
+      const confirmed = await sign(
+        request(`/api/consultations/${first.id}/sign`, { cookie: doctorCookie, body: { extraction: reviewed, summaryConfirmed: true } }),
+        idParams(first.id),
+      );
+      expect(confirmed.status).toBe(200);
+      const auditRow = await db.auditLog.findFirst({ where: { action: "consultation.sign", entityId: first.id } });
+      expect(auditRow?.after).toMatchObject({ summaryConfirmed: true });
+
+      // A summary rebuilt from the signed items signs without any confirmation.
+      const second = await create();
+      const rewritten = rebuildSummary(reviewed, { reason: "Acne consultation" });
+      expect(rewritten).not.toMatch(/doxycycline|rosacea/i);
+      const res = await sign(
+        request(`/api/consultations/${second.id}/sign`, { cookie: doctorCookie, body: { extraction: reviewed, summary: rewritten } }),
+        idParams(second.id),
+      );
+      expect(res.status).toBe(200);
+      const visit = await db.visit.findUnique({ where: { id: (await res.json()).visitId } });
+      expect(visit?.summary).toBe(rewritten);
+    });
+
+    it("signs a consultation linked to a future appointment but leaves the appointment as it is", async () => {
+      const startsAt = new Date(Date.now() + 2 * 86_400_000);
+      const future = await db.appointment.create({
+        data: { tenantId: a.id, patientId: acnePatient, startsAt, endsAt: new Date(startsAt.getTime() + 30 * 60_000), status: "CONFIRMED", reason: "Acne follow-up" },
+      });
+      const consultation = await seedConsultation(a.id, acnePatient, doctorA.id, extractionOf([]));
+      const res = await sign(
+        request(`/api/consultations/${consultation.id}/sign`, { cookie: doctorCookie, body: { appointmentId: future.id } }),
+        idParams(consultation.id),
+      );
+      expect(res.status).toBe(200);
+      const json = await res.json();
+      expect(json.appointmentId).toBe(future.id);
+      expect(json.appointment).toMatchObject({ id: future.id, status: "CONFIRMED", completed: false });
+      expect(json.appointment.reason).toMatch(/cannot be completed before its start time/);
+      expect((await db.consultation.findUnique({ where: { id: consultation.id } }))?.status).toBe("SIGNED");
+      const appointment = await db.appointment.findUnique({ where: { id: future.id } });
+      expect(appointment).toMatchObject({ status: "CONFIRMED", statusChangedAt: null });
+      expect((await db.visit.findUnique({ where: { id: json.visitId } }))?.appointmentId).toBe(future.id);
+      const auditRow = await db.auditLog.findFirst({ where: { action: "consultation.sign", entityId: consultation.id } });
+      expect(auditRow?.after).toMatchObject({ appointmentId: future.id, appointmentCompleted: false, appointmentStatus: "CONFIRMED" });
+    });
+
+    it("refuses an owner-level administrator who is not a clinician (403) and writes nothing", async () => {
+      const admin = await createUser({ tenantId: a.id, role: "CLINIC_OWNER", isClinician: false, fullName: "Practice Manager" });
+      const cookie = await sessionCookieFor(admin.id);
+      const consultation = await seedConsultation(a.id, acnePatient, doctorA.id, extractionOf([]));
+      const visits = await db.visit.count({ where: { patientId: acnePatient } });
+      const res = await sign(request(`/api/consultations/${consultation.id}/sign`, { cookie, body: {} }), idParams(consultation.id));
+      expect(res.status).toBe(403);
+      expect((await db.consultation.findUnique({ where: { id: consultation.id } }))?.status).toBe("PENDING_REVIEW");
+      expect(await db.visit.count({ where: { patientId: acnePatient } })).toBe(visits);
     });
   });
 });

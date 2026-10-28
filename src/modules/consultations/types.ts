@@ -109,6 +109,105 @@ export interface SignResponse {
     stopped: string[];
   };
   appointmentId: string | null;
+  /**
+   * The linked appointment after signing: marked COMPLETED, or left as it was
+   * with the reason (signed before its start time, or already cancelled).
+   */
+  appointment: { id: string; status: string; completed: boolean; reason: string | null } | null;
+  /** Prescribing-safety findings at signing and the overrides recorded for them. */
+  safety: { stops: number; warnings: number; overrides: number };
+}
+
+// ── Prescribing safety ───────────────────────────────────────────────────────
+
+export type SafetySeverity = "stop" | "warn";
+
+/** One prescribing-safety finding about a medication being prescribed. */
+export interface SafetyFinding {
+  /** Stable rule id, e.g. "allergy.cross-reactivity", "interaction.retinoid-tetracycline". */
+  rule: string;
+  /** "stop" needs a typed reason to sign anyway; "warn" needs acknowledging. */
+  severity: SafetySeverity;
+  /** The medication as written in the prescription. */
+  medication: string;
+  /** Plain English: names the drug and the reason. */
+  message: string;
+  detail: Record<string, unknown>;
+}
+
+/** A clinician's reason for prescribing despite a finding (sign body `overrides[]`). */
+export interface SafetyOverrideInput {
+  rule: string;
+  medication: string;
+  reason: string;
+}
+
+export const SAFETY_REASON_MIN_LENGTH = 10;
+export const SAFETY_REASON_MAX_LENGTH = 1000;
+/** Reason stored for a warning acknowledged without its own reason. */
+export const SAFETY_WARNING_ACKNOWLEDGED = "acknowledged";
+
+/** What the checks were run against, shown with the findings. */
+export interface SafetyCheckContext {
+  sex: string;
+  age: number | null;
+  allergies: string[];
+  conditions: string[];
+  activeMedications: string[];
+}
+
+/** POST /api/consultations/[id]/safety-check */
+export interface SafetyCheckResponse {
+  findings: SafetyFinding[];
+  context: SafetyCheckContext;
+}
+
+/** 409 from sign: a stop without a reason, or warnings not acknowledged. The server's findings win. */
+export interface SafetyConflictBody {
+  error: "safety_stop" | "safety_warning";
+  findings: SafetyFinding[];
+  /** The stops that still need a reason. */
+  missing: { rule: string; medication: string }[];
+}
+
+/** A removed diagnosis or medication the summary still mentions. */
+export interface SummaryMention {
+  kind: "medication" | "diagnosis";
+  /** The item as it was in the AI draft. */
+  item: string;
+  /** The word or phrase found in the summary (the generic, the name or the diagnosis). */
+  term: string;
+  /** [start, end) offsets of each occurrence in the summary, for highlighting. */
+  ranges: [number, number][];
+}
+
+/** 409 from sign when the summary still mentions removed items and was not confirmed. */
+export interface SummaryMismatchBody {
+  error: "summary_mismatch";
+  mentions: SummaryMention[];
+}
+
+/** One row of the safety-override review list. */
+export interface SafetyOverrideRow {
+  id: string;
+  createdAt: string;
+  rule: string;
+  severity: SafetySeverity;
+  medication: string | null;
+  message: string;
+  reason: string;
+  consultationId: string | null;
+  doctor: ConsultationPerson;
+  patient: { id: string; fullName: string | null };
+}
+
+export interface SafetyOverrideListResponse {
+  overrides: SafetyOverrideRow[];
+  total: number;
+  page: number;
+  pageSize: number;
+  /** "all" for the clinic owner, "own" for a doctor. */
+  scope: "all" | "own";
 }
 
 export interface ActiveMedication {

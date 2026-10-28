@@ -23,6 +23,7 @@ export const NOTIFICATION_KINDS = [
   "PAYMENT_RECORDED",
   "ALERT_RULE",
   "WEEKLY_BRIEF",
+  "SAFETY_OVERRIDE",
   "SYSTEM",
 ] as const satisfies readonly NotificationKind[];
 
@@ -43,6 +44,7 @@ export const KIND_LABELS: Record<NotificationKind, string> = {
   PAYMENT_RECORDED: "Payment recorded",
   ALERT_RULE: "Metric alert",
   WEEKLY_BRIEF: "Weekly brief",
+  SAFETY_OVERRIDE: "Prescribing safety override",
   SYSTEM: "System",
 };
 
@@ -62,11 +64,12 @@ export const KIND_HINTS: Record<NotificationKind, string> = {
   PAYMENT_RECORDED: "A deposit, payment or refund was recorded.",
   ALERT_RULE: "A metric crossed one of the thresholds in Reports.",
   WEEKLY_BRIEF: "The Monday summary of the week behind and ahead.",
+  SAFETY_OVERRIDE: "A clinician signed a prescription over a safety stop, with a reason.",
   SYSTEM: "Account, digest and test notifications.",
 };
 
 /** Kinds that go to e-mail unless the recipient switched them off. */
-export const EMAIL_DEFAULT_ON: readonly NotificationKind[] = ["ESCALATION", "ALERT_RULE"];
+export const EMAIL_DEFAULT_ON: readonly NotificationKind[] = ["ESCALATION", "ALERT_RULE", "SAFETY_OVERRIDE"];
 
 /** The shape of a notification once it crossed the API (dates as ISO strings). */
 export interface NotificationDTO {

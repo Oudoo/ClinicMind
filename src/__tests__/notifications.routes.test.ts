@@ -166,7 +166,7 @@ describe.skipIf(!dbTestsEnabled)("notifications routes", () => {
       expect(initial.status).toBe(200);
       expect(await initial.json()).toEqual({
         preferences: { inApp: {}, email: {}, browser: false, digestHour: null },
-        emailDefaultOn: ["ESCALATION", "ALERT_RULE"],
+        emailDefaultOn: ["ESCALATION", "ALERT_RULE", "SAFETY_OVERRIDE"],
       });
 
       const patched = await prefsPatchRoute(

@@ -876,6 +876,7 @@ enum NotificationKind {
   PAYMENT_RECORDED
   ALERT_RULE
   WEEKLY_BRIEF
+  SAFETY_OVERRIDE
   SYSTEM
 }
 
@@ -1550,5 +1551,6 @@ model SafetyOverride {
 
   @@index([tenantId, createdAt])
   @@index([tenantId, patientId])
+  @@index([tenantId, userId, createdAt])
   @@map("safety_overrides")
 }
