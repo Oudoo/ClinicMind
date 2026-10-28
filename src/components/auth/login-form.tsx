@@ -5,6 +5,7 @@ import { useState, type FormEvent } from "react";
 import { LogIn } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Alert, Field, inputClass } from "@/components/ui/field";
+import { announceAuthChange } from "@/lib/auth/browser-session";
 
 /** E-mail + password sign-in. Posts to /api/auth/login and follows `redirectTo`. */
 export function LoginForm({ next, tenantHint }: { next: string | null; tenantHint: string }) {
@@ -37,6 +38,7 @@ export function LoginForm({ next, tenantHint }: { next: string | null; tenantHin
         redirectTo?: string;
       };
       if (res.ok) {
+        announceAuthChange("signed-in");
         window.location.assign(data.redirectTo ?? "/dashboard");
         return;
       }

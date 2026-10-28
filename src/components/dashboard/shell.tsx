@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import type { UserRole } from "@prisma/client";
 import {
@@ -19,10 +19,12 @@ import {
   HeartPulse,
   Banknote,
   ChartColumn,
+  ScrollText,
   Menu,
   X,
 } from "lucide-react";
 import { BRAND } from "@/lib/brand";
+import { onAuthChange } from "@/lib/auth/browser-session";
 import { can, type Permission } from "@/lib/auth/rbac";
 import { NotificationBell } from "@/components/dashboard/notification-bell";
 import { Badge } from "@/components/ui/primitives";
@@ -53,6 +55,7 @@ const NAV: NavItem[] = [
   { href: "/dashboard/reports", label: "Reports", icon: ChartColumn, permission: "reports:read" },
   { href: "/dashboard/assistant", label: "AI Assistant", icon: Sparkles, badge: "RAG", permission: "ai:assistant" },
   { href: "/dashboard/clinic-ai", label: "Clinic AI", icon: Workflow, badge: "module" },
+  { href: "/dashboard/audit", label: "Audit log", icon: ScrollText, permission: "audit:read" },
   { href: "/dashboard/settings", label: "Settings", icon: Settings },
 ];
 
@@ -90,6 +93,21 @@ export function DashboardShell({
   const items = platform ? [PLATFORM_NAV, ...visible] : visible;
   const current = items.find((n) => isActive(pathname, n.href));
   const [open, setOpen] = useState(false);
+
+  // When someone signs out (or in) in another tab, or the browser restores this
+  // page from its back-forward cache after a sign-out, reload: the server then
+  // shows the sign-in page, never the previous person's screens.
+  useEffect(() => {
+    const stop = onAuthChange(() => window.location.reload());
+    const onShow = (e: PageTransitionEvent) => {
+      if (e.persisted) window.location.reload();
+    };
+    window.addEventListener("pageshow", onShow);
+    return () => {
+      stop();
+      window.removeEventListener("pageshow", onShow);
+    };
+  }, []);
 
   const nav = (
     <nav className="flex-1 space-y-0.5 p-3" aria-label="Main">

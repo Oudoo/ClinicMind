@@ -319,7 +319,7 @@ src/
   proxy.ts            request proxy: auth redirects, rate limits, CSP and security headers
   __tests__/          route tests · lib/__tests__/ unit tests · test/ helpers
 e2e/                  Playwright suite
-scripts/              reindex.ts · backup.sh · restore.sh
+scripts/              reindex.ts · backup.sh · restore-drill.sh · restore.sh
 deploy/               Caddyfile
 docs/                 architecture · integration · runbook · audit · spec analysis · demo script
 public/embed.js       website embed loader

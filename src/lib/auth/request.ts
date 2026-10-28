@@ -23,12 +23,15 @@ export function readCookie(req: Request, name: string): string | undefined {
   return undefined;
 }
 
+/** A request, or the request headers a Server Component reads with `headers()`. */
+type HasHeaders = { headers: Pick<Headers, "get"> };
+
 /**
  * Best-effort client address. Trusts the first `X-Forwarded-For` hop, which is
  * correct behind the reverse proxy / TLS terminator the app is deployed behind
  * and merely imprecise without one.
  */
-export function clientIp(req: Request): string | null {
+export function clientIp(req: HasHeaders): string | null {
   const forwarded = req.headers.get("x-forwarded-for");
   if (forwarded) {
     const first = forwarded.split(",")[0]?.trim();
@@ -38,7 +41,7 @@ export function clientIp(req: Request): string | null {
   return real ? real.slice(0, 64) : null;
 }
 
-export function userAgent(req: Request): string | null {
+export function userAgent(req: HasHeaders): string | null {
   const ua = req.headers.get("user-agent");
   return ua ? ua.slice(0, 512) : null;
 }

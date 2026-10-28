@@ -103,6 +103,17 @@ jobs:
       - run: npx prisma generate
       - run: npx prisma migrate deploy
       - run: npm run db:seed
+      - name: Rehearse a backup and restore of the seeded database
+        env:
+          PGHOST: localhost
+          PGUSER: clinicmind
+          PGPASSWORD: clinicmind
+          PGDATABASE: clinicmind_e2e
+          BACKUP_DIR: ${{ runner.temp }}/backups
+        run: |
+          pg_dump --version
+          bash scripts/backup.sh
+          bash scripts/restore-drill.sh
       - run: npm run build
       - name: Start production server
         run: |

@@ -1,3 +1,4 @@
+import { audit } from "@/lib/audit";
 import { db } from "@/lib/db";
 import { AUTH_RATE_WINDOW_MS, LOGIN_LOCKOUT_FAILURES } from "./constants";
 import { verifyDummyPassword, verifyPassword } from "./password";
@@ -11,8 +12,10 @@ import { normalizeEmail } from "./request";
  * one tenant by slug) and verifies the password against each. In practice that
  * is one user; when the same credentials are valid in several tenants the
  * caller is asked to name the clinic. Every attempt against a known user is
- * recorded as a `LoginEvent`, and an account with too many recent failures is
- * locked for the rest of the window before any password is checked.
+ * recorded as a `LoginEvent` and in the clinic's audit log (`auth.login`,
+ * `auth.login_failed`, `auth.login_locked`), and an account with too many
+ * recent failures is locked for the rest of the window before any password is
+ * checked.
  */
 export interface LoginInput {
   email: string;
@@ -65,6 +68,7 @@ export async function authenticateWithPassword(input: LoginInput): Promise<Login
     const lock = await lockoutFor(user.id);
     if (lock > 0) {
       lockedFor = Math.max(lockedFor, lock);
+      await auditSignIn(user, "auth.login_locked", meta, { retryAfterSeconds: lock });
       continue;
     }
     const ok =
@@ -73,12 +77,16 @@ export async function authenticateWithPassword(input: LoginInput): Promise<Login
       verified.push(user);
     } else {
       await recordLoginEvent(user.id, false, meta);
+      await auditSignIn(user, "auth.login_failed", meta, {
+        reason: user.status === "ACTIVE" ? "wrong_password" : `account_${user.status.toLowerCase()}`,
+      });
     }
   }
 
   if (verified.length === 1) {
     const user = verified[0]!;
     await recordLoginEvent(user.id, true, meta);
+    await auditSignIn(user, "auth.login", meta);
     return {
       ok: true,
       user: {
@@ -93,6 +101,27 @@ export async function authenticateWithPassword(input: LoginInput): Promise<Login
   if (verified.length > 1) return { ok: false, reason: "tenant_required" };
   if (lockedFor > 0) return { ok: false, reason: "locked", retryAfterSeconds: lockedFor };
   return { ok: false, reason: "invalid_credentials" };
+}
+
+/** A sign-in attempt in the account's clinic audit log (who, when, from where; never the password). */
+async function auditSignIn(
+  user: { id: string; tenantId: string; email: string },
+  action: "auth.login" | "auth.login_failed" | "auth.login_locked",
+  meta: { ip: string | null; userAgent: string | null },
+  after?: Record<string, unknown>,
+): Promise<void> {
+  await audit({
+    tenantId: user.tenantId,
+    actorId: user.id,
+    actorEmail: user.email,
+    action,
+    entity: "User",
+    entityId: user.id,
+    patientId: null,
+    ip: meta.ip,
+    device: meta.userAgent,
+    after,
+  });
 }
 
 async function recordLoginEvent(

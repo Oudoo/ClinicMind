@@ -1,10 +1,10 @@
 "use client";
 
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
-import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { ChevronDown, LogOut, Settings, UserRound } from "lucide-react";
 import Link from "next/link";
+import { announceAuthChange, clearBrowserState } from "@/lib/auth/browser-session";
 import { initials } from "@/lib/utils";
 
 export interface ShellUser {
@@ -16,18 +16,25 @@ export interface ShellUser {
 }
 
 export function UserMenu({ user }: { user: ShellUser }) {
-  const router = useRouter();
   const [pending, setPending] = useState(false);
   const name = user.fullName ?? user.email ?? "Embedded session";
 
+  /**
+   * Sign out, then load the sign-in page as a new document: a client-side
+   * navigation would keep this person's screens (assistant chat, unsaved
+   * edits, the router's page cache) in memory for whoever uses the browser next.
+   */
   async function signOut() {
     if (pending) return;
     setPending(true);
     try {
-      await fetch("/api/auth/logout", { method: "POST" });
+      await fetch("/api/auth/logout", { method: "POST", cache: "no-store" });
+    } catch {
+      // Offline: the page is still wiped below; the session ends when it expires or on the next sign-out.
     } finally {
-      router.push("/login");
-      router.refresh();
+      clearBrowserState();
+      announceAuthChange("signed-out");
+      window.location.replace("/login");
     }
   }
 

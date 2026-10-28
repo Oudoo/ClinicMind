@@ -1,11 +1,18 @@
+import type { Metadata } from "next";
 import Link from "next/link";
+import { cache } from "react";
+import { headers } from "next/headers";
 import { notFound } from "next/navigation";
-import { ArrowLeft, Mail, MessageCircle, Phone } from "lucide-react";
+import { after } from "next/server";
+import { ArrowLeft, Mail, MessageCircle, Phone, ScrollText } from "lucide-react";
 import type { AppointmentStatus } from "@prisma/client";
 import { getActingContext } from "@/lib/auth/session";
 import { can } from "@/lib/auth/rbac";
+import { clientIp, userAgent } from "@/lib/auth/request";
 import { getPatient, historyLists } from "@/modules/patients/service";
-import { ageFrom, formatDate, formatTime, initials } from "@/lib/utils";
+import { auditHref } from "@/modules/audit/query";
+import { recordPatientView } from "@/modules/audit/views";
+import { ageFrom, formatCalendarDate, formatDate, formatTime, initials } from "@/lib/utils";
 import { Badge, Bento, Card, EmptyState, Metric, SectionTitle } from "@/components/ui/primitives";
 import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -38,13 +45,37 @@ const APPOINTMENT_TONE: Record<AppointmentStatus, BadgeTone> = {
   WAITLISTED: "warning",
 };
 
+/** One session lookup and one patient read per request, shared by the title and the page. */
+const actingContext = cache(() => getActingContext());
+const loadPatient = cache((tenantId: string, id: string) => getPatient(tenantId, id));
+
+/** The browser tab shows the patient's name (audit: it showed the record id). */
+export async function generateMetadata({ params }: { params: Promise<{ id: string }> }): Promise<Metadata> {
+  const { id } = await params;
+  const ctx = await actingContext();
+  const patient = ctx ? await loadPatient(ctx.tenantId, id) : null;
+  return { title: patient ? patient.fullName : "Patient" };
+}
+
 export default async function PatientPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const ctx = await getActingContext();
+  const ctx = await actingContext();
   if (!ctx) return null;
 
-  const patient = await getPatient(ctx.tenantId, id);
+  const patient = await loadPatient(ctx.tenantId, id);
   if (!patient) notFound();
+
+  // Opening a record is logged (who, when, from where) once the page has been sent.
+  const requestHeaders = await headers();
+  const view = {
+    tenantId: ctx.tenantId,
+    patientId: patient.id,
+    actorId: ctx.userId,
+    actorEmail: ctx.email,
+    ip: clientIp({ headers: requestHeaders }),
+    device: userAgent({ headers: requestHeaders }),
+  };
+  after(() => recordPatientView(view).catch((err) => console.error("[audit] could not log a record view", err)));
 
   const archived = patient.deletedAt !== null;
   const canWrite = can(ctx.role, "patients:write");
@@ -106,7 +137,7 @@ export default async function PatientPage({ params }: { params: Promise<{ id: st
                 </div>
                 <p className="text-sm text-muted-foreground">
                   {age !== null ? `${age} years` : "Age unknown"} · {GENDER_LABELS[patient.gender]}
-                  {patient.dateOfBirth ? ` · born ${formatDate(patient.dateOfBirth)}` : ""}
+                  {patient.dateOfBirth ? ` · born ${formatCalendarDate(patient.dateOfBirth)}` : ""}
                 </p>
                 <dl className="flex flex-wrap gap-x-5 gap-y-1 font-mono text-xs text-muted-foreground">
                   <ContactItem icon={Phone} label="Phone" value={patient.phone} />
@@ -119,6 +150,15 @@ export default async function PatientPage({ params }: { params: Promise<{ id: st
                     <Badge key={t}>{t}</Badge>
                   ))}
                 </div>
+                {can(ctx.role, "audit:read") ? (
+                  <Link
+                    href={auditHref({ patient: patient.id })}
+                    className="inline-flex items-center gap-1 text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+                  >
+                    <ScrollText className="h-3.5 w-3.5" aria-hidden="true" />
+                    Access log: who opened or changed this record
+                  </Link>
+                ) : null}
               </div>
             </div>
             {canWrite ? (

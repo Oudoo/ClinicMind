@@ -146,8 +146,11 @@ Migrations run before the new app version starts. Roll back by deploying the pre
 
 ## 6. Backups and restore
 
-- Nightly dumps land in `./backups/clinicmind-<timestamp>.dump` (custom format, compressed). Copy them off the host (object storage, another machine) — a backup on the same disk is not a backup.
-- Restore drill (do this quarterly): `PGHOST=... PGPASSWORD=... ./scripts/restore.sh backups/<file>.dump`, then `npx prisma migrate deploy`, then sign in and spot-check a patient.
+- **Nightly backup.** At 02:00 UTC the `backup` service writes `./backups/clinicmind-<timestamp>.dump` (custom format, compressed) and, next to it, a `.manifest` and a `.sha256`. The manifest holds the row count of every table, the latest migration and the counts of indexes, constraints, triggers and row-level security policies, all read in the same database snapshot as the dump. Dumps older than `BACKUP_RETENTION_DAYS` (30) are pruned.
+- **Nightly restore drill.** Right after each dump, `scripts/restore-drill.sh` restores it into a scratch database (`clinicmind_restore_drill`, dropped afterwards; it briefly needs as much free disk as the database itself) and checks the checksum, a clean `pg_restore`, every table row for row against the manifest, the migration, the schema objects, and that the audit log still refuses edits. Each run appends one line to `./backups/restore-drill.log` (`OK …` or `FAIL …`); `docker compose -f docker-compose.prod.yml logs backup` shows the same. Check the log weekly; a `FAIL` line means the last good backup is the previous `OK` one. Set `RESTORE_DRILL=off` to skip the drill on a host short of disk. CI runs the same backup and drill on the seeded demo database on every push.
+- **Off the host.** Copy `./backups` off the server (object storage, another machine) — a backup on the same disk is not a backup. Copy the `.manifest` and `.sha256` with each dump.
+- **Rehearse by hand** (for example after copying a dump back from off-site storage): `PGHOST=… PGPASSWORD=… BACKUP_DIR=./backups ./scripts/restore-drill.sh backups/<file>.dump`. `KEEP_DRILL_DB=1` keeps the scratch database for inspection.
+- **Restore for real** (replaces live data): stop the app (`docker compose -f docker-compose.prod.yml stop app`), run `PGHOST=… PGPASSWORD=… ./scripts/restore.sh backups/<file>.dump` (it refuses a dump that fails its checksum), then `npx prisma migrate deploy`, start the app, sign in and spot-check a patient.
 - The audit log is append-only at the database level; deleting a tenant (offboarding, erasure request) requires `SET LOCAL app.allow_audit_delete = 'on'` inside the same transaction, which only the application's tenant-removal path and the seed do.
 
 ## 7. Secrets and access

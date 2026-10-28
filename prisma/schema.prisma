@@ -697,6 +697,10 @@ model AuditLog {
   action     String
   entity     String
   entityId   String?
+  /// The patient whose record the action concerns, when there is one; written
+  /// by lib/audit.ts so the owner can search the log by patient. No foreign
+  /// key: the log outlives the rows it describes.
+  patientId  String?
   ip         String?
   device     String?
   before     Json?
@@ -705,6 +709,8 @@ model AuditLog {
 
   @@index([tenantId, createdAt])
   @@index([tenantId, entity, entityId])
+  @@index([tenantId, patientId, createdAt])
+  @@index([tenantId, actorId, createdAt])
   @@map("audit_logs")
 }
 

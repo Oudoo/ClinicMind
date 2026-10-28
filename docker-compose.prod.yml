@@ -114,12 +114,17 @@ services:
     environment:
       PGPASSWORD: ${POSTGRES_PASSWORD}
       BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-30}
+      # After each dump, restore it into a scratch database and check it row for
+      # row against the dump's manifest (scripts/restore-drill.sh). "off" skips it.
+      RESTORE_DRILL: ${RESTORE_DRILL:-on}
     volumes:
       - ./backups:/backups
       - ./scripts/backup.sh:/usr/local/bin/clinicmind-backup:ro
+      - ./scripts/restore-drill.sh:/usr/local/bin/clinicmind-restore-drill:ro
     entrypoint: ["/bin/sh", "-c"]
-    # Nightly at 02:00 (container clock, UTC). Dumps are gzip-compressed custom-format archives.
-    command: ["while true; do sleep $$((($$(date -d 'tomorrow 02:00' +%s) - $$(date +%s)))); clinicmind-backup; done"]
+    # Nightly at 02:00 (container clock, UTC): a compressed custom-format dump with
+    # its manifest and checksum, then the restore drill. Results: /backups/restore-drill.log.
+    command: ["while true; do sleep $$((($$(date -d 'tomorrow 02:00' +%s) - $$(date +%s)))); if clinicmind-backup && { [ \"$$RESTORE_DRILL\" = off ] || clinicmind-restore-drill; }; then echo 'backup and restore drill OK'; else echo 'BACKUP OR RESTORE DRILL FAILED: see /backups/restore-drill.log'; fi; done"]
 
 volumes:
   pg_data:
