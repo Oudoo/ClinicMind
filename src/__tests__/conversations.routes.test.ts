@@ -292,6 +292,9 @@ describe.skipIf(!dbTestsEnabled)("reception inbox", () => {
       const unlinked = await patch(convClosed.id, { leadId: null, patientId: null });
       expect(unlinked.body.conversation).toMatchObject({ lead: null, patient: null, displayName: "Salma (SMS)" });
       expect(await db.auditLog.count({ where: { tenantId: a.id, action: "conversation.update", entityId: convClosed.id } })).toBe(2);
+      // Closing and reopening are named in the audit log (audit finding: they were not logged).
+      expect(await db.auditLog.count({ where: { tenantId: a.id, action: "conversation.close", entityId: convPatient.id } })).toBe(1);
+      expect(await db.auditLog.count({ where: { tenantId: a.id, action: "conversation.reopen", entityId: convPatient.id } })).toBe(1);
     });
 
     it("confirming objections stamps the thread and copies them to the linked lead", async () => {

@@ -11,6 +11,13 @@
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
     <link rel="icon" type="image/svg+xml" href="favicon.svg" />
     <link rel="stylesheet" href="assets/styles.css" />
+    <style>
+      /* "Demo only" on every screen (plain CSS: the Tailwind build is precompiled). */
+      .demo-banner { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 0.25rem 0.75rem; padding: 0.4rem 1rem; border-bottom: 1px solid #fcd34d; background: #fef3c7; color: #78350f; font: 500 12px/1.4 "Plus Jakarta Sans", system-ui, sans-serif; text-align: center; }
+      .demo-banner strong { font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; }
+      .demo-banner a { color: inherit; font-weight: 600; text-decoration: underline; text-underline-offset: 2px; }
+      .dark .demo-banner { border-color: #92400e; background: #422006; color: #fde68a; }
+    </style>
     <script>
       // Apply the stored theme before first paint.
       try { if (localStorage.getItem("cm-proto-theme") === "dark") document.documentElement.classList.add("dark"); } catch (e) {}
@@ -18,6 +25,23 @@
   </head>
   <body>
     <noscript>The ClinicMind prototype needs JavaScript.</noscript>
+    <!-- data-app-url: the hosted application's address, once it is live; the banner then links to it. -->
+    <div class="demo-banner" role="note" data-app-url="">
+      <strong>Demo only</strong>
+      <span>A click-through prototype with sample data that lives in this browser. Do not enter real patient information.</span>
+    </div>
+    <script>
+      (function () {
+        var banner = document.querySelector(".demo-banner");
+        var url = banner && banner.getAttribute("data-app-url");
+        if (!url) return;
+        var link = document.createElement("a");
+        link.href = url;
+        link.rel = "noopener";
+        link.textContent = "Open the real application";
+        banner.appendChild(link);
+      })();
+    </script>
     <div id="app"></div>
     <div id="toasts" class="pointer-events-none fixed bottom-4 right-4 z-[60] flex flex-col gap-2"></div>
     <script src="assets/data.js"></script>

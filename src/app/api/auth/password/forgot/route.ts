@@ -3,7 +3,7 @@ import { handleApiError, ok, tooManyRequests } from "@/lib/api";
 import { requestPasswordReset } from "@/lib/auth/auth-tokens";
 import { AUTH_RATE_WINDOW_MS, RESET_EMAIL_LIMIT, RESET_IP_LIMIT } from "@/lib/auth/constants";
 import { rateLimit } from "@/lib/auth/rate-limit";
-import { clientIp, crossOriginRejected, isSameOrigin, normalizeEmail } from "@/lib/auth/request";
+import { clientIp, crossOriginRejected, isSameOrigin, normalizeEmail, userAgent } from "@/lib/auth/request";
 
 export const dynamic = "force-dynamic";
 
@@ -35,7 +35,7 @@ export async function POST(req: Request) {
     const byEmail = rateLimit(`reset:email:${email}`, RESET_EMAIL_LIMIT, AUTH_RATE_WINDOW_MS);
     if (!byEmail.ok) return tooManyRequests(byEmail.retryAfterSeconds);
 
-    await requestPasswordReset({ email, tenantSlug: body.tenant || null });
+    await requestPasswordReset({ email, tenantSlug: body.tenant || null, ip: clientIp(req), userAgent: userAgent(req) });
     return ok({ ok: true });
   } catch (err) {
     return handleApiError(err);

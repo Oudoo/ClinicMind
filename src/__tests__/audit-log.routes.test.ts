@@ -5,7 +5,7 @@
  * without audit:read. Also covers the entries this phase adds: sign-ins,
  * failed sign-ins, sign-outs and record views.
  */
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { db } from "@/lib/db";
 import { audit, resolveAuditPatientId } from "@/lib/audit";
 import { resetRateLimits } from "@/lib/auth/rate-limit";
@@ -13,10 +13,18 @@ import { GET as listLogs } from "@/app/api/audit-logs/route";
 import { GET as exportLogs } from "@/app/api/audit-logs/export/route";
 import { POST as login } from "@/app/api/auth/login/route";
 import { POST as logout } from "@/app/api/auth/logout/route";
+import { POST as forgot } from "@/app/api/auth/password/forgot/route";
+import { GET as financeExport } from "@/app/api/finance/export/route";
+import { GET as reportExport } from "@/app/api/reports/export/route";
 import { recordPatientView } from "@/modules/audit/views";
 import { createTenant, createUser, dbTestsEnabled, deleteTenants, request, sessionCookieFor } from "@/test/db";
 
 const PASSWORD = "correct horse battery staple";
+
+vi.mock("@/lib/mailer", () => ({
+  sendMail: async () => undefined,
+  mailer: () => ({ name: "console", send: async () => undefined }),
+}));
 
 interface Entry {
   id: string;
@@ -243,6 +251,38 @@ describe.skipIf(!dbTestsEnabled)("audit log", () => {
       await recordPatientView({ ...view, actorId: ownerId });
       const rows = await db.auditLog.findMany({ where: { tenantId, action: "patient.record.view", patientId: otherPatientId } });
       expect(rows.map((r) => r.actorId).sort()).toEqual([doctorId, ownerId].sort());
+    });
+  });
+
+  describe("exports and password resets", () => {
+    it("logs finance and report exports with what was exported", async () => {
+      const fin = await financeExport(request("/api/finance/export?kind=payments&period=90d", { cookie: ownerCookie }));
+      expect(fin.status).toBe(200);
+      const rep = await reportExport(request("/api/reports/export?metric=M2&part=source&period=90d", { cookie: ownerCookie }));
+      expect(rep.status).toBe(200);
+      const finance = await db.auditLog.findFirstOrThrow({ where: { tenantId, action: "finance.export" } });
+      expect(finance).toMatchObject({ actorId: ownerId, entity: "Finance", entityId: "payments", patientId: null });
+      expect(finance.after).toMatchObject({ kind: "payments", rows: 0 });
+      const report = await db.auditLog.findFirstOrThrow({ where: { tenantId, action: "report.export" } });
+      expect(report).toMatchObject({ actorId: ownerId, entity: "Report", entityId: "M2" });
+      expect(report.after).toMatchObject({ metric: "M2", part: "source" });
+
+      const exports = await list("?action=exports");
+      expect(new Set(actions(exports.body.entries))).toEqual(new Set(["finance.export", "report.export", "audit.export"]));
+    });
+
+    it("logs a password-reset request against the account it names, as not signed in", async () => {
+      const res = await forgot(request("/api/auth/password/forgot", { body: { email: ownerEmail }, headers: { "x-forwarded-for": "203.0.113.9" } }));
+      expect(res.status).toBe(200);
+      const row = await db.auditLog.findFirstOrThrow({ where: { tenantId, action: "auth.password_reset_requested" } });
+      expect(row).toMatchObject({ actorId: null, actorEmail: ownerEmail, entity: "User", entityId: ownerId, ip: "203.0.113.9" });
+      expect(row.after).toEqual({ sent: "reset_link" });
+
+      const anonymous = await list("?actor=anonymous");
+      expect(actions(anonymous.body.entries)).toEqual(["auth.password_reset_requested"]);
+      expect(anonymous.body.entries[0]!.actor.name).toBe(`${ownerEmail} (not signed in)`);
+      // Automated entries stay separate from requests made at the sign-in page.
+      expect(actions((await list("?actor=system")).body.entries)).toEqual(["notification.digest"]);
     });
   });
 

@@ -47,7 +47,8 @@ describe("parseAuditQuery", () => {
 
 describe("actions", () => {
   it("expands an activity group to its prefixes and keeps an exact code exact", () => {
-    expect(actionFilter("patient")).toEqual({ prefixes: ["patient", "medication"] });
+    expect(actionFilter("patient")).toEqual({ prefixes: ["patient", "medication"], suffixes: [] });
+    expect(actionFilter("exports")).toEqual({ prefixes: [], suffixes: ["export"] });
     expect(actionFilter("patient.update")).toEqual({ exact: "patient.update" });
   });
 
@@ -98,7 +99,9 @@ describe("auditWhere", () => {
 
   it("always scopes to the tenant", () => {
     expect((auditWhere("t1", {}, "Africa/Cairo").AND as unknown[])[0]).toEqual({ tenantId: "t1" });
-    expect(auditWhere("t1", { actor: "system" }, "UTC").AND).toContainEqual({ actorId: null });
+    expect(auditWhere("t1", { actor: "system" }, "UTC").AND).toContainEqual({ actorId: null, actorEmail: null });
+    expect(auditWhere("t1", { actor: "anonymous" }, "UTC").AND).toContainEqual({ actorId: null, actorEmail: { not: null } });
+    expect(auditWhere("t1", { action: "exports" }, "UTC").AND).toContainEqual({ OR: [{ action: { endsWith: ".export" } }] });
   });
 });
 

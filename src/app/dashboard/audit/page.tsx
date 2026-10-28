@@ -196,7 +196,7 @@ export default async function AuditLogPage({ searchParams }: { searchParams: Pro
 }
 
 function PersonCell({ row, query }: { row: AuditRow; query: Parameters<typeof auditHref>[0] }) {
-  const value = row.actor.id ?? "system";
+  const value = row.actor.id ?? (row.actor.email ? "anonymous" : "system");
   return (
     <div className="flex min-w-0 flex-col gap-0.5">
       <Link

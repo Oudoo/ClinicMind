@@ -8,7 +8,7 @@
 export interface AuditQuery {
   /** Free text: part of an action code, a record id or an e-mail. */
   q?: string;
-  /** A user id, or "system" for automated entries (no person). */
+  /** A user id, "system" for automated entries, or "anonymous" for requests made without signing in. */
   actor?: string;
   patient?: string;
   /** An activity group key (see ACTION_GROUPS) or one exact action code. */
@@ -80,28 +80,31 @@ export function auditExportHref(query: AuditQuery = {}): string {
   return `/api/audit-logs/export${qs ? `?${qs}` : ""}`;
 }
 
-/** Activity groups for the filter: each matches action codes starting with one of its prefixes. */
-export const ACTION_GROUPS: { key: string; label: string; prefixes: string[] }[] = [
+/**
+ * Activity groups for the filter: each matches action codes starting with one
+ * of its prefixes (`patient.…`) or ending with one of its suffixes (`….export`).
+ */
+export const ACTION_GROUPS: { key: string; label: string; prefixes: string[]; suffixes?: string[] }[] = [
   { key: "auth", label: "Sign-in and sign-out", prefixes: ["auth"] },
   { key: "patient", label: "Patient records", prefixes: ["patient", "medication"] },
   { key: "appointment", label: "Appointments", prefixes: ["appointment"] },
   { key: "consultation", label: "Consultations and prescribing", prefixes: ["consultation", "review_snapshot"] },
   { key: "procedure", label: "Procedures", prefixes: ["procedure"] },
-  { key: "payment", label: "Payments", prefixes: ["payment"] },
+  { key: "payment", label: "Payments and finance", prefixes: ["payment", "finance"] },
   { key: "conversation", label: "Conversations and messaging", prefixes: ["conversation", "messaging"] },
   { key: "lead", label: "Leads and campaigns", prefixes: ["lead", "campaign"] },
   { key: "intake", label: "Onboarding forms", prefixes: ["intake"] },
   { key: "concierge", label: "Concierge", prefixes: ["concierge"] },
   { key: "assistant", label: "AI assistant", prefixes: ["assistant"] },
   { key: "user", label: "Team and access", prefixes: ["user", "embed"] },
-  { key: "tenant", label: "Clinic settings", prefixes: ["tenant", "metric_target", "notification", "alert_rule"] },
-  { key: "audit", label: "Audit log exports", prefixes: ["audit"] },
+  { key: "tenant", label: "Clinic settings", prefixes: ["tenant", "metric_target", "notification", "alert_rule", "report"] },
+  { key: "exports", label: "Data exports (any)", prefixes: [], suffixes: ["export"] },
 ];
 
-/** The prefixes an `action` filter stands for, or the exact code when it is one. */
-export function actionFilter(action: string): { prefixes: string[] } | { exact: string } {
+/** The prefixes and suffixes an `action` filter stands for, or the exact code when it is one. */
+export function actionFilter(action: string): { prefixes: string[]; suffixes: string[] } | { exact: string } {
   const group = ACTION_GROUPS.find((g) => g.key === action);
-  return group ? { prefixes: group.prefixes } : { exact: action };
+  return group ? { prefixes: group.prefixes, suffixes: group.suffixes ?? [] } : { exact: action };
 }
 
 const ACTION_LABELS: Record<string, string> = {
@@ -109,6 +112,9 @@ const ACTION_LABELS: Record<string, string> = {
   "auth.login_failed": "Failed sign-in",
   "auth.login_locked": "Sign-in refused: account locked",
   "auth.logout": "Signed out",
+  "auth.password_reset_requested": "Password reset requested",
+  "finance.export": "Exported finance data",
+  "report.export": "Exported a report table",
   "user.invite.accept": "Accepted an invitation",
   "user.password.reset": "Reset their password",
   "patient.create": "Added a patient",
@@ -239,6 +245,8 @@ export function changedFields(before: unknown, after: unknown, limit = 40): Fiel
 /** What kind of record an entry is about, in words (entries about a patient show the patient instead). */
 export const ENTITY_LABELS: Record<string, string> = {
   Tenant: "Clinic",
+  Finance: "Finance",
+  Report: "Report",
   User: "Team member",
   AuditLog: "Audit log",
   Notification: "Notification",

@@ -46,12 +46,22 @@ export interface AuditRow {
 /** The Prisma filter for a query on one clinic's log (`timezone` reads the from/to days). */
 export function auditWhere(tenantId: string, query: AuditQuery, timezone: string): Prisma.AuditLogWhereInput {
   const and: Prisma.AuditLogWhereInput[] = [{ tenantId }];
-  if (query.actor === "system") and.push({ actorId: null });
+  if (query.actor === "system") and.push({ actorId: null, actorEmail: null });
+  else if (query.actor === "anonymous") and.push({ actorId: null, actorEmail: { not: null } });
   else if (query.actor) and.push({ actorId: query.actor });
   if (query.patient) and.push({ patientId: query.patient });
   if (query.action) {
     const f = actionFilter(query.action);
-    and.push("exact" in f ? { action: f.exact } : { OR: f.prefixes.map((p) => ({ action: { startsWith: `${p}.` } })) });
+    and.push(
+      "exact" in f
+        ? { action: f.exact }
+        : {
+            OR: [
+              ...f.prefixes.map((p) => ({ action: { startsWith: `${p}.` } })),
+              ...f.suffixes.map((s) => ({ action: { endsWith: `.${s}` } })),
+            ],
+          },
+    );
   }
   const from = query.from ? fromDateKey(query.from, timezone) : null;
   const toStart = query.to ? fromDateKey(query.to, timezone) : null;
@@ -118,7 +128,10 @@ async function decorate(tenantId: string, rows: LogRow[]): Promise<AuditRow[]> {
             email: user?.email ?? r.actorEmail,
             role: user?.role ?? null,
           }
-        : { id: null, name: "ClinicMind (automatic)", email: null, role: null },
+        : r.actorEmail
+          ? // A request made without signing in (a password-reset request names an e-mail).
+            { id: null, name: `${r.actorEmail} (not signed in)`, email: r.actorEmail, role: null }
+          : { id: null, name: "ClinicMind (automatic)", email: null, role: null },
       patient: patient ? { id: patient.id, fullName: patient.fullName, archived: Boolean(patient.deletedAt) } : null,
       subject: r.entity === "User" && r.entityId ? (userById.get(r.entityId)?.fullName ?? null) : null,
       ip: r.ip,
@@ -176,6 +189,7 @@ export async function listAuditPeople(tenantId: string): Promise<{ value: string
       .filter((o): o is typeof o & { actorId: string } => Boolean(o.actorId))
       .map((o) => ({ value: o.actorId, label: `${o.actorEmail ?? "Unknown"} (platform)` })),
     { value: "system", label: "ClinicMind (automatic)" },
+    { value: "anonymous", label: "Not signed in (password resets)" },
   ];
 }
 

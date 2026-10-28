@@ -164,6 +164,9 @@ export async function inviteUser(user: {
 export async function requestPasswordReset(input: {
   email: string;
   tenantSlug?: string | null;
+  /** Where the request came from, for the audit log. */
+  ip?: string | null;
+  userAgent?: string | null;
 }): Promise<void> {
   const email = normalizeEmail(input.email);
   const users = await db.user.findMany({
@@ -182,6 +185,19 @@ export async function requestPasswordReset(input: {
   });
 
   for (const user of users) {
+    // Logged in the account's clinic: who the request named, and from where (never the link).
+    await audit({
+      tenantId: user.tenantId,
+      actorId: null,
+      actorEmail: email,
+      action: "auth.password_reset_requested",
+      entity: "User",
+      entityId: user.id,
+      patientId: null,
+      ip: input.ip ?? null,
+      device: input.userAgent ?? null,
+      after: { sent: user.status === "INVITED" ? "invitation" : "reset_link" },
+    });
     if (user.status === "INVITED") {
       await inviteUser({
         id: user.id,

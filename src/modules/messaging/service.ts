@@ -319,12 +319,19 @@ export async function patchConversation(tenantId: string, id: string, rawInput: 
     return row;
   });
 
+  // Closing and reopening a thread are named in the audit log; other edits are updates.
+  const action =
+    before.status !== after.status && after.status === "CLOSED"
+      ? "conversation.close"
+      : before.status === "CLOSED" && after.status !== "CLOSED"
+        ? "conversation.reopen"
+        : "conversation.update";
   await audit({
     tenantId,
     actorId: actor.id,
     actorEmail: actor.email,
     ip: actor.ip,
-    action: "conversation.update",
+    action,
     entity: "Conversation",
     entityId: id,
     before: { status: before.status, assignedToId: before.assignedToId, patientId: before.patientId, leadId: before.leadId, objections: before.objections, contactName: before.contactName },
