@@ -1,4 +1,5 @@
-import { PrismaClient, type Gender, type AppointmentStatus, type ChannelType, type Prisma } from "@prisma/client";
+import type { Gender, AppointmentStatus, ChannelType, Prisma } from "@prisma/client";
+import { systemDb, withSystem } from "../src/lib/db";
 import { generateEmbedSecret } from "../src/lib/embed";
 import { generatePassword, hashPassword, PasswordSchema } from "../src/lib/auth/password";
 import { reindexTenant } from "../src/modules/knowledge/ingest";
@@ -16,7 +17,8 @@ import { allergiesFromDraw, comorbiditiesFromDraw, conditionFromDraw, medication
  * Staff passwords: `SEED_DEMO_PASSWORD` if set, otherwise a fresh random one;
  * it is printed at the end. There is no development sign-in bypass.
  */
-const db = new PrismaClient();
+/** The seed writes across clinics (the demo and the platform tenant): the system connection, outside row-level security. */
+const db = systemDb;
 const TENANT_SLUG = "demo";
 const PLATFORM_ADMIN_EMAIL = "platform@demo.clinic";
 const TZ = "Africa/Cairo";
@@ -371,7 +373,7 @@ async function main() {
   console.log("   Set SEED_DEMO_PASSWORD to choose it; re-running the seed rebuilds the demo clinic.");
 }
 
-main()
+withSystem(main)
   .catch((e) => {
     console.error(e);
     process.exit(1);

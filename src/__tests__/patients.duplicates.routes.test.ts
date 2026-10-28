@@ -7,7 +7,8 @@
  * the end shows the last page.
  */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { db } from "@/lib/db";
+// Tests seed and inspect across clinics: the system connection, outside row-level security.
+import { systemDb as db } from "@/lib/db";
 import { GET as list, POST as create } from "@/app/api/patients/route";
 import { PATCH as update } from "@/app/api/patients/[id]/route";
 import { oldestDateOfBirth } from "@/components/clinicmind/patient-shared";

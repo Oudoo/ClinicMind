@@ -1,6 +1,6 @@
 import { Prisma, type CheckIn, type Escalation } from "@prisma/client";
 import { z } from "zod";
-import { db } from "@/lib/db";
+import { db, systemDb, withTenant } from "@/lib/db";
 import { audit } from "@/lib/audit";
 import { zOptionalText } from "@/lib/validation";
 import { notify } from "@/modules/notifications/service";
@@ -182,6 +182,17 @@ function validatePhotos(photos: PhotoUpload[]): void {
 
 // ── Public link ──────────────────────────────────────────────────────────────
 
+/**
+ * The clinic a check-in link belongs to. Looked up across clinics because the
+ * token is the patient's only credential; everything after runs in that
+ * clinic's database scope (row-level security).
+ */
+async function tenantOfToken(token: string): Promise<string | null> {
+  if (!looksLikeToken(token)) return null;
+  const row = await systemDb.conciergeTask.findUnique({ where: { tokenHash: checkInTokenHash(token) }, select: { tenantId: true } });
+  return row?.tenantId ?? null;
+}
+
 async function findTaskByToken(token: string, now: Date): Promise<LoadedTask | null> {
   if (!looksLikeToken(token)) return null;
   const task = await db.conciergeTask.findUnique({ where: { tokenHash: checkInTokenHash(token) }, include: taskInclude });
@@ -190,6 +201,11 @@ async function findTaskByToken(token: string, now: Date): Promise<LoadedTask | n
 
 /** What the public page shows for a token, or null (unknown, used, expired, stopped: all alike). */
 export async function getPublicCheckIn(token: string, now = new Date()): Promise<PublicCheckInDTO | null> {
+  const tenantId = await tenantOfToken(token);
+  return tenantId ? withTenant(tenantId, () => publicCheckIn(token, now)) : null;
+}
+
+async function publicCheckIn(token: string, now: Date): Promise<PublicCheckInDTO | null> {
   const task = await findTaskByToken(token, now);
   if (!task) return null;
   const step = stepOf(task);
@@ -219,9 +235,13 @@ export async function getPublicCheckIn(token: string, now = new Date()): Promise
 /** Answer through the public link. Unknown, used or expired tokens throw `token_invalid` (404). */
 export async function submitByToken(token: string, input: Omit<SubmitInput, "source">): Promise<SubmitResult> {
   const now = input.now ?? new Date();
-  const task = await findTaskByToken(token, now);
-  if (!task) throw new ConciergeError("token_invalid", "this link is not valid", 404);
-  return submitLoaded(task, { ...input, now, source: "link" });
+  const tenantId = await tenantOfToken(token);
+  if (!tenantId) throw new ConciergeError("token_invalid", "this link is not valid", 404);
+  return withTenant(tenantId, async () => {
+    const task = await findTaskByToken(token, now);
+    if (!task) throw new ConciergeError("token_invalid", "this link is not valid", 404);
+    return submitLoaded(task, { ...input, now, source: "link" });
+  });
 }
 
 export function toPublicResult(result: SubmitResult, clinicPhone: string | null): PublicCheckInResult {

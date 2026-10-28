@@ -11,7 +11,8 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vites
 const enrol = vi.hoisted(() => vi.fn(async (_tenantId: string, procedureId: string) => ({ enrolmentId: `enr-${procedureId}`, protocolId: "prot-test", tasks: 7 })));
 vi.mock("@/modules/concierge/service", () => ({ enrolOnSignedProcedure: enrol }));
 
-import { db } from "@/lib/db";
+// Tests seed and inspect across clinics: the system connection, outside row-level security.
+import { systemDb as db } from "@/lib/db";
 import { ensureDefaultTreatments } from "@/modules/treatments/service";
 import { normalisePhone, parseAmount, parseImportDate, parseImportRows, parseKind, parseMethod } from "@/modules/finance/imports";
 import { netPaid, procedureBalance } from "@/modules/finance/constants";
@@ -25,7 +26,10 @@ import { POST as importRoute } from "@/app/api/payments/import/route";
 import { POST as confirmRoute } from "@/app/api/payments/import/confirm/route";
 import { GET as summaryRoute } from "@/app/api/finance/summary/route";
 import { GET as exportRoute } from "@/app/api/finance/export/route";
-import { createTenant, createUser, dbTestsEnabled, deleteTenants, request, sessionCookieFor } from "@/test/db";
+import { createTenant, createUser, dbTestsEnabled, deleteTenants, request, runAsSystem, sessionCookieFor } from "@/test/db";
+
+// Setup and checks call the services directly; the routes enter their own request scope.
+runAsSystem();
 
 const params = (id: string) => ({ params: Promise.resolve({ id }) });
 const DAY = 86_400_000;

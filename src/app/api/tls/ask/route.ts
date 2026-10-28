@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { db, notDeleted } from "@/lib/db";
+import { notDeleted, systemDb } from "@/lib/db";
 import { env } from "@/lib/env";
 
 export const dynamic = "force-dynamic";
@@ -31,11 +31,11 @@ export async function GET(req: Request) {
   if (domain.endsWith(`.${root}`)) {
     const slug = domain.slice(0, -(root.length + 1));
     if (!slug || slug.includes(".")) return answer(false);
-    const tenant = await db.tenant.findFirst({ where: { slug, status: "ACTIVE", ...notDeleted }, select: { id: true } });
+    const tenant = await systemDb.tenant.findFirst({ where: { slug, status: "ACTIVE", ...notDeleted }, select: { id: true } });
     return answer(Boolean(tenant));
   }
 
-  const custom = await db.tenant.findFirst({
+  const custom = await systemDb.tenant.findFirst({
     where: { customDomain: domain, customDomainVerified: true, status: "ACTIVE", ...notDeleted },
     select: { id: true },
   });

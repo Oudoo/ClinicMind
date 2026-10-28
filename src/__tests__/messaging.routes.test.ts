@@ -10,7 +10,8 @@
  */
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { createHash } from "node:crypto";
-import { db } from "@/lib/db";
+// Tests seed and inspect across clinics: the system connection, outside row-level security.
+import { systemDb as db, withoutScope } from "@/lib/db";
 import { GET as verifyRoute, POST as inboundRoute } from "@/app/api/integrations/messaging/inbound/[tenantSlug]/route";
 import { GET as statusRoute, PATCH as updateRoute } from "@/app/api/messaging/integration/route";
 import { POST as secretRoute } from "@/app/api/messaging/integration/secret/route";
@@ -144,10 +145,13 @@ describe.skipIf(!dbTestsEnabled)("messaging", () => {
   const slugParams = (tenantSlug: string) => ({ params: Promise.resolve({ tenantSlug }) });
   const idParams = (id: string) => ({ params: Promise.resolve({ id }) });
 
+  // The webhook is called as the provider would: outside any database scope.
   function post(slug: string, raw: string, headers: Record<string, string> = {}) {
-    return inboundRoute(
-      new Request(`http://localhost:3000/api/integrations/messaging/inbound/${slug}`, { method: "POST", headers: { "content-type": "application/json", ...headers }, body: raw }),
-      slugParams(slug),
+    return withoutScope(() =>
+      inboundRoute(
+        new Request(`http://localhost:3000/api/integrations/messaging/inbound/${slug}`, { method: "POST", headers: { "content-type": "application/json", ...headers }, body: raw }),
+        slugParams(slug),
+      ),
     );
   }
   function signed(slug: string, payload: unknown, key = secret) {

@@ -10,7 +10,8 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { Procedure } from "@prisma/client";
-import { db } from "@/lib/db";
+// Tests seed and inspect across clinics: the system connection, outside row-level security.
+import { systemDb as db, withoutScope } from "@/lib/db";
 import { resetRateLimits } from "@/lib/auth/rate-limit";
 import { ensureDefaultTreatments } from "@/modules/treatments/service";
 import { enrolOnSignedProcedure } from "@/modules/concierge/service";
@@ -37,8 +38,11 @@ import { POST as retireRoute } from "@/app/api/concierge/protocols/[id]/retire/r
 import { GET as settingsRoute, PUT as putSettingsRoute } from "@/app/api/concierge/settings/route";
 import { GET as fileRoute } from "@/app/api/concierge/files/[id]/route";
 import { GET as publicGet, POST as publicPost } from "@/app/api/public/check-in/[token]/route";
-import { createTenant, createUser, dbTestsEnabled, deleteTenants, request, sessionCookieFor } from "@/test/db";
+import { createTenant, createUser, dbTestsEnabled, deleteTenants, request, runAsSystem, sessionCookieFor } from "@/test/db";
 import { zonedParts, zonedTimeToUtc } from "@/lib/time";
+
+// Setup and checks call the services directly; the routes enter their own request scope.
+runAsSystem();
 
 const params = (id: string) => ({ params: Promise.resolve({ id }) });
 const TZ = "Africa/Cairo";
@@ -102,11 +106,14 @@ describe.skipIf(!dbTestsEnabled)("concierge", () => {
     return { res, json, text };
   }
 
-  /** The public endpoints, from a fresh client address each time (rate limits are per address). */
+  /**
+   * The public endpoints, from a fresh client address each time (rate limits
+   * are per address), called as a visitor: outside any database scope.
+   */
   async function publicCall(method: "GET" | "POST", token: string, body?: unknown) {
     ip += 1;
     const req = request(`/api/public/check-in/${token}`, { method, body, headers: { "x-forwarded-for": `10.9.${Math.floor(ip / 250)}.${ip % 250}` } });
-    const res = method === "GET" ? await publicGet(req, tokenParams(token)) : await publicPost(req, tokenParams(token));
+    const res = await withoutScope(() => (method === "GET" ? publicGet(req, tokenParams(token)) : publicPost(req, tokenParams(token))));
     const text = await res.text();
     return { res, json: text ? JSON.parse(text) : null, text };
   }

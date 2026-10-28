@@ -1,5 +1,5 @@
 import type { AuthTokenKind } from "@prisma/client";
-import { db } from "@/lib/db";
+import { systemDb } from "@/lib/db";
 import { env } from "@/lib/env";
 import { audit } from "@/lib/audit";
 import { sendMail } from "@/lib/mailer";
@@ -28,9 +28,9 @@ export async function issueAuthToken(userId: string, kind: AuthTokenKind): Promi
   const token = generateToken();
   const ttl = kind === "INVITE" ? INVITE_TTL_MS : PASSWORD_RESET_TTL_MS;
   const expiresAt = new Date(Date.now() + ttl);
-  await db.$transaction([
-    db.authToken.deleteMany({ where: { userId, kind, usedAt: null } }),
-    db.authToken.create({
+  await systemDb.$transaction([
+    systemDb.authToken.deleteMany({ where: { userId, kind, usedAt: null } }),
+    systemDb.authToken.create({
       data: { userId, kind, tokenHash: hashToken(token, "auth-token"), expiresAt },
     }),
   ]);
@@ -54,7 +54,7 @@ export type AuthTokenLookup =
 /** Look a token up without consuming it (used to render the set-password page). */
 export async function inspectAuthToken(token: string): Promise<AuthTokenLookup> {
   if (!token || token.length > 128) return { status: "invalid" };
-  const row = await db.authToken.findUnique({
+  const row = await systemDb.authToken.findUnique({
     where: { tokenHash: hashToken(token, "auth-token") },
     include: {
       user: {
@@ -99,14 +99,14 @@ export async function setPasswordWithToken(
   const lookup = await inspectAuthToken(token);
   if (lookup.status !== "valid") return { ok: false, reason: lookup.status };
 
-  const consumed = await db.authToken.updateMany({
+  const consumed = await systemDb.authToken.updateMany({
     where: { id: lookup.tokenId, usedAt: null },
     data: { usedAt: new Date() },
   });
   if (consumed.count === 0) return { ok: false, reason: "used" };
 
   const passwordHash = await hashPassword(password);
-  const user = await db.user.update({
+  const user = await systemDb.user.update({
     where: { id: lookup.user.id },
     data: { passwordHash, status: "ACTIVE" },
     select: { id: true, tenantId: true, email: true, status: true },
@@ -169,7 +169,7 @@ export async function requestPasswordReset(input: {
   userAgent?: string | null;
 }): Promise<void> {
   const email = normalizeEmail(input.email);
-  const users = await db.user.findMany({
+  const users = await systemDb.user.findMany({
     where: {
       email: { equals: email, mode: "insensitive" },
       deletedAt: null,

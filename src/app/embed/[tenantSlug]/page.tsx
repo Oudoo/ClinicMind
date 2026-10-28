@@ -1,4 +1,4 @@
-import { db, notDeleted } from "@/lib/db";
+import { notDeleted, systemDb } from "@/lib/db";
 import { EmbedBootstrap } from "@/components/clinicmind/embed-bootstrap";
 import { tenantThemeStyle, BRAND, type TenantBranding } from "@/lib/brand";
 
@@ -13,7 +13,7 @@ export const dynamic = "force-dynamic";
  */
 export default async function EmbedPage({ params }: { params: Promise<{ tenantSlug: string }> }) {
   const { tenantSlug } = await params;
-  const tenant = await db.tenant
+  const tenant = await systemDb.tenant
     .findFirst({
       where: { slug: tenantSlug, status: "ACTIVE", ...notDeleted },
       select: { name: true, branding: true, embed: { select: { enabled: true, allowedOrigins: true } } },

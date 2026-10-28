@@ -4,7 +4,8 @@
  * retrieval, tenant isolation, removal and the assistant route end to end.
  */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { db } from "@/lib/db";
+// Tests seed and inspect across clinics: the system connection, outside row-level security.
+import { systemDb as db } from "@/lib/db";
 import { answerWithRag, retrieve } from "@/lib/ai/rag";
 import {
   flushBackgroundIngestion,
@@ -17,7 +18,10 @@ import {
   removePatientKnowledge,
 } from "@/modules/knowledge/ingest";
 import { POST as assistant } from "@/app/api/assistant/route";
-import { createTenant, createUser, dbTestsEnabled, deleteTenants, request, sessionCookieFor } from "@/test/db";
+import { createTenant, createUser, dbTestsEnabled, deleteTenants, request, runAsSystem, sessionCookieFor } from "@/test/db";
+
+// These tests call the services directly, outside any route.
+runAsSystem();
 
 async function rowsFor(tenantId: string, where: Record<string, unknown> = {}) {
   return db.knowledgeEmbedding.findMany({ where: { tenantId, ...where }, orderBy: [{ source: "asc" }, { chunkIndex: "asc" }] });

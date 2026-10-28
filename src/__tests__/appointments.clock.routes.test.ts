@@ -10,7 +10,8 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/lib/mailer", () => ({ sendMail: vi.fn(async () => undefined) }));
 
-import { db } from "@/lib/db";
+// Tests seed and inspect across clinics: the system connection, outside row-level security.
+import { systemDb as db } from "@/lib/db";
 import { addDays, zonedParts, zonedTimeToUtc } from "@/lib/time";
 import { POST as createRoute } from "@/app/api/appointments/route";
 import { PATCH as patchRoute } from "@/app/api/appointments/[id]/route";

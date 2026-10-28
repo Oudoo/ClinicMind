@@ -1,5 +1,5 @@
 import { Prisma, type EmbeddingSource } from "@prisma/client";
-import { db, notDeleted } from "@/lib/db";
+import { db, notDeleted, withTenant } from "@/lib/db";
 import { embeddingProvider } from "@/lib/ai/provider";
 import type { ChunkMetadata } from "@/lib/ai/rag";
 import { toVectorLiteral } from "@/lib/ai/vectors";
@@ -342,7 +342,7 @@ export function ingestInBackground(task: IngestTask): void {
   const key = `${task.kind}:${task.tenantId}:${task.id}`;
   const previous = inFlight.get(key) ?? Promise.resolve();
   const run: Promise<void> = previous
-    .then(() => runIngestTask(task))
+    .then(() => withTenant(task.tenantId, () => runIngestTask(task)))
     .then(
       () => undefined,
       (err: unknown) => {

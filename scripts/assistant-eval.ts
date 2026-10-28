@@ -1,4 +1,4 @@
-import { db } from "../src/lib/db";
+import { systemDb, withSystem } from "../src/lib/db";
 import { formatEvalTable, runEvalSet } from "../src/modules/assistant/eval/run";
 
 /**
@@ -19,13 +19,13 @@ import { formatEvalTable, runEvalSet } from "../src/modules/assistant/eval/run";
 async function main(): Promise<void> {
   const args = process.argv.slice(2).filter((a) => a !== "--");
   const slug = args.find((a) => !a.startsWith("--")) ?? "demo";
-  const tenant = await db.tenant.findFirst({ where: { slug, deletedAt: null }, select: { id: true, name: true } });
+  const tenant = await systemDb.tenant.findFirst({ where: { slug, deletedAt: null }, select: { id: true, name: true } });
   if (!tenant) {
     console.error(`tenant "${slug}" not found (run the demo seed, or pass a tenant slug)`);
     process.exitCode = 2;
     return;
   }
-  const owner = await db.user.findFirst({
+  const owner = await systemDb.user.findFirst({
     where: { tenantId: tenant.id, role: "CLINIC_OWNER", deletedAt: null },
     orderBy: { createdAt: "asc" },
     select: { id: true, email: true },
@@ -38,9 +38,10 @@ async function main(): Promise<void> {
   if (outcomes.some((o) => !o.pass)) process.exitCode = 1;
 }
 
-main()
+// An operator script: it works across clinics, outside row-level security (src/lib/db.ts).
+withSystem(main)
   .catch((err) => {
     console.error(err);
     process.exitCode = 1;
   })
-  .finally(() => db.$disconnect());
+  .finally(() => systemDb.$disconnect());

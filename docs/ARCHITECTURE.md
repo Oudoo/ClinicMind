@@ -31,8 +31,9 @@ audit, settings, billing, embed.
   child tables `medical_histories`, `medications`, `documents`, `messages`);
   services always filter by it, and every client-supplied foreign key
   (`patientId`, `doctorId`, `clinicId`) is proven to belong to the acting tenant
-  by `lib/tenant-scope.ts` before a write. Postgres **RLS**
-  (`prisma/sql/01_pgvector_and_rls.sql`) is the defense-in-depth backstop.
+  by `lib/tenant-scope.ts` before a write. Postgres **row-level security**
+  backs this up in the database itself (§7): a query that forgets its filter
+  still cannot return or change another clinic's rows.
 - **White-label**: `Tenant.branding` drives runtime CSS-variable overrides
   (`lib/brand.ts` → `tenantThemeStyle`) — no rebuild per client.
 
@@ -170,13 +171,33 @@ deployments.
 - **Audit immutability** is enforced by a trigger that refuses `UPDATE` and
   `DELETE` for every role; a tenant removal (offboarding, erasure request) opts
   in with `SET LOCAL app.allow_audit_delete = 'on'` inside its transaction.
-- **RLS policies** compare `tenantId` with `app_current_tenant()`. They are
-  present and tested by migration, but the application still connects as the
-  table owner, which PostgreSQL exempts from RLS; activating them means a
-  dedicated non-owner application role, `FORCE ROW LEVEL SECURITY`, and a
-  per-transaction `SET LOCAL app.current_tenant` wrapper. Until then, isolation
-  rests on the query-level scoping and `lib/tenant-scope.ts` checks, which every
-  route test exercises.
+- **Row-level security** (`lib/db.ts`). Every table that holds a clinic's rows
+  (41 of them) has the policy `"tenantId" = app_current_tenant()`, for reads
+  and writes. Policies bind every role except superusers and the tables'
+  owner, so the app connects as its own role, `clinicmind_app` (created by the
+  `application_role` migration; `scripts/db-app-role.ts` gives it its
+  password): `DATABASE_URL` is that role, `SYSTEM_DATABASE_URL` the owner.
+  - `db` follows the request. `getActingContext()` enters the request's scope
+    before it reads anything and sets the clinic once the session resolves; a
+    React `cache` carries it to the server components of the same render.
+    Each clinic gets its own small connection pool whose connections carry
+    `app.current_tenant` as a startup option, so interactive transactions and
+    raw SQL are scoped too. Outside any scope `db` uses connections with no
+    clinic set, which see nothing: a public link or a webhook resolves its
+    token or slug to a clinic first (`withTenant`).
+  - `systemDb` (the owner) serves only what is cross-clinic by nature: sign-in,
+    sessions, one-time tokens, resolving a token or a host to its clinic, the
+    audit-log writer, the platform console, background jobs (`withSystem`),
+    the seed and scripts. The app role cannot read sessions, tokens or the
+    sign-in history at all.
+  - Callbacks that run after the request (a streamed export's `pull`, `after()`
+    work) are bound to their clinic (`bindScope`, `withTenant`).
+  - CI runs the whole test suite as `clinicmind_app` and the end-to-end server
+    with it (`/api/health` reports `"rowLevelSecurity": "enforced"`);
+    `row-level-security.test.ts` proves an unscoped query returns nothing and
+    a clinic cannot read, change or plant rows in another. Connected as the
+    owner (local development by default) nothing is enforced and the server
+    log says so at start-up.
 
 ## 8. Security
 

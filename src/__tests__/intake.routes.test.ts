@@ -9,7 +9,8 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vites
 
 vi.mock("@/lib/mailer", () => ({ sendMail: vi.fn(async () => undefined) }));
 
-import { db } from "@/lib/db";
+// Tests seed and inspect across clinics: the system connection, outside row-level security.
+import { systemDb as db, withoutScope } from "@/lib/db";
 import { env } from "@/lib/env";
 import { resetRateLimits } from "@/lib/auth/rate-limit";
 import { GET as linksListRoute, POST as linksCreateRoute } from "@/app/api/intake/links/route";
@@ -100,13 +101,16 @@ describe.skipIf(!dbTestsEnabled)("intake routes", () => {
     return { res, json, token: typeof json.url === "string" ? (json.url.split("/onboard/")[1] as string) : "" };
   }
 
+  // The public form is called as a visitor: outside any database scope.
   async function publicGet(token: string, headers: Record<string, string> = {}) {
-    const res = await publicGetRoute(request(`/api/public/intake/${token}`, { headers: publicHeaders(headers) }), tokenParams(token));
+    const res = await withoutScope(() => publicGetRoute(request(`/api/public/intake/${token}`, { headers: publicHeaders(headers) }), tokenParams(token)));
     return { res, json: await res.json() };
   }
 
   async function publicPost(token: string, body: unknown, headers: Record<string, string> = {}) {
-    const res = await publicPostRoute(request(`/api/public/intake/${token}`, { method: "POST", body, headers: publicHeaders(headers) }), tokenParams(token));
+    const res = await withoutScope(() =>
+      publicPostRoute(request(`/api/public/intake/${token}`, { method: "POST", body, headers: publicHeaders(headers) }), tokenParams(token)),
+    );
     return { res, json: await res.json() };
   }
 

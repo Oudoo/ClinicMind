@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { NextResponse } from "next/server";
-import { db, notDeleted } from "@/lib/db";
+import { notDeleted, systemDb } from "@/lib/db";
 import {
   EMBED_SECRET_HEADER,
   embedSecretMatches,
@@ -56,7 +56,7 @@ export async function POST(req: Request) {
 
     const body = Body.parse(await req.json());
 
-    const tenant = await db.tenant.findFirst({
+    const tenant = await systemDb.tenant.findFirst({
       where: { slug: body.tenantSlug, status: "ACTIVE", ...notDeleted },
       select: { id: true, slug: true, embed: true },
     });

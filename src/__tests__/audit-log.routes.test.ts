@@ -6,7 +6,8 @@
  * failed sign-ins, sign-outs and record views.
  */
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { db } from "@/lib/db";
+// Tests seed and inspect across clinics: the system connection, outside row-level security.
+import { systemDb as db } from "@/lib/db";
 import { audit, resolveAuditPatientId } from "@/lib/audit";
 import { resetRateLimits } from "@/lib/auth/rate-limit";
 import { GET as listLogs } from "@/app/api/audit-logs/route";

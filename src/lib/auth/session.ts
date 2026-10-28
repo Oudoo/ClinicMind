@@ -1,6 +1,6 @@
 import { cookies, headers } from "next/headers";
 import type { UserRole } from "@prisma/client";
-import { db } from "@/lib/db";
+import { enterRequestScope, setRequestTenant, systemDb } from "@/lib/db";
 import { env } from "@/lib/env";
 import { verifyEmbedToken, type EmbedClaims } from "@/lib/embed";
 import { isTenantRole, roleWithinCeiling } from "@/lib/auth/rbac";
@@ -58,6 +58,17 @@ interface CredentialSource {
  * and the request-scoped stores from `next/headers` are used.
  */
 export async function getActingContext(req?: Request): Promise<ActingContext | null> {
+  // Everything the request reads after this call runs in its clinic's database
+  // scope (row-level security, see lib/db.ts); until the session resolves, and
+  // for a caller without one, in a scope that sees no clinic's rows. Entered
+  // before the first await so the caller's continuation inherits it.
+  const scope = enterRequestScope();
+  const ctx = await resolveActingContext(req);
+  setRequestTenant(scope, ctx?.tenantId ?? null);
+  return ctx;
+}
+
+async function resolveActingContext(req?: Request): Promise<ActingContext | null> {
   let source: CredentialSource;
   if (req) {
     source = { cookie: (name) => readCookie(req, name), header: (name) => req.headers.get(name) };
@@ -105,7 +116,7 @@ export interface IssuedSession {
 export async function createSession(userId: string, meta: SessionMeta = {}): Promise<IssuedSession> {
   const token = generateToken();
   const expiresAt = new Date(Date.now() + SESSION_TTL_MS);
-  const session = await db.session.create({
+  const session = await systemDb.session.create({
     data: {
       userId,
       tokenHash: hashToken(token, "session"),
@@ -120,7 +131,7 @@ export async function createSession(userId: string, meta: SessionMeta = {}): Pro
 }
 
 export async function revokeSession(sessionId: string): Promise<void> {
-  await db.session.updateMany({
+  await systemDb.session.updateMany({
     where: { id: sessionId, revokedAt: null },
     data: { revokedAt: new Date() },
   });
@@ -128,7 +139,7 @@ export async function revokeSession(sessionId: string): Promise<void> {
 
 /** Revoke every live session of a user (password change, account disabled). */
 export async function revokeAllSessions(userId: string, opts: { except?: string } = {}): Promise<number> {
-  const result = await db.session.updateMany({
+  const result = await systemDb.session.updateMany({
     where: {
       userId,
       revokedAt: null,
@@ -172,7 +183,7 @@ function cookieSecure(): boolean {
 }
 
 async function contextFromSessionToken(token: string): Promise<ActingContext | null> {
-  const session = await db.session.findUnique({
+  const session = await systemDb.session.findUnique({
     where: { tokenHash: hashToken(token, "session") },
     include: {
       user: {
@@ -193,7 +204,7 @@ async function contextFromSessionToken(token: string): Promise<ActingContext | n
   if (user.tenant.deletedAt || user.tenant.status !== "ACTIVE") return null;
 
   if (now.getTime() - session.lastSeenAt.getTime() > SESSION_TOUCH_INTERVAL_MS) {
-    await db.session
+    await systemDb.session
       .update({ where: { id: session.id }, data: { lastSeenAt: now } })
       .catch(() => undefined);
   }
@@ -230,13 +241,13 @@ async function contextFromEmbedToken(token: string): Promise<ActingContext | nul
  * (SEC-2): the host backend can narrow a session, never widen it.
  */
 async function contextForEmbedClaims(claims: EmbedClaims): Promise<ActingContext | null> {
-  const tenant = await db.tenant.findFirst({
+  const tenant = await systemDb.tenant.findFirst({
     where: { id: claims.tenantId, status: "ACTIVE", deletedAt: null },
     select: { id: true, slug: true, name: true, branding: true },
   });
   if (!tenant) return null;
 
-  const user = await db.user.findFirst({
+  const user = await systemDb.user.findFirst({
     where: { id: claims.userId, tenantId: tenant.id, status: "ACTIVE", deletedAt: null },
     select: { id: true, email: true, fullName: true, role: true, isClinician: true },
   });

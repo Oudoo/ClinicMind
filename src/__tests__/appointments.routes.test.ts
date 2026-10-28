@@ -8,7 +8,8 @@
  * ago today, because check-in, no-show and completion follow the clock.
  */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { db } from "@/lib/db";
+// Tests seed and inspect across clinics: the system connection, outside row-level security.
+import { systemDb as db } from "@/lib/db";
 import { startOfDayInTz } from "@/lib/time";
 import { GET as listRoute, POST as createRoute } from "@/app/api/appointments/route";
 import { GET as getRoute, PATCH as patchRoute } from "@/app/api/appointments/[id]/route";

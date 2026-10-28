@@ -4,7 +4,8 @@
  * owner sets for other staff (never for themselves).
  */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { db } from "@/lib/db";
+// Tests seed and inspect across clinics: the system connection, outside row-level security.
+import { systemDb as db } from "@/lib/db";
 import { POST as sign } from "@/app/api/consultations/[id]/sign/route";
 import { PATCH as patchUser } from "@/app/api/users/[id]/route";
 import { POST as invite } from "@/app/api/users/route";

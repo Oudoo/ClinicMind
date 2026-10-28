@@ -5,7 +5,8 @@
  * audited, and the safety-override review list and CSV export by role.
  */
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-import { db } from "@/lib/db";
+// Tests seed and inspect across clinics: the system connection, outside row-level security.
+import { systemDb as db } from "@/lib/db";
 import { GET as safetyCheckGet, POST as safetyCheck } from "@/app/api/consultations/[id]/safety-check/route";
 import { POST as sign } from "@/app/api/consultations/[id]/sign/route";
 import { GET as listOverrides } from "@/app/api/safety-overrides/route";

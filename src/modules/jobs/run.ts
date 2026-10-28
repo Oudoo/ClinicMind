@@ -1,3 +1,4 @@
+import { withSystem } from "@/lib/db";
 import { JOBS } from "./registry";
 import type { JobResult } from "./types";
 
@@ -12,7 +13,9 @@ export interface RunOptions {
 
 /**
  * Run the jobs that are due. Failures are isolated per job and logged; the
- * result map says what happened to each one.
+ * result map says what happened to each one. Jobs work across clinics (each
+ * filters by its clinic itself), so they run in the system database scope,
+ * outside row-level security (lib/db.ts).
  */
 export async function runDueJobs(now: Date = new Date(), opts: RunOptions = {}): Promise<Record<string, JobResult>> {
   const results: Record<string, JobResult> = {};
@@ -26,7 +29,7 @@ export async function runDueJobs(now: Date = new Date(), opts: RunOptions = {}):
     const started = Date.now();
     lastRun.set(job.name, now.getTime());
     try {
-      const summary = await job.run({ now, log: (m) => console.info(`[jobs] ${job.name}: ${m}`) });
+      const summary = await withSystem(() => job.run({ now, log: (m) => console.info(`[jobs] ${job.name}: ${m}`) }));
       results[job.name] = { ok: true, summary: summary ?? undefined, ms: Date.now() - started };
     } catch (err) {
       const error = err instanceof Error ? err.message : String(err);

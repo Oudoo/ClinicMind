@@ -317,3 +317,23 @@ export type FakeDb = ReturnType<typeof createFakeDb>;
  * the test file both import this module, so they see the same store.
  */
 export const fake = createFakeDb();
+
+/**
+ * What `vi.mock("@/lib/db")` returns: the in-memory store behind both clients
+ * and pass-through scopes (the fake has no row-level security to scope).
+ */
+export function fakeDbModule() {
+  return {
+    db: fake.db,
+    systemDb: fake.db,
+    currentDb: () => fake.db,
+    withTenant: <T>(_tenantId: string, fn: () => T): T => fn(),
+    withSystem: <T>(fn: () => T): T => fn(),
+    bindScope: <F>(fn: F): F => fn,
+    enterRequestScope: () => ({ tenantId: null, system: false }),
+    enterSystemScope: () => undefined,
+    withoutScope: <T>(fn: () => T): T => fn(),
+    setRequestTenant: () => undefined,
+    notDeleted: { deletedAt: null },
+  };
+}

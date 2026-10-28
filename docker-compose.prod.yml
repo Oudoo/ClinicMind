@@ -49,7 +49,9 @@ services:
         condition: service_healthy
     environment:
       DATABASE_URL: postgresql://clinicmind:${POSTGRES_PASSWORD}@db:5432/clinicmind?schema=public
-    command: ["npx", "prisma", "migrate", "deploy"]
+      APP_DB_PASSWORD: ${APP_DB_PASSWORD:?set APP_DB_PASSWORD (openssl rand -hex 32)}
+    # Migrations as the owner, then the password the app's own role signs in with.
+    command: ["sh", "-c", "npx prisma migrate deploy && npx tsx scripts/db-app-role.ts"]
 
   web:
     image: ${CLINICMIND_IMAGE:-ghcr.io/oudoo/clinicmind:latest}
@@ -62,7 +64,10 @@ services:
       NODE_ENV: production
       APP_URL: https://${DOMAIN}
       ROOT_DOMAIN: ${ROOT_DOMAIN:-${DOMAIN}}
-      DATABASE_URL: postgresql://clinicmind:${POSTGRES_PASSWORD}@db:5432/clinicmind?schema=public
+      # The app's own role: row-level security keeps every clinic to its own rows.
+      DATABASE_URL: postgresql://clinicmind_app:${APP_DB_PASSWORD:?set APP_DB_PASSWORD (openssl rand -hex 32)}@db:5432/clinicmind?schema=public
+      # The owner, for the few cross-clinic paths (sign-in, sessions, audit log, jobs, platform console).
+      SYSTEM_DATABASE_URL: postgresql://clinicmind:${POSTGRES_PASSWORD}@db:5432/clinicmind?schema=public
       AUTH_SECRET: ${AUTH_SECRET:?set AUTH_SECRET (openssl rand -base64 48)}
       EMBED_SIGNING_SECRET: ${EMBED_SIGNING_SECRET:?set EMBED_SIGNING_SECRET (openssl rand -base64 48)}
       AI_DEFAULT_PROVIDER: ${AI_DEFAULT_PROVIDER:-auto}

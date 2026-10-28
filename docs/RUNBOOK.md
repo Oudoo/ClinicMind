@@ -17,7 +17,9 @@ reproducible from the repository; nothing depends on a specific hosting vendor.
 Copy `.env.example` to `.env`. Required in production:
 
 - `AUTH_SECRET`, `EMBED_SIGNING_SECRET` — 32+ random characters each (`openssl rand -base64 48`). The app refuses to start with placeholders or development-looking values.
-- `DATABASE_URL` — Postgres connection string.
+- `DATABASE_URL` — Postgres connection string for the app's own role, `clinicmind_app`, which row-level security binds (each clinic sees only its rows). The migrations create the role without a password; `APP_DB_PASSWORD=… npx tsx scripts/db-app-role.ts` (run as the owner, after `prisma migrate deploy`) lets it sign in. Use a URL-safe password (`openssl rand -hex 32`).
+- `SYSTEM_DATABASE_URL` — the owner's connection string, for the cross-clinic paths (sign-in, sessions, audit log, jobs, platform console). When unset the app uses `DATABASE_URL` for everything, which is how local development runs: as the owner, with nothing enforced (the server log and `/api/health` say so).
+- `DB_TENANT_POOL_SIZE` (3), `DB_TENANT_POOLS` (20) — each clinic gets its own small connection pool (its connections carry the clinic); past `DB_TENANT_POOLS`, pools idle for five minutes are closed. Keep size × pools well under Postgres's `max_connections` (100 by default), leaving room for the owner connection.
 - `APP_URL`, `ROOT_DOMAIN` — public URL and the domain tenant subdomains hang off.
 - One of `GEMINI_API_KEY`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY` for live AI; model ids and `AI_TIMEOUT_MS` are configurable.
 - `SMTP_URL`, `MAIL_FROM` — invitation and password-reset e-mails (otherwise links are printed to the server log).
@@ -146,11 +148,11 @@ Migrations run before the new app version starts. Roll back by deploying the pre
 
 ## 6. Backups and restore
 
-- **Nightly backup.** At 02:00 UTC the `backup` service writes `./backups/clinicmind-<timestamp>.dump` (custom format, compressed) and, next to it, a `.manifest` and a `.sha256`. The manifest holds the row count of every table, the latest migration and the counts of indexes, constraints, triggers and row-level security policies, all read in the same database snapshot as the dump. Dumps older than `BACKUP_RETENTION_DAYS` (30) are pruned.
-- **Nightly restore drill.** Right after each dump, `scripts/restore-drill.sh` restores it into a scratch database (`clinicmind_restore_drill`, dropped afterwards; it briefly needs as much free disk as the database itself) and checks the checksum, a clean `pg_restore`, every table row for row against the manifest, the migration, the schema objects, and that the audit log still refuses edits. Each run appends one line to `./backups/restore-drill.log` (`OK …` or `FAIL …`); `docker compose -f docker-compose.prod.yml logs backup` shows the same. Check the log weekly; a `FAIL` line means the last good backup is the previous `OK` one. Set `RESTORE_DRILL=off` to skip the drill on a host short of disk. CI runs the same backup and drill on the seeded demo database on every push.
+- **Nightly backup.** At 02:00 UTC the `backup` service writes `./backups/clinicmind-<timestamp>.dump` (custom format, compressed) and, next to it, a `.manifest` and a `.sha256`. The manifest holds the row count of every table, the latest migration, the counts of indexes, constraints, triggers, row-level security policies and the tables under them, and how many tables the app's role may read, all read in the same database snapshot as the dump. Dumps older than `BACKUP_RETENTION_DAYS` (30) are pruned.
+- **Nightly restore drill.** Right after each dump, `scripts/restore-drill.sh` restores it into a scratch database (`clinicmind_restore_drill`, dropped afterwards; it briefly needs as much free disk as the database itself) and checks the checksum, a clean `pg_restore` (grants included), every table row for row against the manifest, the migration, the schema objects, the row-level security and the app role's grants, and that the audit log still refuses edits. Each run appends one line to `./backups/restore-drill.log` (`OK …` or `FAIL …`); `docker compose -f docker-compose.prod.yml logs backup` shows the same. Check the log weekly; a `FAIL` line means the last good backup is the previous `OK` one. Set `RESTORE_DRILL=off` to skip the drill on a host short of disk. CI runs the same backup and drill on the seeded demo database on every push.
 - **Off the host.** Copy `./backups` off the server (object storage, another machine) — a backup on the same disk is not a backup. Copy the `.manifest` and `.sha256` with each dump.
 - **Rehearse by hand** (for example after copying a dump back from off-site storage): `PGHOST=… PGPASSWORD=… BACKUP_DIR=./backups ./scripts/restore-drill.sh backups/<file>.dump`. `KEEP_DRILL_DB=1` keeps the scratch database for inspection.
-- **Restore for real** (replaces live data): stop the app (`docker compose -f docker-compose.prod.yml stop app`), run `PGHOST=… PGPASSWORD=… ./scripts/restore.sh backups/<file>.dump` (it refuses a dump that fails its checksum), then `npx prisma migrate deploy`, start the app, sign in and spot-check a patient.
+- **Restore for real** (replaces live data): stop the app (`docker compose -f docker-compose.prod.yml stop app`), run `PGHOST=… PGPASSWORD=… ./scripts/restore.sh backups/<file>.dump` (it refuses a dump that fails its checksum, and creates the app's role first on a new server), then the migrate service (`docker compose -f docker-compose.prod.yml run --rm migrate`: newer migrations, then the app role's password), start the app, check that `/api/health` reports `"rowLevelSecurity": "enforced"`, sign in and spot-check a patient.
 - The audit log is append-only at the database level; deleting a tenant (offboarding, erasure request) requires `SET LOCAL app.allow_audit_delete = 'on'` inside the same transaction, which only the application's tenant-removal path and the seed do.
 
 ## 7. Secrets and access
@@ -162,7 +164,7 @@ Migrations run before the new app version starts. Roll back by deploying the pre
 
 ## 8. Monitoring
 
-- `GET /api/health` — 200 when the database answers; includes DB latency and uptime. Point an uptime monitor at it.
+- `GET /api/health` — 200 when the database answers; includes DB latency, uptime and `rowLevelSecurity` (`enforced` in production; `off` means the app connects as the owner or a superuser, and the server log names which). Point an uptime monitor at it.
 - Logs go to stdout (`docker compose logs`); Caddy logs requests as JSON. Ship both to your log system.
 - Error tracking: not bundled; a Sentry-compatible DSN can be added to the Next.js app in one step when you choose a vendor.
 

@@ -3,7 +3,8 @@
  * tenant A never reaches tenant B's data. Runs against the test database.
  */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { db } from "@/lib/db";
+// Tests seed and inspect across clinics: the system connection, outside row-level security.
+import { systemDb as db } from "@/lib/db";
 import { SESSION_COOKIE } from "@/lib/auth/constants";
 import { GET as me } from "@/app/api/me/route";
 import { GET as listPatients, POST as createPatient } from "@/app/api/patients/route";

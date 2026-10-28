@@ -4,7 +4,8 @@
  * empty and say so; nothing is ever written to the patient.
  */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { db } from "@/lib/db";
+// Tests seed and inspect across clinics: the system connection, outside row-level security.
+import { systemDb as db } from "@/lib/db";
 import { POST as extractHistory } from "@/app/api/patients/[id]/history/extract/route";
 import { createTenant, createUser, deleteTenants, request, sessionCookieFor } from "@/test/db";
 

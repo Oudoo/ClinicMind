@@ -4,7 +4,8 @@
  * list/get, tenant isolation, RBAC and the extraction parser.
  */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { db } from "@/lib/db";
+// Tests seed and inspect across clinics: the system connection, outside row-level security.
+import { systemDb as db } from "@/lib/db";
 import { GET as listConsultations } from "@/app/api/consultations/route";
 import { GET as getConsultation } from "@/app/api/consultations/[id]/route";
 import { POST as sign } from "@/app/api/consultations/[id]/sign/route";

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { db } from "@/lib/db";
+import { db, rlsStatus } from "@/lib/db";
 import { usingDevSecrets } from "@/lib/env";
 import { aiStatus } from "@/lib/ai/provider";
 import pkg from "../../../../package.json";
@@ -23,6 +23,8 @@ export async function GET() {
   }
   const dbLatencyMs = Date.now() - t0;
   const healthy = database === "up";
+  // Whether the clinic isolation policies bind the app's connection (lib/db.ts).
+  const rowLevelSecurity = healthy ? await rlsStatus().then((s) => (s.enforced ? "enforced" : "off"), () => "unknown") : "unknown";
   return NextResponse.json(
     {
       status: healthy ? "ok" : "degraded",
@@ -30,6 +32,7 @@ export async function GET() {
       version: pkg.version,
       database,
       dbLatencyMs,
+      rowLevelSecurity,
       uptimeSeconds: Math.round((Date.now() - startedAt) / 1000),
       devSecrets: usingDevSecrets,
       ai: aiStatus(),

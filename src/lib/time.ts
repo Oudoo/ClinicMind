@@ -238,14 +238,20 @@ function isCalendarDate(year: number, month: number, day: number): boolean {
   );
 }
 
-/** e.g. "24 Oct 2026"; pass `options` to change the fields shown. */
+/**
+ * e.g. "24 Oct 2026"; pass `options` to change the fields shown. The same on
+ * the server and in every browser: ICU versions disagree on the comma after a
+ * weekday ("Mon, 26 Oct" in Chrome, "Mon 26 Oct" in Node), which breaks the
+ * hydration of client components, so a weekday is always followed by a space.
+ */
 export function formatDateInTz(
   date: Date,
   timeZone: string,
   options: Intl.DateTimeFormatOptions = { day: "2-digit", month: "short", year: "numeric" },
   locale = "en-GB",
 ): string {
-  return new Intl.DateTimeFormat(locale, { ...options, timeZone }).format(date);
+  const parts = new Intl.DateTimeFormat(locale, { ...options, timeZone }).formatToParts(date);
+  return parts.map((p, i) => (p.type === "literal" && parts[i - 1]?.type === "weekday" ? " " : p.value)).join("");
 }
 
 /** e.g. "09:30" on the clinic clock (24-hour). */

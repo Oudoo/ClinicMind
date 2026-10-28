@@ -5,10 +5,14 @@
  * total; precise "nobody" answers.
  */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { db } from "@/lib/db";
-import { createTenant, createUser, dbTestsEnabled, deleteTenants } from "@/test/db";
+// Tests seed and inspect across clinics: the system connection, outside row-level security.
+import { systemDb as db } from "@/lib/db";
+import { createTenant, createUser, dbTestsEnabled, deleteTenants, runAsSystem } from "@/test/db";
 import { COHORT_PAGE_SIZE, parseCohortQuestion, runCohortQuery, summarizeCohort } from "@/modules/assistant/cohort";
 import { buildEvalClinic, FIXTURE_TIMEZONE, type FixtureClinic } from "@/modules/assistant/eval/fixture";
+
+// These tests call the services directly, outside any route.
+runAsSystem();
 
 describe.skipIf(!dbTestsEnabled)("cohort queries", () => {
   let f: FixtureClinic;

@@ -6,10 +6,12 @@
 #
 # Next to each clinicmind-<stamp>.dump it writes:
 #   clinicmind-<stamp>.manifest  the row count of every table, the latest
-#                                migration, and the counts of indexes,
-#                                constraints, triggers and row-level security
-#                                policies, read in the same snapshot as the
-#                                dump, so a restore can be checked exactly
+#                                migration, the counts of indexes,
+#                                constraints, triggers, row-level security
+#                                policies and tables under them, and how many
+#                                tables the application role may read, read
+#                                in the same snapshot as the dump, so a
+#                                restore can be checked exactly
 #                                (scripts/restore-drill.sh)
 #   clinicmind-<stamp>.sha256    the dump's checksum
 set -euo pipefail
@@ -58,6 +60,8 @@ send "SELECT 'indexes ' || count(*) FROM pg_indexes WHERE schemaname = 'public';
 send "SELECT 'constraints ' || count(*) FROM pg_constraint c JOIN pg_namespace n ON n.oid = c.connamespace WHERE n.nspname = 'public';"
 send "SELECT 'triggers ' || count(*) FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = 'public' AND NOT t.tgisinternal;"
 send "SELECT 'policies ' || count(*) FROM pg_policies WHERE schemaname = 'public';"
+send "SELECT 'rls_tables ' || count(*) FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = 'public' AND c.relkind = 'r' AND c.relrowsecurity;"
+send "SELECT 'app_grants ' || CASE WHEN EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'clinicmind_app') THEN (SELECT count(*) FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = 'public' AND c.relkind = 'r' AND has_table_privilege('clinicmind_app', c.oid, 'SELECT')) ELSE 0 END;"
 send "SELECT format('SELECT %L || '' '' || count(*) FROM public.%I', 'table ' || tablename, tablename) FROM pg_tables WHERE schemaname = 'public' ORDER BY tablename \\gexec"
 send "SELECT '__end__';"
 {

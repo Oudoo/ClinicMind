@@ -5,7 +5,8 @@
  * last, which is `tenant:manage` on the acting tenant.
  */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { db } from "@/lib/db";
+// Tests seed and inspect across clinics: the system connection, outside row-level security.
+import { systemDb as db } from "@/lib/db";
 import { GET as listTenants, POST as provisionTenant } from "@/app/api/tenants/route";
 import { GET as getTenant, PATCH as patchTenant } from "@/app/api/tenants/[id]/route";
 import { POST as inviteOwner } from "@/app/api/tenants/[id]/owner/route";

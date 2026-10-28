@@ -1,5 +1,5 @@
 import { audit } from "@/lib/audit";
-import { db } from "@/lib/db";
+import { systemDb } from "@/lib/db";
 import { AUTH_RATE_WINDOW_MS, LOGIN_LOCKOUT_FAILURES } from "./constants";
 import { verifyDummyPassword, verifyPassword } from "./password";
 import { normalizeEmail } from "./request";
@@ -41,7 +41,7 @@ export type LoginResult =
 
 export async function authenticateWithPassword(input: LoginInput): Promise<LoginResult> {
   const email = normalizeEmail(input.email);
-  const candidates = await db.user.findMany({
+  const candidates = await systemDb.user.findMany({
     where: {
       email: { equals: email, mode: "insensitive" },
       deletedAt: null,
@@ -129,7 +129,7 @@ async function recordLoginEvent(
   success: boolean,
   meta: { ip: string | null; userAgent: string | null },
 ): Promise<void> {
-  await db.loginEvent.create({
+  await systemDb.loginEvent.create({
     data: { userId, success, ip: meta.ip, userAgent: meta.userAgent },
   });
 }
@@ -140,12 +140,12 @@ async function recordLoginEvent(
  */
 async function lockoutFor(userId: string): Promise<number> {
   const windowStart = new Date(Date.now() - AUTH_RATE_WINDOW_MS);
-  const lastSuccess = await db.loginEvent.findFirst({
+  const lastSuccess = await systemDb.loginEvent.findFirst({
     where: { userId, success: true, createdAt: { gte: windowStart } },
     orderBy: { createdAt: "desc" },
     select: { createdAt: true },
   });
-  const failures = await db.loginEvent.findMany({
+  const failures = await systemDb.loginEvent.findMany({
     where: {
       userId,
       success: false,

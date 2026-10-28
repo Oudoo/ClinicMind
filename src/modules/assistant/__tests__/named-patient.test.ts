@@ -6,11 +6,14 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { reindexTenant } from "@/modules/knowledge/ingest";
-import { createUser, dbTestsEnabled, deleteTenants } from "@/test/db";
+import { createUser, dbTestsEnabled, deleteTenants, runAsSystem } from "@/test/db";
 import { askAssistant, type AssistantActor } from "@/modules/assistant/service";
 import { resolvePatientMention } from "@/modules/assistant/patients";
 import { parseCohortQuestion } from "@/modules/assistant/parser";
 import { buildEvalClinic, type FixtureClinic } from "@/modules/assistant/eval/fixture";
+
+// These tests call the services directly, outside any route.
+runAsSystem();
 
 describe.skipIf(!dbTestsEnabled)("named-patient questions", () => {
   let f: FixtureClinic;

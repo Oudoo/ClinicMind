@@ -1,7 +1,7 @@
 import type { IntakeLinkKind, IntakeStatus, Prisma } from "@prisma/client";
 import QRCode from "qrcode";
 import { z } from "zod";
-import { db, notDeleted } from "@/lib/db";
+import { db, notDeleted, systemDb, withTenant } from "@/lib/db";
 import { env } from "@/lib/env";
 import { audit } from "@/lib/audit";
 import { BRAND, type TenantBranding } from "@/lib/brand";
@@ -362,6 +362,17 @@ async function tenantIdForHost(host: string | null | undefined): Promise<string 
 }
 
 /**
+ * The clinic an onboarding link belongs to. Looked up across clinics because
+ * the token is the visitor's only credential; everything after runs in that
+ * clinic's database scope (row-level security, lib/db.ts).
+ */
+async function tenantOfToken(token: string): Promise<string | null> {
+  if (!isPlausibleIntakeToken(token)) return null;
+  const row = await systemDb.intakeLink.findUnique({ where: { tokenHash: hashIntakeToken(token) }, select: { tenantId: true } });
+  return row?.tenantId ?? null;
+}
+
+/**
  * The live link behind a token, or null for unknown / expired / revoked /
  * used-up tokens, a suspended clinic, and another clinic's token presented on
  * a clinic's own domain (all indistinguishable on purpose).
@@ -402,6 +413,11 @@ export interface PublicIntake {
 }
 
 export async function getPublicIntake(token: string, meta: PublicRequestMeta = {}): Promise<PublicIntake | null> {
+  const tenantId = await tenantOfToken(token);
+  return tenantId ? withTenant(tenantId, () => publicIntake(token, meta)) : null;
+}
+
+async function publicIntake(token: string, meta: PublicRequestMeta): Promise<PublicIntake | null> {
   const link = await resolveLink(token, meta);
   if (!link) return null;
   const branding = (link.tenant.branding as TenantBranding | null) ?? null;
@@ -456,6 +472,11 @@ export async function submitPublicIntake(
   body: unknown,
   meta: { ip?: string | null; host?: string | null } = {},
 ): Promise<{ ok: true } | null> {
+  const tenantId = await tenantOfToken(token);
+  return tenantId ? withTenant(tenantId, () => submitToLink(token, body, meta)) : null;
+}
+
+async function submitToLink(token: string, body: unknown, meta: { ip?: string | null; host?: string | null }): Promise<{ ok: true } | null> {
   const link = await resolveLink(token, { host: meta.host });
   if (!link) return null;
   const form = IntakeFormInput.parse(body);

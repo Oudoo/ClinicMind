@@ -1,6 +1,8 @@
 import { randomBytes } from "node:crypto";
 import type { UserRole, UserStatus } from "@prisma/client";
-import { db } from "@/lib/db";
+import { beforeAll } from "vitest";
+// Tests seed and inspect across clinics: the system connection, outside row-level security.
+import { enterSystemScope, systemDb as db } from "@/lib/db";
 import { SESSION_COOKIE } from "@/lib/auth/constants";
 import { hashPassword } from "@/lib/auth/password";
 import { createSession } from "@/lib/auth/session";
@@ -11,6 +13,17 @@ import { createSession } from "@/lib/auth/session";
  * sessions, tokens, patients and everything else beneath them.
  */
 export const dbTestsEnabled = Boolean(process.env.DATABASE_URL);
+
+/**
+ * For a test file that calls services directly rather than through a route:
+ * its hooks and tests run in the system database scope (across clinics,
+ * outside row-level security). Without it, code a test calls outside a route
+ * sees no clinic's rows, exactly like production code outside a request; route
+ * handlers enter their request's own scope either way. Call at the top level.
+ */
+export function runAsSystem(): void {
+  beforeAll(() => enterSystemScope());
+}
 
 export function uniqueSlug(prefix = "t"): string {
   return `${prefix}-${randomBytes(4).toString("hex")}`;

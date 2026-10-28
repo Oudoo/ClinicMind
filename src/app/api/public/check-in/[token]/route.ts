@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { handleApiError, notFound, tooManyRequests } from "@/lib/api";
 import { rateLimit } from "@/lib/auth/rate-limit";
 import { clientIp } from "@/lib/auth/request";
+import { withTenant } from "@/lib/db";
 import {
   CHECK_IN_PUBLIC_GET_LIMIT,
   CHECK_IN_PUBLIC_POST_LIMIT,
@@ -78,7 +79,8 @@ export async function POST(req: Request, { params }: Params) {
       photos: parsePhotoPayload(body.photos),
       actor: { ip },
     });
-    const clinic = await getClinicInfo(result.checkIn.tenantId);
+    // The token resolved to this clinic: read its phone in that clinic's database scope.
+    const clinic = await withTenant(result.checkIn.tenantId, () => getClinicInfo(result.checkIn.tenantId));
     return NextResponse.json(toPublicResult(result, clinic.phone), { headers: NO_STORE });
   } catch (err) {
     return conciergeErrorResponse(err) ?? handleApiError(err);

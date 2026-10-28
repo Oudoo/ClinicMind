@@ -6,7 +6,8 @@
  * tenant isolation.
  */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { db } from "@/lib/db";
+// Tests seed and inspect across clinics: the system connection, outside row-level security.
+import { systemDb as db } from "@/lib/db";
 import { GET as listAppointmentsRoute } from "@/app/api/appointments/route";
 import { GET as getAppointmentRoute } from "@/app/api/appointments/[id]/route";
 import { GET as listNotesRoute, POST as createNoteRoute } from "@/app/api/appointments/[id]/notes/route";

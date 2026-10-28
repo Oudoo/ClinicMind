@@ -9,8 +9,9 @@
 # every table and its row count against the manifest backup.sh wrote in the
 # dump's own snapshot; the latest migration; the counts of indexes,
 # constraints (the no-double-booking exclusion constraints among them),
-# triggers and row-level security policies; the extensions; and that the audit
-# log still refuses edits. Appends one line to $BACKUP_DIR/restore-drill.log,
+# triggers, row-level security policies and the tables under them; the tables
+# the application role may read; the extensions; and that the audit log still
+# refuses edits. Appends one line to $BACKUP_DIR/restore-drill.log,
 # drops the scratch database (KEEP_DRILL_DB=1 keeps it for inspection), and
 # exits non-zero on any failure.
 set -euo pipefail
@@ -62,10 +63,13 @@ else
   fail "no checksum next to the dump ($SUM)"
 fi
 
-# 2. A fresh scratch database, then the restore. Any error fails the drill.
+# 2. A fresh scratch database, then the restore, grants included (the
+#    application role is cluster-wide, not in the dump: it must exist for the
+#    grants to it to restore). Any error fails the drill.
 q -d postgres -c "DROP DATABASE IF EXISTS \"$DRILL_DB\" WITH (FORCE)" >/dev/null
 q -d postgres -c "CREATE DATABASE \"$DRILL_DB\"" >/dev/null
-pg_restore -h "$HOST" -U "$USER" -d "$DRILL_DB" --exit-on-error --no-owner --no-privileges "$FILE" \
+q -d postgres -c "DO \$\$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'clinicmind_app') THEN CREATE ROLE clinicmind_app NOLOGIN; END IF; END \$\$" >/dev/null
+pg_restore -h "$HOST" -U "$USER" -d "$DRILL_DB" --exit-on-error --no-owner "$FILE" \
   || fail "pg_restore stopped with an error"
 
 # 3. Every table, row for row.
@@ -98,6 +102,11 @@ check indexes "SELECT count(*) FROM pg_indexes WHERE schemaname = 'public'"
 check constraints "SELECT count(*) FROM pg_constraint c JOIN pg_namespace n ON n.oid = c.connamespace WHERE n.nspname = 'public'"
 check triggers "SELECT count(*) FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = 'public' AND NOT t.tgisinternal"
 check policies "SELECT count(*) FROM pg_policies WHERE schemaname = 'public'"
+# Recorded since the application role (older manifests do not have them).
+if [ -n "$(manifest rls_tables)" ]; then
+  check rls_tables "SELECT count(*) FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = 'public' AND c.relkind = 'r' AND c.relrowsecurity"
+  check app_grants "SELECT count(*) FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = 'public' AND c.relkind = 'r' AND has_table_privilege('clinicmind_app', c.oid, 'SELECT')"
+fi
 
 # 5. The audit log is still append-only in the restored copy.
 if [ "$(q -d "$DRILL_DB" -c "SELECT count(*) > 0 FROM audit_logs")" = "t" ]; then

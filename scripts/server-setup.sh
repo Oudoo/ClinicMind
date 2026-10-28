@@ -37,7 +37,8 @@ if [ ! -f .env ]; then
 DOMAIN=$DOMAIN
 ROOT_DOMAIN=$ROOT_DOMAIN
 ACME_EMAIL=$ACME_EMAIL
-POSTGRES_PASSWORD=$(openssl rand -base64 32 | tr -d '/+=' | head -c 40)
+POSTGRES_PASSWORD=$(openssl rand -hex 32)
+APP_DB_PASSWORD=$(openssl rand -hex 32)
 AUTH_SECRET=$(openssl rand -base64 48)
 EMBED_SIGNING_SECRET=$(openssl rand -base64 48)
 GEMINI_API_KEY=${GEMINI_API_KEY:-}
@@ -54,6 +55,11 @@ EOF
   chmod 600 .env
 else
   echo "▶ Keeping the existing .env"
+  # Added with row-level security: the app's own database role needs a password.
+  if ! grep -q '^APP_DB_PASSWORD=.' .env; then
+    echo "APP_DB_PASSWORD=$(openssl rand -hex 32)" >> .env
+    echo "  (added APP_DB_PASSWORD)"
+  fi
 fi
 
 echo "▶ Starting the stack"

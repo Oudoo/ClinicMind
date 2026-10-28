@@ -210,7 +210,7 @@ messages are written to the server log.
 
 - **Authentication:** argon2id passwords; server-side sessions (12 hours, revoked on sign-out) in an `httpOnly`, `SameSite=Lax`, `Secure` cookie; login history; lockout after repeated failures; per-IP and per-account rate limits on sign-in, reset and set-password; same-origin check on cookie-authenticated mutations.
 - **Authorisation:** six roles mapped to capabilities and checked at every API edge; clinical sign-off restricted to clinicians; platform operations restricted to `SUPER_ADMIN`.
-- **Tenant isolation:** every query is scoped to the acting tenant, every client-supplied foreign key is proven to belong to it (a foreign id is indistinguishable from a missing one), and Postgres RLS policies exist on all tenant tables.
+- **Tenant isolation:** every query is scoped to the acting tenant, every client-supplied foreign key is proven to belong to it (a foreign id is indistinguishable from a missing one), and Postgres row-level security enforces it underneath: the app connects as its own role, each clinic's connections carry the clinic, and a query run without one returns nothing (`src/lib/db.ts`, docs/ARCHITECTURE.md §7).
 - **Embedding:** per-tenant secret stored hashed and shown once; short-lived signed tokens bound to an active user with a role ceiling; `Content-Security-Policy` with `frame-ancestors` from the tenant's allow-list on the embed page and framing denied everywhere else.
 - **Transport and headers:** HSTS, `Permissions-Policy`, `Cross-Origin-Opener-Policy`, `no-store` on API responses; per-IP API rate limits (600 requests / 5 minutes, 40 for AI endpoints, 60 for token minting).
 - **Integrity:** append-only audit log enforced by a trigger, soft delete, clinical writes only through signed consultations, Zod validation on every input.
@@ -230,7 +230,9 @@ npm run e2e                      # Playwright smoke suite against a running, see
 ```
 
 The route tests use `TEST_DATABASE_URL` (falling back to `DATABASE_URL`) with
-the migrations applied; they create and delete their own tenants. The
+the migrations applied; they create and delete their own tenants. Point it at
+the app's role and `TEST_SYSTEM_DATABASE_URL` at the owner to run them with
+row-level security enforced, as CI does. The
 end-to-end suite signs in to the demo clinic (`E2E_BASE_URL`, `E2E_EMAIL`,
 `E2E_PASSWORD`; defaults to `http://localhost:3000` and the owner account) and
 covers the security surface, sign-in, every section, the assistant, sign-out

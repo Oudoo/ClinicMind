@@ -1,6 +1,6 @@
 import type { Prisma, UserRole } from "@prisma/client";
 import { audit } from "@/lib/audit";
-import { db } from "@/lib/db";
+import { bindScope, db } from "@/lib/db";
 import { dateKeyInTz, formatDateInTz, formatTimeInTz, fromDateKey } from "@/lib/time";
 import { csvCell } from "@/modules/patients/export";
 import {
@@ -285,7 +285,8 @@ export async function exportAuditCsv(
   let sent = 0;
   let headerSent = false;
   const stream = new ReadableStream<Uint8Array>({
-    async pull(controller) {
+    // The response reads the stream after the route returns: keep the request's clinic scope.
+    pull: bindScope(async (controller: ReadableStreamDefaultController<Uint8Array>) => {
       try {
         if (!headerSent) {
           headerSent = true;
@@ -313,7 +314,7 @@ export async function exportAuditCsv(
       } catch (err) {
         controller.error(err);
       }
-    },
+    }),
   });
   const stamp = dateKeyInTz(new Date(), timezone);
   return { stream, filename: `audit-log-${stamp}.csv`, rows, truncated: total > rows };

@@ -1,4 +1,4 @@
-import { db } from "@/lib/db";
+import { systemDb } from "@/lib/db";
 
 /**
  * Append-only audit logging. Every mutation that touches clinical or tenant data
@@ -34,23 +34,23 @@ type PatientLookup = (tenantId: string, id: string) => Promise<{ patientId: stri
 
 /** Rows that belong to one patient, by the entity name audit entries use. */
 const PATIENT_OF: Record<string, PatientLookup> = {
-  Appointment: (tenantId, id) => db.appointment.findFirst({ where: { id, tenantId }, select: { patientId: true } }),
-  AppointmentNote: (tenantId, id) => db.appointmentNote.findFirst({ where: { id, tenantId }, select: { patientId: true } }),
-  Consultation: (tenantId, id) => db.consultation.findFirst({ where: { id, tenantId }, select: { patientId: true } }),
-  Procedure: (tenantId, id) => db.procedure.findFirst({ where: { id, tenantId }, select: { patientId: true } }),
-  Payment: (tenantId, id) => db.payment.findFirst({ where: { id, tenantId }, select: { patientId: true } }),
-  Conversation: (tenantId, id) => db.conversation.findFirst({ where: { id, tenantId }, select: { patientId: true } }),
-  IntakeSubmission: (tenantId, id) => db.intakeSubmission.findFirst({ where: { id, tenantId }, select: { patientId: true } }),
-  ConciergeEnrolment: (tenantId, id) => db.conciergeEnrolment.findFirst({ where: { id, tenantId }, select: { patientId: true } }),
-  Escalation: (tenantId, id) => db.escalation.findFirst({ where: { id, tenantId }, select: { patientId: true } }),
-  MedicalHistory: (tenantId, id) => db.medicalHistory.findFirst({ where: { id, tenantId }, select: { patientId: true } }),
-  Medication: (tenantId, id) => db.medication.findFirst({ where: { id, tenantId }, select: { patientId: true } }),
-  Visit: (tenantId, id) => db.visit.findFirst({ where: { id, tenantId }, select: { patientId: true } }),
-  CheckIn: (tenantId, id) => db.checkIn.findFirst({ where: { id, tenantId }, select: { patientId: true } }),
-  Document: (tenantId, id) => db.document.findFirst({ where: { id, tenantId }, select: { patientId: true } }),
-  Lead: (tenantId, id) => db.lead.findFirst({ where: { id, tenantId }, select: { patientId: true } }),
+  Appointment: (tenantId, id) => systemDb.appointment.findFirst({ where: { id, tenantId }, select: { patientId: true } }),
+  AppointmentNote: (tenantId, id) => systemDb.appointmentNote.findFirst({ where: { id, tenantId }, select: { patientId: true } }),
+  Consultation: (tenantId, id) => systemDb.consultation.findFirst({ where: { id, tenantId }, select: { patientId: true } }),
+  Procedure: (tenantId, id) => systemDb.procedure.findFirst({ where: { id, tenantId }, select: { patientId: true } }),
+  Payment: (tenantId, id) => systemDb.payment.findFirst({ where: { id, tenantId }, select: { patientId: true } }),
+  Conversation: (tenantId, id) => systemDb.conversation.findFirst({ where: { id, tenantId }, select: { patientId: true } }),
+  IntakeSubmission: (tenantId, id) => systemDb.intakeSubmission.findFirst({ where: { id, tenantId }, select: { patientId: true } }),
+  ConciergeEnrolment: (tenantId, id) => systemDb.conciergeEnrolment.findFirst({ where: { id, tenantId }, select: { patientId: true } }),
+  Escalation: (tenantId, id) => systemDb.escalation.findFirst({ where: { id, tenantId }, select: { patientId: true } }),
+  MedicalHistory: (tenantId, id) => systemDb.medicalHistory.findFirst({ where: { id, tenantId }, select: { patientId: true } }),
+  Medication: (tenantId, id) => systemDb.medication.findFirst({ where: { id, tenantId }, select: { patientId: true } }),
+  Visit: (tenantId, id) => systemDb.visit.findFirst({ where: { id, tenantId }, select: { patientId: true } }),
+  CheckIn: (tenantId, id) => systemDb.checkIn.findFirst({ where: { id, tenantId }, select: { patientId: true } }),
+  Document: (tenantId, id) => systemDb.document.findFirst({ where: { id, tenantId }, select: { patientId: true } }),
+  Lead: (tenantId, id) => systemDb.lead.findFirst({ where: { id, tenantId }, select: { patientId: true } }),
   ConciergeTask: async (tenantId, id) => {
-    const task = await db.conciergeTask.findFirst({ where: { id, tenantId }, select: { enrolment: { select: { patientId: true } } } });
+    const task = await systemDb.conciergeTask.findFirst({ where: { id, tenantId }, select: { enrolment: { select: { patientId: true } } } });
     return task ? { patientId: task.enrolment.patientId } : null;
   },
 };
@@ -75,7 +75,7 @@ export async function resolveAuditPatientId(input: AuditInput): Promise<string |
 export async function audit(input: AuditInput): Promise<string | null> {
   try {
     const patientId = await resolveAuditPatientId(input).catch(() => null);
-    const row = await db.auditLog.create({
+    const row = await systemDb.auditLog.create({
       data: {
         tenantId: input.tenantId,
         actorId: input.actorId ?? null,

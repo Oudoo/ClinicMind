@@ -4,7 +4,8 @@
  * same objects Next.js hands them in production.
  */
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { db } from "@/lib/db";
+// Tests seed and inspect across clinics: the system connection, outside row-level security.
+import { systemDb as db } from "@/lib/db";
 import { issueAuthToken } from "@/lib/auth/auth-tokens";
 import { LOGIN_EMAIL_LIMIT, LOGIN_LOCKOUT_FAILURES, SESSION_COOKIE } from "@/lib/auth/constants";
 import { resetRateLimits } from "@/lib/auth/rate-limit";

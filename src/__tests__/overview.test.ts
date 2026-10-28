@@ -8,11 +8,15 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { db } from "@/lib/db";
+// Tests seed and inspect across clinics: the system connection, outside row-level security.
+import { systemDb as db } from "@/lib/db";
 import { addDays, dateKeyInTz } from "@/lib/time";
 import { DeltaChip, describeDelta } from "@/components/ui/kpi";
 import { getOverview } from "@/modules/analytics/service";
-import { createTenant, dbTestsEnabled, deleteTenants } from "@/test/db";
+import { createTenant, dbTestsEnabled, deleteTenants, runAsSystem } from "@/test/db";
+
+// These tests call the services directly, outside any route.
+runAsSystem();
 
 const TZ = "Africa/Cairo";
 const DAY = 86_400_000;

@@ -6,7 +6,8 @@
  */
 import type { Prisma } from "@prisma/client";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { db } from "@/lib/db";
+// Tests seed and inspect across clinics: the system connection, outside row-level security.
+import { systemDb as db } from "@/lib/db";
 import { dateKeyInTz } from "@/lib/time";
 import { GET as listRoute } from "@/app/api/patients/route";
 import { GET as exportRoute } from "@/app/api/patients/export/route";

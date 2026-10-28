@@ -1,4 +1,4 @@
-import { db } from "@/lib/db";
+import { systemDb } from "@/lib/db";
 
 /**
  * Allowed framing origins of a tenant's embed surface, read by the proxy to
@@ -20,7 +20,7 @@ export async function getEmbedOrigins(slug: string): Promise<EmbedOrigins | null
 
   let value: EmbedOrigins | null = null;
   try {
-    const tenant = await db.tenant.findFirst({
+    const tenant = await systemDb.tenant.findFirst({
       where: { slug, status: "ACTIVE", deletedAt: null },
       select: { embed: { select: { enabled: true, allowedOrigins: true } } },
     });

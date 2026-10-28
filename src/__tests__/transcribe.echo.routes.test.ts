@@ -9,7 +9,8 @@ vi.hoisted(() => {
   process.env.AI_TRANSCRIPTION_PROVIDER = "echo";
 });
 
-import { db } from "@/lib/db";
+// Tests seed and inspect across clinics: the system connection, outside row-level security.
+import { systemDb as db } from "@/lib/db";
 import { POST as transcribe } from "@/app/api/consultations/transcribe/route";
 import { createTenant, createUser, deleteTenants, sessionCookieFor } from "@/test/db";
 import { audioRequest } from "@/test/audio";

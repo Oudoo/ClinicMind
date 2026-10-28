@@ -3,7 +3,8 @@
  * certificates for. ROOT_DOMAIN in tests is lvh.me:3000.
  */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { db } from "@/lib/db";
+// Tests seed and inspect across clinics: the system connection, outside row-level security.
+import { systemDb as db } from "@/lib/db";
 import { GET as ask } from "@/app/api/tls/ask/route";
 import { createTenant, deleteTenants } from "@/test/db";
 

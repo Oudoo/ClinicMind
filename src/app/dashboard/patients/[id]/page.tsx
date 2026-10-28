@@ -6,6 +6,7 @@ import { notFound } from "next/navigation";
 import { after } from "next/server";
 import { ArrowLeft, Mail, MessageCircle, Phone, ScrollText } from "lucide-react";
 import type { AppointmentStatus } from "@prisma/client";
+import { withTenant } from "@/lib/db";
 import { getActingContext } from "@/lib/auth/session";
 import { can } from "@/lib/auth/rbac";
 import { clientIp, userAgent } from "@/lib/auth/request";
@@ -75,7 +76,8 @@ export default async function PatientPage({ params }: { params: Promise<{ id: st
     ip: clientIp({ headers: requestHeaders }),
     device: userAgent({ headers: requestHeaders }),
   };
-  after(() => recordPatientView(view).catch((err) => console.error("[audit] could not log a record view", err)));
+  // Runs after the response, outside the render: it enters the clinic's database scope itself.
+  after(() => withTenant(view.tenantId, () => recordPatientView(view)).catch((err) => console.error("[audit] could not log a record view", err)));
 
   const archived = patient.deletedAt !== null;
   const canWrite = can(ctx.role, "patients:write");

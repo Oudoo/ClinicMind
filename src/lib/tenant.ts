@@ -1,4 +1,4 @@
-import { db, notDeleted } from "@/lib/db";
+import { notDeleted, systemDb } from "@/lib/db";
 import { env } from "@/lib/env";
 import type { Tenant } from "@prisma/client";
 
@@ -54,7 +54,7 @@ export async function getTenantContext(opts: {
 
   if (!hint.slug && !hint.customDomain) return null;
 
-  const tenant = await db.tenant.findFirst({
+  const tenant = await systemDb.tenant.findFirst({
     where: {
       ...notDeleted,
       status: "ACTIVE",

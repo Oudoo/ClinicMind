@@ -10,7 +10,8 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vites
 vi.mock("@/lib/mailer", () => ({ sendMail: vi.fn(async () => undefined) }));
 
 import { randomBytes } from "node:crypto";
-import { db } from "@/lib/db";
+// Tests seed and inspect across clinics: the system connection, outside row-level security.
+import { systemDb as db } from "@/lib/db";
 import { sendMail } from "@/lib/mailer";
 import { zonedParts, zonedTimeToUtc } from "@/lib/time";
 import { GET as listRoute } from "@/app/api/notifications/route";
@@ -19,7 +20,10 @@ import { GET as prefsGetRoute, PATCH as prefsPatchRoute } from "@/app/api/notifi
 import { POST as testRoute } from "@/app/api/notifications/test/route";
 import { GET as attentionRoute } from "@/app/api/notifications/attention/route";
 import { notify, TEST_NOTIFICATION_TITLE } from "@/modules/notifications/service";
-import { createTenant, createUser, dbTestsEnabled, deleteTenants, request, sessionCookieFor } from "@/test/db";
+import { createTenant, createUser, dbTestsEnabled, deleteTenants, request, runAsSystem, sessionCookieFor } from "@/test/db";
+
+// Setup and checks call the services directly; the routes enter their own request scope.
+runAsSystem();
 
 const mail = vi.mocked(sendMail);
 const HOUR = 3_600_000;

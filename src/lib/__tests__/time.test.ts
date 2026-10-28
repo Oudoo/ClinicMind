@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   addDays,
   dateKeyInTz,
@@ -121,6 +121,22 @@ describe("time helpers", () => {
       expect(formatTimeInTz(new Date("2026-01-14T22:00:00Z"), "Africa/Cairo")).toBe("00:00");
       expect(dateKeyInTz(lateUtc, "Africa/Cairo")).toBe("2026-10-23");
       expect(dateKeyInTz(lateUtc, "UTC")).toBe("2026-10-22");
+    });
+
+    it("puts a plain space after a weekday, as the browser's ICU may put a comma (hydration)", () => {
+      const browserParts: Intl.DateTimeFormatPart[] = [
+        { type: "weekday", value: "Mon" },
+        { type: "literal", value: ", " },
+        { type: "day", value: "26" },
+        { type: "literal", value: " " },
+        { type: "month", value: "Oct" },
+      ];
+      const spy = vi.spyOn(Intl.DateTimeFormat.prototype, "formatToParts").mockReturnValue(browserParts);
+      try {
+        expect(formatDateInTz(new Date("2026-10-26T10:00:00Z"), "Africa/Cairo", { weekday: "short", day: "2-digit", month: "short" })).toBe("Mon 26 Oct");
+      } finally {
+        spy.mockRestore();
+      }
     });
   });
 

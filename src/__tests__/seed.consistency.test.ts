@@ -11,7 +11,8 @@
  */
 import type { Gender } from "@prisma/client";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { db } from "@/lib/db";
+// Tests seed and inspect across clinics: the system connection, outside row-level security.
+import { systemDb as db } from "@/lib/db";
 import {
   ALLERGY_OPTIONS,
   allergiesFromDraw,

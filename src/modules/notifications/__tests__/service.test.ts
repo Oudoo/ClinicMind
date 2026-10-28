@@ -10,10 +10,11 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vites
 vi.mock("@/lib/mailer", () => ({ sendMail: vi.fn(async () => undefined) }));
 
 import { ZodError } from "zod";
-import { db } from "@/lib/db";
+// Tests seed and inspect across clinics: the system connection, outside row-level security.
+import { systemDb as db } from "@/lib/db";
 import { sendMail } from "@/lib/mailer";
 import { zonedParts } from "@/lib/time";
-import { createTenant, createUser, dbTestsEnabled, deleteTenants } from "@/test/db";
+import { createTenant, createUser, dbTestsEnabled, deleteTenants, runAsSystem } from "@/test/db";
 import {
   buildDigestEmail,
   createTestNotification,
@@ -32,6 +33,9 @@ import {
 import { REVIEW_REMINDER_AUDIT_ACTION, runCleanup, runDailyDigest, runReviewPendingReminders } from "@/modules/notifications/jobs";
 import { attentionIsPersonal, attentionKeysFor } from "@/modules/notifications/attention";
 import { relativeTime, safeNotificationHref } from "@/modules/notifications/kinds";
+
+// These tests call the services directly, outside any route.
+runAsSystem();
 
 const mail = vi.mocked(sendMail);
 const HOUR = 3_600_000;

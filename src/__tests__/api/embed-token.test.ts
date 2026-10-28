@@ -6,8 +6,8 @@ const requestState = vi.hoisted(() => ({
 }));
 
 vi.mock("@/lib/db", async () => {
-  const { fake } = await import("@/__tests__/helpers/fake-db");
-  return { db: fake.db, notDeleted: { deletedAt: null } };
+  const { fakeDbModule } = await import("@/__tests__/helpers/fake-db");
+  return fakeDbModule();
 });
 vi.mock("next/headers", () => ({
   headers: () => ({ get: (name: string) => requestState.headers.get(name.toLowerCase()) ?? null }),

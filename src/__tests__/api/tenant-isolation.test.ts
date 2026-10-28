@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 
 vi.mock("@/lib/db", async () => {
-  const { fake } = await import("@/__tests__/helpers/fake-db");
-  return { db: fake.db, notDeleted: { deletedAt: null } };
+  const { fakeDbModule } = await import("@/__tests__/helpers/fake-db");
+  return fakeDbModule();
 });
 vi.mock("@/lib/auth/session", () => ({ getActingContext: vi.fn() }));
 vi.mock("@/lib/auth/auth-tokens", () => ({

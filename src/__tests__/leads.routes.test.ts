@@ -6,7 +6,8 @@
  * and the CSV import, RBAC and tenant isolation.
  */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { db } from "@/lib/db";
+// Tests seed and inspect across clinics: the system connection, outside row-level security.
+import { systemDb as db } from "@/lib/db";
 import { GET as listRoute, POST as createRoute } from "@/app/api/leads/route";
 import { GET as getRoute, PATCH as patchRoute } from "@/app/api/leads/[id]/route";
 import { POST as stageRoute } from "@/app/api/leads/[id]/stage/route";

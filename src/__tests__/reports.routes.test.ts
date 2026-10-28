@@ -9,7 +9,8 @@
  * isolation on every endpoint.
  */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { db } from "@/lib/db";
+// Tests seed and inspect across clinics: the system connection, outside row-level security.
+import { systemDb as db } from "@/lib/db";
 import { ensureDefaultTreatments } from "@/modules/treatments/service";
 import { evaluateAlertRules, FIRE_INTERVAL_MS } from "@/modules/reporting/alerts";
 import { METRIC_IDS } from "@/modules/reporting/definitions";
@@ -21,7 +22,10 @@ import { GET as rulesRoute, POST as createRuleRoute } from "@/app/api/alert-rule
 import { PATCH as patchRuleRoute } from "@/app/api/alert-rules/[id]/route";
 import { POST as evaluateRoute } from "@/app/api/alert-rules/evaluate/route";
 import { GET as snapshotsRoute, POST as snapshotRoute } from "@/app/api/reviews/snapshots/route";
-import { createTenant, createUser, dbTestsEnabled, deleteTenants, request, sessionCookieFor } from "@/test/db";
+import { createTenant, createUser, dbTestsEnabled, deleteTenants, request, runAsSystem, sessionCookieFor } from "@/test/db";
+
+// Setup and checks call the services directly; the routes enter their own request scope.
+runAsSystem();
 
 const params = (id: string) => ({ params: Promise.resolve({ id }) });
 const HOUR = 3_600_000;

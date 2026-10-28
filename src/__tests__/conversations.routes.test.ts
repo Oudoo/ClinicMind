@@ -7,7 +7,8 @@
  * templates (tenant:manage), RBAC and tenant isolation.
  */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { db } from "@/lib/db";
+// Tests seed and inspect across clinics: the system connection, outside row-level security.
+import { systemDb as db } from "@/lib/db";
 import { GET as listRoute } from "@/app/api/conversations/route";
 import { GET as getRoute, PATCH as patchRoute } from "@/app/api/conversations/[id]/route";
 import { POST as replyRoute } from "@/app/api/conversations/[id]/messages/route";

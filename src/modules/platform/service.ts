@@ -1,6 +1,6 @@
 import type { Prisma, TenantStatus, UserRole, UserStatus } from "@prisma/client";
 import { aiConfigOf, invalidateTenantAi, mergeAiConfig, publicAiConfig, type TenantAiPublic } from "@/lib/ai/tenant-config";
-import { db, notDeleted } from "@/lib/db";
+import { notDeleted, systemDb } from "@/lib/db";
 import { audit } from "@/lib/audit";
 import { generateEmbedSecret } from "@/lib/embed";
 import { inviteUser } from "@/lib/auth/auth-tokens";
@@ -149,7 +149,7 @@ function toSummary(row: SummaryRow, owner: TenantOwnerSummary | null): TenantSum
 async function ownersFor(tenantIds: string[]): Promise<Map<string, TenantOwnerSummary>> {
   const map = new Map<string, TenantOwnerSummary>();
   if (!tenantIds.length) return map;
-  const owners = await db.user.findMany({
+  const owners = await systemDb.user.findMany({
     where: { tenantId: { in: tenantIds }, role: "CLINIC_OWNER", deletedAt: null },
     select: { tenantId: true, id: true, email: true, fullName: true, status: true },
     orderBy: { createdAt: "asc" },
@@ -163,7 +163,7 @@ async function ownersFor(tenantIds: string[]): Promise<Map<string, TenantOwnerSu
 /** Every client tenant, newest first. The platform tenant itself is excluded. */
 export async function listTenants(): Promise<TenantSummary[]> {
   const rows = (
-    await db.tenant.findMany({ where: { ...notDeleted }, select: summarySelect, orderBy: { createdAt: "desc" } })
+    await systemDb.tenant.findMany({ where: { ...notDeleted }, select: summarySelect, orderBy: { createdAt: "desc" } })
   ).filter((t) => t.slug !== PLATFORM_TENANT_SLUG);
   const owners = await ownersFor(rows.map((r) => r.id));
   return rows.map((r) => toSummary(r, owners.get(r.id) ?? null));
@@ -171,7 +171,7 @@ export async function listTenants(): Promise<TenantSummary[]> {
 
 /** One client tenant with its clinics, users and usage counts; null when unknown. */
 export async function getTenantDetail(id: string): Promise<TenantDetail | null> {
-  const row = await db.tenant.findFirst({
+  const row = await systemDb.tenant.findFirst({
     where: { id, ...notDeleted },
     select: {
       ...summarySelect,
@@ -222,17 +222,17 @@ export interface ProvisionResult {
  */
 export async function provisionTenant(input: ProvisionRequest, actor: PlatformActor): Promise<ProvisionResult> {
   if (RESERVED_SLUGS.has(input.slug)) throw new PlatformError("slug_reserved", 422, "That slug is reserved.");
-  const existing = await db.tenant.findFirst({ where: { slug: input.slug }, select: { id: true } });
+  const existing = await systemDb.tenant.findFirst({ where: { slug: input.slug }, select: { id: true } });
   if (existing) throw new PlatformError("slug_taken", 409, "A tenant with that slug already exists.");
   if (input.customDomain) {
-    const domainTaken = await db.tenant.findFirst({ where: { customDomain: input.customDomain }, select: { id: true } });
+    const domainTaken = await systemDb.tenant.findFirst({ where: { customDomain: input.customDomain }, select: { id: true } });
     if (domainTaken) throw new PlatformError("domain_taken", 409, "That domain is already assigned to another tenant.");
   }
 
   const embedSecret = generateEmbedSecret();
   const branding = mergeBranding(null, input.branding);
 
-  const { tenant, owner } = await db.$transaction(async (tx) => {
+  const { tenant, owner } = await systemDb.$transaction(async (tx) => {
     const t = await tx.tenant.create({
       data: {
         slug: input.slug,
@@ -291,13 +291,13 @@ export async function provisionTenant(input: ProvisionRequest, actor: PlatformAc
 
 /** Update a client's name, status, branding, domain or embed settings. */
 export async function updateTenant(id: string, patch: TenantPatch, actor: PlatformActor): Promise<TenantDetail> {
-  const current = await db.tenant.findFirst({
+  const current = await systemDb.tenant.findFirst({
     where: { id, ...notDeleted },
     select: { id: true, slug: true, name: true, status: true, branding: true, settings: true, customDomain: true, customDomainVerified: true, embed: { select: embedSelect } },
   });
   if (!current || current.slug === PLATFORM_TENANT_SLUG) throw new PlatformError("not_found", 404);
   if (patch.customDomain) {
-    const clash = await db.tenant.findFirst({ where: { customDomain: patch.customDomain, id: { not: id } }, select: { id: true } });
+    const clash = await systemDb.tenant.findFirst({ where: { customDomain: patch.customDomain, id: { not: id } }, select: { id: true } });
     if (clash) throw new PlatformError("domain_taken", 409, "That domain is already assigned to another tenant.");
   }
 
@@ -362,7 +362,7 @@ export async function updateTenant(id: string, patch: TenantPatch, actor: Platfo
   }
 
   if (Object.keys(data).length) {
-    await db.tenant.update({ where: { id }, data });
+    await systemDb.tenant.update({ where: { id }, data });
     await audit({
       tenantId: id,
       actorId: actor.userId,
@@ -393,11 +393,11 @@ export interface OwnerInviteResult {
  * password yet, and refuses when the account is already active.
  */
 export async function inviteOwner(id: string, input: OwnerInviteRequest, actor: PlatformActor): Promise<OwnerInviteResult> {
-  const tenant = await db.tenant.findFirst({ where: { id, ...notDeleted }, select: { id: true, slug: true, name: true } });
+  const tenant = await systemDb.tenant.findFirst({ where: { id, ...notDeleted }, select: { id: true, slug: true, name: true } });
   if (!tenant || tenant.slug === PLATFORM_TENANT_SLUG) throw new PlatformError("not_found", 404);
 
   const email = normalizeEmail(input.email);
-  const existing = await db.user.findFirst({
+  const existing = await systemDb.user.findFirst({
     where: { tenantId: tenant.id, email: { equals: email, mode: "insensitive" }, deletedAt: null },
     select: { id: true, email: true, fullName: true, role: true, status: true, passwordHash: true },
   });
@@ -408,7 +408,7 @@ export async function inviteOwner(id: string, input: OwnerInviteRequest, actor: 
     if (existing.status !== "INVITED" && existing.passwordHash) {
       throw new PlatformError("email_taken", 409, "That person already has an active account in this tenant.");
     }
-    const updated = await db.user.update({
+    const updated = await systemDb.user.update({
       where: { id: existing.id },
       data: { role: "CLINIC_OWNER", fullName: input.fullName || existing.fullName },
       select: { id: true, email: true, fullName: true, status: true },
@@ -416,7 +416,7 @@ export async function inviteOwner(id: string, input: OwnerInviteRequest, actor: 
     owner = updated;
     action = "tenant.owner.reinvite";
   } else {
-    owner = await db.user.create({
+    owner = await systemDb.user.create({
       data: { tenantId: tenant.id, email, fullName: input.fullName || null, role: "CLINIC_OWNER", status: "INVITED", isClinician: true },
       select: { id: true, email: true, fullName: true, status: true },
     });
@@ -440,10 +440,10 @@ export async function inviteOwner(id: string, input: OwnerInviteRequest, actor: 
 
 /** A clinic owner updates the branding of their own tenant. */
 export async function updateOwnBranding(tenantId: string, patch: BrandingPatch, actor: PlatformActor): Promise<TenantBranding> {
-  const current = await db.tenant.findFirst({ where: { id: tenantId, ...notDeleted }, select: { branding: true } });
+  const current = await systemDb.tenant.findFirst({ where: { id: tenantId, ...notDeleted }, select: { branding: true } });
   if (!current) throw new PlatformError("not_found", 404);
   const merged = mergeBranding(current.branding, patch);
-  await db.tenant.update({ where: { id: tenantId }, data: { branding: merged as Prisma.InputJsonObject } });
+  await systemDb.tenant.update({ where: { id: tenantId }, data: { branding: merged as Prisma.InputJsonObject } });
   await audit({
     tenantId,
     actorId: actor.userId,

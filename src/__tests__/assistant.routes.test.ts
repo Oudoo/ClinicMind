@@ -7,11 +7,15 @@
  * outage answered 502 and still logged.
  */
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-import { db } from "@/lib/db";
+// Tests seed and inspect across clinics: the system connection, outside row-level security.
+import { systemDb as db } from "@/lib/db";
 import { reindexTenant } from "@/modules/knowledge/ingest";
 import { POST as assistant } from "@/app/api/assistant/route";
 import { buildEvalClinic, type FixtureClinic } from "@/modules/assistant/eval/fixture";
-import { createUser, dbTestsEnabled, deleteTenants, request, sessionCookieFor } from "@/test/db";
+import { createUser, dbTestsEnabled, deleteTenants, request, runAsSystem, sessionCookieFor } from "@/test/db";
+
+// Setup and checks call the services directly; the routes enter their own request scope.
+runAsSystem();
 
 const providerSwitch = vi.hoisted(() => ({ fail: false }));
 

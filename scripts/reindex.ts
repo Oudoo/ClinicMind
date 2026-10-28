@@ -1,4 +1,4 @@
-import { db } from "../src/lib/db";
+import { systemDb, withSystem } from "../src/lib/db";
 import { aiStatus } from "../src/lib/ai/provider";
 import { reindexTenant } from "../src/modules/knowledge/ingest";
 
@@ -25,8 +25,8 @@ async function main(): Promise<void> {
   }
 
   const tenants = all
-    ? await db.tenant.findMany({ where: { deletedAt: null, status: "ACTIVE" }, select: { id: true, slug: true }, orderBy: { slug: "asc" } })
-    : await db.tenant.findMany({ where: { slug: slug!, deletedAt: null }, select: { id: true, slug: true } });
+    ? await systemDb.tenant.findMany({ where: { deletedAt: null, status: "ACTIVE" }, select: { id: true, slug: true }, orderBy: { slug: "asc" } })
+    : await systemDb.tenant.findMany({ where: { slug: slug!, deletedAt: null }, select: { id: true, slug: true } });
 
   if (!tenants.length) {
     console.error(all ? "no active tenants found" : `tenant "${slug}" not found`);
@@ -49,9 +49,10 @@ async function main(): Promise<void> {
   }
 }
 
-main()
+// An operator script: it works across clinics, outside row-level security (src/lib/db.ts).
+withSystem(main)
   .catch((err) => {
     console.error(err);
     process.exitCode = 1;
   })
-  .finally(() => db.$disconnect());
+  .finally(() => systemDb.$disconnect());

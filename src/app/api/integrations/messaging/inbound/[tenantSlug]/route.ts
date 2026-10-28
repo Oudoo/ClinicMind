@@ -1,7 +1,7 @@
 import { timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
 import { ZodError } from "zod";
-import { db, notDeleted } from "@/lib/db";
+import { db, notDeleted, withTenant } from "@/lib/db";
 import { rateLimit } from "@/lib/auth/rate-limit";
 import {
   InboundPayload,
@@ -85,6 +85,11 @@ export async function POST(req: Request, { params }: Params) {
 
   const tenant = await findTenant(tenantSlug);
   if (!tenant) return deny(401);
+  // Everything after runs in the clinic's database scope (row-level security, lib/db.ts).
+  return withTenant(tenant.id, () => receive(req, tenant));
+}
+
+async function receive(req: Request, tenant: { id: string; slug: string }): Promise<NextResponse> {
   const integration = await db.channelIntegration.findUnique({ where: { tenantId_channel: { tenantId: tenant.id, channel: "WHATSAPP" } } });
   if (!integration) return deny(401);
 
