@@ -3,7 +3,7 @@
 import type { NotificationLevel } from "@prisma/client";
 import { AlertTriangle, Info, Mail, OctagonAlert } from "lucide-react";
 import { Badge } from "@/components/ui/primitives";
-import { dateKeyInTz, formatDateInTz, formatDateTimeInTz } from "@/lib/time";
+import { addDays, dateKeyInTz, formatDateInTz, formatDateTimeInTz } from "@/lib/time";
 import { cn } from "@/lib/utils";
 import { KIND_LABELS, relativeTime, type NotificationDTO } from "@/modules/notifications/kinds";
 
@@ -112,7 +112,8 @@ export interface DayGroup {
 /** Group a newest-first list by clinic day: "Today", "Yesterday", then "Mon 20 Oct". */
 export function groupByDay(items: readonly NotificationDTO[], timezone: string, now: Date): DayGroup[] {
   const todayKey = dateKeyInTz(now, timezone);
-  const yesterdayKey = dateKeyInTz(new Date(now.getTime() - 86_400_000), timezone);
+  // A calendar day back, not 24 hours (daylight saving makes some days 23 or 25 hours long).
+  const yesterdayKey = dateKeyInTz(addDays(now, -1, timezone), timezone);
   const groups: DayGroup[] = [];
   for (const n of items) {
     const date = new Date(n.createdAt);

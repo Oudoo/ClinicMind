@@ -1,5 +1,5 @@
 import { ApiError } from "@/lib/http";
-import { dateKeyInTz, zonedParts } from "@/lib/time";
+import { addDays, dateKeyInTz, zonedParts } from "@/lib/time";
 import { cn, initials } from "@/lib/utils";
 import { Badge } from "@/components/ui/primitives";
 import {
@@ -158,8 +158,9 @@ export function whenLabel(iso: string | Date, timezone: string, now: Date, opts:
   const time = withTime ? ` ${clinicTime(date, timezone)}` : "";
   const key = dateKeyInTz(date, timezone);
   if (key === dateKeyInTz(now, timezone)) return `Today${time}`;
-  if (key === dateKeyInTz(new Date(now.getTime() - 86_400_000), timezone)) return `Yesterday${time}`;
-  if (key === dateKeyInTz(new Date(now.getTime() + 86_400_000), timezone)) return `Tomorrow${time}`;
+  // Calendar days, not 24 hours: a day is 23 or 25 hours long when daylight saving changes.
+  if (key === dateKeyInTz(addDays(now, -1, timezone), timezone)) return `Yesterday${time}`;
+  if (key === dateKeyInTz(addDays(now, 1, timezone), timezone)) return `Tomorrow${time}`;
   const days = Math.abs(date.getTime() - now.getTime()) / 86_400_000;
   if (days < 6) return `${clinicDate(date, timezone, { weekday: true })}${time}`;
   return clinicDate(date, timezone, { year: zonedParts(date, timezone).year !== zonedParts(now, timezone).year });
