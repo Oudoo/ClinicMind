@@ -33,6 +33,7 @@ import { POST as invoicesPost } from "@/app/api/invoices/route";
 import { GET as invoiceGet } from "@/app/api/invoices/[id]/route";
 import { POST as issuePost } from "@/app/api/invoices/[id]/issue/route";
 import { POST as cancelPost } from "@/app/api/invoices/[id]/cancel/route";
+import { POST as discountPost } from "@/app/api/invoices/[id]/discount/route";
 import { POST as paymentsPost } from "@/app/api/payments/route";
 import { GET as ledgerGet } from "@/app/api/patients/[id]/ledger/route";
 import { createTenant, createUser, dbTestsEnabled, deleteTenants, openShifts, request, runAsSystem, sessionCookieFor } from "@/test/db";
@@ -353,5 +354,29 @@ describe.skipIf(!dbTestsEnabled)("insurance and companies routes", () => {
     expect((await claimsGet(request("/api/claims", { cookie: assistantCookie })).then(json)).res.status).toBe(403);
     expect((await claimsGet(request("/api/claims", { cookie: doctorCookie })).then(json)).res.status).toBe(403);
     expect((await post(coverPost, `/api/patients/${mona}/insurance`, mona, { payerId: payer, memberNumber: "X", validFrom: dayKey(0) }, ownerBCookie)).res.status).toBe(404);
+  });
+
+  it("takes the contract's discount off what the desk's discount leaves, whichever came first", async () => {
+    const fund = (await payersPost(request("/api/payers", { method: "POST", cookie: ownerCookie, body: { name: "Delta Staff Fund", kind: "COMPANY", paymentDays: 30 } })).then(json)).json.payer.id;
+    expect((await post(contractsPost, `/api/payers/${fund}/contracts`, fund, { validFrom: dayKey(-30), discountPct: 20, copayPct: 10, rules: [] }, ownerCookie)).res.status).toBe(201);
+    const hala = (await db.patient.create({ data: { tenantId: a, fullName: "Hala Member", phone: "+201007700003" } })).id;
+    expect((await post(coverPost, `/api/patients/${hala}/insurance`, hala, { payerId: fund, memberNumber: "DSF-3", validFrom: dayKey(-30) }, receptionCookie)).res.status).toBe(201);
+    const w6 = await work(hala, "general-dermatology", 1_000, 1);
+    const d = await draft(hala, [w6.chargeId]);
+    expect(d.total).toBe(800);
+    // The desk takes 100 off: the contract's 20% is of the 900 left, put right on the draft at once.
+    const discounted = await post(discountPost, `/api/invoices/${d.id}/discount`, d.id, { chargeId: w6.chargeId, amount: 100, reason: "LOYALTY" }, receptionCookie);
+    expect(discounted.res.status, JSON.stringify(discounted.json)).toBe(200);
+    expect(discounted.json.invoice.total).toBe(720);
+    const issued = await issue(d.id);
+    expect(issued).toMatchObject({ total: 720, claimed: 648, due: 72 });
+    const line = await db.claimLine.findFirstOrThrow({ where: { tenantId: a, chargeId: w6.chargeId } });
+    expect(line).toMatchObject({ amount: 720, contractDiscount: 180, patientShare: 72, payerShare: 648 });
+    // The contract discount of 200 (of the 1,000) was reversed, never deleted.
+    const contract = await db.charge.findMany({ where: { tenantId: a, discountOfId: w6.chargeId, reason: "CONTRACT" }, orderBy: { amount: "asc" }, select: { amount: true, reversedBy: { select: { amount: true } } } });
+    expect(contract.map((c) => [c.amount, c.reversedBy?.amount ?? null])).toEqual([
+      [-200, 200],
+      [-180, null],
+    ]);
   });
 });

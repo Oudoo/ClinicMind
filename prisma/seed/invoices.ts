@@ -15,8 +15,9 @@ import { applyContractDiscounts, claimInvoiceTx } from "../../src/modules/insura
  *   invoices oldest first (so most are paid, the seeded balances are
  *   part-paid, and course packages paid up front are credit);
  * - the last three days, and the courses under way, are left to invoice,
- *   with one draft waiting to be issued and one invoice cancelled with a
- *   credit note and issued again.
+ *   with one invoice cancelled with a credit note and issued again, and two
+ *   drafts waiting to be issued: an insured patient's last covered visit (it
+ *   shows what the payer will be asked for) and another patient's last visit.
  */
 
 const DAY = 86_400_000;
@@ -57,9 +58,32 @@ export async function seedInvoices(ctx: SeedContext): Promise<void> {
     const key = `${c.patientId}:${c.chargedAt.toISOString().slice(0, 10)}`;
     groups.set(key, [...(groups.get(key) ?? []), c]);
   }
+  // The drafts left waiting: an insured patient's last covered visit (general or skin work while their cover held),
+  // held back from the days invoiced when it is older than three days.
+  const covers = await db.coverage.findMany({ where: { tenantId }, select: { patientId: true, validFrom: true, validTo: true } });
+  const insured = covers.length
+    ? await db.charge.findFirst({
+        where: {
+          tenantId,
+          amount: { gt: 0 },
+          procedure: { stages: 1, treatment: { category: { in: ["general", "skin"] } } },
+          OR: covers.map((c) => ({ patientId: c.patientId, chargedAt: { gte: c.validFrom, ...(c.validTo ? { lt: new Date(c.validTo.getTime() + DAY) } : {}) } })),
+        },
+        orderBy: [{ chargedAt: "desc" }, { id: "desc" }],
+        select: { patientId: true, chargedAt: true },
+      })
+    : null;
+  const held = insured ? `${insured.patientId}:${insured.chargedAt.toISOString().slice(0, 10)}` : null;
+  // And an uninsured patient's last visit.
+  const uninsured = await db.charge.findFirst({
+    where: { tenantId, amount: { gt: 0 }, chargedAt: { gte: cutoff }, procedure: { stages: 1 }, patient: { coverages: { none: {} } } },
+    orderBy: { chargedAt: "desc" },
+    select: { patientId: true },
+  });
   const patients = new Set<string>();
   let issued = 0;
-  for (const group of groups.values()) {
+  for (const [key, group] of groups) {
+    if (key === held) continue;
     const day = group[0]!.chargedAt;
     const patientId = group[0]!.patientId;
     const language = ctx.patients.find((p) => p.id === patientId)?.language === "ar" ? "ar" : "en";
@@ -92,21 +116,25 @@ export async function seedInvoices(ctx: SeedContext): Promise<void> {
   }
   for (const patientId of patients) await db.$transaction((tx) => allocateCredit(tx, tenantId, patientId, reception.id));
 
-  // One invoice cancelled (the wrong treatment was billed) and issued again; one draft waiting.
+  // One invoice cancelled (the wrong treatment was billed) and issued again; two drafts waiting.
   const actor = { id: owner.id, email: "owner@demo.clinic" };
-  const recent = await db.invoice.findFirst({ where: { tenantId, status: "PAID" }, orderBy: { issuedAt: "desc" }, select: { id: true, patientId: true } });
+  const recent = await db.invoice.findFirst({
+    where: { tenantId, status: "PAID", patientId: { notIn: [insured?.patientId, uninsured?.patientId].filter((id): id is string => Boolean(id)) } },
+    orderBy: { issuedAt: "desc" },
+    select: { id: true, patientId: true },
+  });
   if (recent) {
     await cancelInvoice(tenantId, recent.id, { reason: "Billed under the wrong treatment; reissued" }, actor);
     const again = await createDraft(tenantId, { patientId: recent.patientId }, actor);
     await issueInvoice(tenantId, again.id, actor);
   }
-  const waiting = await db.charge.findFirst({
-    where: { tenantId, amount: { gt: 0 }, chargedAt: { gte: cutoff }, procedure: { stages: 1 } },
-    orderBy: { chargedAt: "desc" },
-    select: { patientId: true },
-  });
-  const drafted = waiting && (await db.$transaction((tx) => billableCharges(tx, tenantId, waiting.patientId))).length ? await createDraft(tenantId, { patientId: waiting.patientId }, { id: reception.id }) : null;
+  let drafted = 0;
+  for (const waiting of [insured, uninsured]) {
+    if (!waiting || !(await db.$transaction((tx) => billableCharges(tx, tenantId, waiting.patientId))).length) continue;
+    await createDraft(tenantId, { patientId: waiting.patientId }, { id: reception.id });
+    drafted += 1;
+  }
 
   const counts = await db.invoice.groupBy({ by: ["status"], where: { tenantId }, _count: true });
-  console.log(`     invoices: ${issued} issued by visit day (${counts.map((c) => `${c._count} ${c.status.toLowerCase().replace("_", "-")}`).join(", ")})${drafted ? ", one draft" : ""}; receipts ${code}-RC-…`);
+  console.log(`     invoices: ${issued} issued by visit day (${counts.map((c) => `${c._count} ${c.status.toLowerCase().replace("_", "-")}`).join(", ")}), ${drafted} waiting as drafts; receipts ${code}-RC-…`);
 }

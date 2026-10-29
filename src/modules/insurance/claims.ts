@@ -314,12 +314,14 @@ export async function splitInvoice(client: Client, tenantId: string, invoiceId: 
       const ruling = ruleFor(terms, w);
       const posted = w.contractDiscounts.reduce((s, d) => s + d.amount, 0);
       const net = w.amount - w.otherDiscounts;
-      // Covered work takes the contract's discount once; work it no longer covers gives it back.
-      const discount = ruling.covered ? (posted || contractDiscountOf(net, terms.discountPct)) : 0;
+      // Covered work takes the contract's discount off what the clinic's own discounts leave, whichever came first:
+      // one posted for another amount is reversed and posted again; work the contract no longer covers gives it back.
+      const discount = ruling.covered ? contractDiscountOf(net, terms.discountPct) : 0;
+      const redo = posted !== discount;
       pending.set(w.chargeId, {
         contractDiscount: discount,
-        contractDiscountToAdd: ruling.covered && !posted ? discount : 0,
-        contractDiscountsToReverse: ruling.covered ? [] : w.contractDiscounts,
+        contractDiscountToAdd: redo ? discount : 0,
+        contractDiscountsToReverse: redo ? w.contractDiscounts : [],
         amount: net - discount,
       });
       workLines.push({ chargeId: w.chargeId, day: w.day, amount: net - discount, priceItemId: w.priceItemId, category: w.category, procedureId: w.procedureId });

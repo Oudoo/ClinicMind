@@ -10,6 +10,7 @@ import { DISCOUNT_WORDS } from "./ledger-copy";
 import { assertDiscountAllowed } from "./discounts";
 import { FinanceError } from "./errors";
 import { getInvoice, InvoiceNotFoundError, invoiceState, type InvoiceDTO } from "./invoices";
+import { applyContractDiscounts } from "@/modules/insurance/claims";
 
 /**
  * What takes money off what a patient owes, other than a payment:
@@ -104,7 +105,9 @@ export async function discountDraftLine(tenantId: string, invoiceId: string, raw
       data: { tenantId, invoiceId, chargeId: discount.id, description: discount.description, amount: discount.amount, chargedAt: discount.chargedAt, position: Math.max(0, ...lines.map((l) => l.position)) + 1 },
     });
     await tx.invoice.update({ where: { id: invoiceId }, data: { total } });
-    return { chargeId: discount.id, of: charge.id, amount: input.amount, reason: input.reason, note: input.note ?? null, total };
+    // An insured patient's contract discount is taken off what the desk's discount leaves.
+    const after = await applyContractDiscounts(tx, tenantId, invoiceId, actor.id ?? null, new Date());
+    return { chargeId: discount.id, of: charge.id, amount: input.amount, reason: input.reason, note: input.note ?? null, total: after };
   });
   await audit({ tenantId, actorId: actor.id, actorEmail: actor.email, ip: actor.ip, action: "invoice.discount", entity: "Invoice", entityId: invoiceId, after: given });
   return getInvoice(tenantId, invoiceId);

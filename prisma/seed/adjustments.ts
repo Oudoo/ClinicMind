@@ -3,10 +3,10 @@ import { discountDraftLine } from "../../src/modules/finance/adjustments";
 import { refreshInvoiceStatus } from "../../src/modules/finance/allocations";
 
 /**
- * Discounts and write-offs in the demo clinic: the draft waiting to be issued
- * has 10% off its first line for a returning patient (within reception's
- * limit), and the owner wrote off the smallest balance left on an old
- * invoice as too small to chase.
+ * Discounts and write-offs in the demo clinic: the uninsured patient's draft
+ * waiting to be issued has 10% off its first line for a returning patient
+ * (within reception's limit), and the owner wrote off the smallest balance
+ * left on an old invoice as too small to chase.
  */
 
 const DAY = 86_400_000;
@@ -17,9 +17,9 @@ export async function seedAdjustments(ctx: SeedContext): Promise<void> {
   const owner = ctx.users.find((u) => u.role === "CLINIC_OWNER") ?? ctx.users[0]!;
   const made: string[] = [];
 
-  // 10% off the draft's first line: a returning patient.
+  // 10% off the uninsured patient's draft's first line: a returning patient.
   const draft = await db.invoice.findFirst({
-    where: { tenantId, status: "DRAFT" },
+    where: { tenantId, status: "DRAFT", patient: { coverages: { none: {} } } },
     select: { id: true, lines: { where: { amount: { gt: 0 } }, orderBy: { position: "asc" }, take: 1, select: { chargeId: true, amount: true } } },
   });
   const line = draft?.lines[0];

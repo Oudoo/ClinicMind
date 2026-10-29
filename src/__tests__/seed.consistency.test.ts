@@ -31,6 +31,7 @@ import {
 } from "../../prisma/seed/clinical";
 import { accountPosition } from "@/modules/finance/ledger";
 import { claimedOn, claimsSettling } from "@/modules/finance/allocations";
+import { splitInvoice } from "@/modules/insurance/claims";
 import { END_AFTER_SILENT_DAYS, END_AFTER_WINDOW_DAYS } from "@/modules/recalls/constants";
 import { addDays, dateKeyInTz } from "@/lib/time";
 import { adjustmentsReport, balancesReport, branchReport, dayCloseReport, incomeReport, productionReport, providersReport, reportScope } from "@/modules/finance/reports";
@@ -808,5 +809,9 @@ describe("the seeded demo database (when DATABASE_URL points at one)", () => {
     // Approvals asked of the payers: one waiting, one approved, one refused.
     const approvals = await db.preApproval.groupBy({ by: ["status"], where: { tenantId }, _count: true });
     expect(approvals.map((a) => a.status).sort()).toEqual(["APPROVED", "REFUSED", "REQUESTED"]);
+    // The draft waiting at the desk is an insured patient's covered work: issuing it makes a claim.
+    const drafts = await db.invoice.findMany({ where: { tenantId, status: "DRAFT" }, select: { id: true } });
+    const splits = await Promise.all(drafts.map((d) => splitInvoice(db, tenantId, d.id)));
+    expect(splits.some((s) => s.insured && s.claimed > 0)).toBe(true);
   });
 });
