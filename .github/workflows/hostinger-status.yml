@@ -1,0 +1,33 @@
+name: Hostinger status
+
+# Read only: the last build of the website in deploy/hostinger/status.json, the
+# app's log of the last hour and its health check (scripts/hostinger-api.mjs).
+# Its own concurrency group, so it can look at a deploy while that runs.
+on:
+  push:
+    branches: [main]
+    paths: [deploy/hostinger/status.json]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hostinger-status
+  cancel-in-progress: true
+
+jobs:
+  status:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Read the status
+        env:
+          HOSTINGER_API_TOKEN: ${{ secrets.HOSTINGER_API_TOKEN }}
+        run: node scripts/hostinger-api.mjs deploy/hostinger/status.json

@@ -16,7 +16,8 @@
 //       and its secrets are derived from it, so they stay the same from one deploy to the next.
 //       "reseed": true rebuilds the demo clinic around today.
 //   { "action": "status", "domain": "cm.growcdx.com" }
-//       read only: the last build, the app's log of the last hour and its health check.
+//       read only: the last build, the app's log of the last hour and its health check. The
+//       "Hostinger status" workflow runs it from deploy/hostinger/status.json, beside a deploy.
 //
 // The repository is public, so its workflow logs are too: this prints plan names, states and
 // domain names, never account user names, IP addresses, e-mail addresses or secret values.
@@ -320,19 +321,19 @@ async function followBuild(api, domain, buildUuid) {
   return state || "unknown (still running after 50 minutes)";
 }
 
-async function health(domain) {
-  for (let i = 0; i < 20; i++) {
+async function health(domain, attempts = 20) {
+  for (let i = 0; i < attempts; i++) {
     try {
       const res = await fetch(`${siteUrl(domain)}/api/health`, { headers: { "cache-control": "no-store" } });
       const body = await res.text();
       if (res.ok && body.includes('"service":"clinicmind"')) return `${res.status} ${body}`;
-      console.log(`  https://${domain}/api/health → ${res.status}; trying again`);
+      console.log(`  ${siteUrl(domain)}/api/health → ${res.status}; trying again`);
     } catch (err) {
-      console.log(`  https://${domain}/api/health → ${err instanceof Error ? err.cause?.code ?? err.message : err}; trying again`);
+      console.log(`  ${siteUrl(domain)}/api/health → ${err instanceof Error ? err.cause?.code ?? err.message : err}; trying again`);
     }
-    await sleep(POLL_MS);
+    if (i < attempts - 1) await sleep(POLL_MS);
   }
-  return "no healthy answer after five minutes";
+  return `no healthy answer after ${attempts} tries`;
 }
 
 async function runtimeLogs(api, username, domain) {
@@ -379,7 +380,7 @@ async function status(api, request) {
     printAnalysis(answer?.analysis);
   });
   await section("The app's log (last hour)", () => runtimeLogs(api, site.username, domain));
-  await section("Health check", async () => console.log(`  ${await health(domain)}`));
+  await section("Health check", async () => console.log(`  ${await health(domain, 2)}`));
 }
 
 const ACTIONS = { inventory, deploy, status };
