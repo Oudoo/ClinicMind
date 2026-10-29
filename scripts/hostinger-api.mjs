@@ -324,7 +324,8 @@ async function followBuild(api, domain, buildUuid) {
 async function health(domain, attempts = 20) {
   for (let i = 0; i < attempts; i++) {
     try {
-      const res = await fetch(`${siteUrl(domain)}/api/health`, { headers: { "cache-control": "no-store" } });
+      // A site that is still starting can hold the request open: give up on it after 20 s.
+      const res = await fetch(`${siteUrl(domain)}/api/health`, { headers: { "cache-control": "no-store" }, signal: AbortSignal.timeout(20_000) });
       const body = await res.text();
       if (res.ok && body.includes('"service":"clinicmind"')) return `${res.status} ${body}`;
       console.log(`  ${siteUrl(domain)}/api/health → ${res.status}; trying again`);
