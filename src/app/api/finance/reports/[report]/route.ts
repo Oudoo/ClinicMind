@@ -10,8 +10,8 @@ export const dynamic = "force-dynamic";
 
 /**
  * `GET /api/finance/reports/[report]?period=28d|…&from=&to=&clinicId=&status=&doctorId=&type=[&format=csv]`
- * — one of the owner's financial reports (`finance:read`): `income`, `production`, `branches`,
- * `adjustments`, `balances`, `procedures` or `providers`. JSON, or CSV (audited as
+ * — one of the owner's financial reports (`finance:read`): `day` (one day's close, `?date=YYYY-MM-DD`),
+ * `income`, `production`, `branches`, `adjustments`, `balances`, `procedures` or `providers`. JSON, or CSV (audited as
  * `finance.report.export` with the period and the row count).
  */
 export async function GET(req: Request, { params }: { params: Promise<{ report: string }> }) {
@@ -22,7 +22,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ report: 
     assertCan(ctx.role, "finance:read");
     if (!isFinanceReport(report)) return notFound("report");
     const query = Object.fromEntries(new URL(req.url).searchParams);
-    const scope = await reportScope(ctx.tenantId, query);
+    const scope = await reportScope(ctx.tenantId, { ...query, report });
     if (query.format !== "csv") return ok(await financeReport(scope, report));
     const { filename, csv } = await financeReportCsv(scope, report);
     await audit({

@@ -2,12 +2,13 @@ import type { PaymentKind, PaymentMethod } from "@prisma/client";
 import { z } from "zod";
 import { db, notDeleted } from "@/lib/db";
 import { TenantScopeError } from "@/lib/tenant-scope";
-import { addDays, dateKeyInTz, formatDateInTz, startOfDayInTz } from "@/lib/time";
+import { addDays, dateKeyInTz, formatDateInTz, formatTimeInTz, fromDateKey, startOfDayInTz } from "@/lib/time";
 import { zOptionalText } from "@/lib/validation";
 import { getTenantTimezone } from "@/modules/appointments/service";
 import { toCsv, type CsvCell } from "@/modules/reporting/csv";
 import { resolvePeriod, type ResolvedPeriod } from "@/modules/reporting/period";
 import { OPEN_INVOICE_STATUSES } from "./allocations";
+import { getCashDay } from "./cash";
 import { stageShare, summarizeCharges } from "./charges";
 import {
   DISCOUNT_REASON_LABELS,
@@ -42,10 +43,11 @@ import { patientBalances } from "./ledger";
  * the day the work was done keeps its figures. Voided payments never count.
  */
 
-export const FINANCE_REPORTS = ["income", "production", "branches", "adjustments", "balances", "procedures", "providers"] as const;
+export const FINANCE_REPORTS = ["day", "income", "production", "branches", "adjustments", "balances", "procedures", "providers"] as const;
 export type FinanceReportKey = (typeof FINANCE_REPORTS)[number];
 
 export const FINANCE_REPORT_LABELS: Record<FinanceReportKey, string> = {
+  day: "Day close",
   income: "Daily income",
   production: "Daily production",
   branches: "Branch production",
@@ -68,6 +70,8 @@ export const ADJUSTMENT_LABELS: Record<AdjustmentType, string> = {
 };
 
 export const ReportFilters = z.object({
+  /** Day close: the day (YYYY-MM-DD), today by default. */
+  date: zOptionalText(10),
   period: zOptionalText(16),
   from: zOptionalText(10),
   to: zOptionalText(10),
@@ -101,7 +105,9 @@ export async function reportScope(tenantId: string, raw: Record<string, string |
     db.clinic.findMany({ where: { tenantId, ...notDeleted }, orderBy: [{ createdAt: "asc" }, { id: "asc" }], select: { id: true, name: true } }),
   ]);
   if (filters.clinicId && !clinics.some((c) => c.id === filters.clinicId)) throw new TenantScopeError("clinic", filters.clinicId);
-  const period = resolvePeriod({ period: filters.period, from: filters.from, to: filters.to }, timezone, now);
+  // The day close covers one day; the other reports a period.
+  const day = filters.date && /^\d{4}-\d{2}-\d{2}$/.test(filters.date) && fromDateKey(filters.date, timezone) ? filters.date : null;
+  const period = raw.report === "day" ? resolvePeriod({ period: "custom", from: day ?? dateKeyInTz(now, timezone), to: day ?? dateKeyInTz(now, timezone) }, timezone, now) : resolvePeriod({ period: filters.period, from: filters.from, to: filters.to }, timezone, now);
   return { tenantId, timezone, period, clinicId: filters.clinicId ?? null, clinics, defaultClinicId: clinics[0]?.id ?? null, filters };
 }
 
@@ -907,6 +913,170 @@ export async function providersReport(scope: ReportScope): Promise<{ rows: Provi
   return { rows: [...rows.values()].sort((a, b) => (a.doctorId === null ? 1 : 0) - (b.doctorId === null ? 1 : 0) || b.net - a.net), totals };
 }
 
+// ── A day's close ────────────────────────────────────────────────────────────
+
+/** Where some of a receipt's money went. */
+export interface TraceLeg {
+  /** Towards an invoice, not put towards one (the patient's credit), a consultation fee, or money paid back. */
+  kind: "invoice" | "credit" | "fee" | "refund";
+  amount: number;
+  invoiceId: string | null;
+  invoiceNumber: string | null;
+  /** What it is for: the procedures and visits on the invoice, a deposit's procedure, a fee's visit. */
+  work: string[];
+}
+
+export interface TraceRow {
+  paymentId: string;
+  receiptNumber: string | null;
+  at: string;
+  patientId: string;
+  patientName: string;
+  kind: PaymentKind;
+  method: PaymentMethodValue;
+  amount: number;
+  legs: TraceLeg[];
+  /** Every pound of it is accounted for: a receipt number, and invoices billing procedures or visits, a visit's fee, credit on the account, or a refund. */
+  traced: boolean;
+  /** What is missing when it is not. */
+  problem: string | null;
+}
+
+export interface DayCloseReport {
+  date: string;
+  branches: { clinicId: string; name: string; signedOff: { at: string; by: string | null } | null; shifts: number; open: number; difference: number | null }[];
+  income: IncomeTotals;
+  production: ProductionTotals;
+  adjustments: AdjustmentsReport["totals"];
+  /** The drawer against the books, per method: what the drawers and the money entered late add up to (floats aside), and what the payments say. */
+  drawer: { method: PaymentMethodValue; label: string; drawer: number; books: number }[];
+  trace: TraceRow[];
+  summary: { receipts: number; onInvoices: number; credit: number; fees: number; refunds: number; untraced: number };
+}
+
+/**
+ * One day at a branch (or every branch), the way it is closed: the drawer
+ * (each branch's shifts, its count and sign-off) against the books (the day's
+ * income by method), the day's production and adjustments, and every receipt
+ * traced to where its money went: the invoices it paid and the procedures on
+ * them, a deposit's procedure, a fee's visit, credit not yet on an invoice, or
+ * money paid back.
+ */
+export async function dayCloseReport(scope: ReportScope): Promise<DayCloseReport> {
+  const t = scope.tenantId;
+  const date = scope.period.fromKey;
+  const branches = scope.clinicId ? scope.clinics.filter((c) => c.id === scope.clinicId) : scope.clinics;
+  const [income, production, adjustments, days, payments, names] = await Promise.all([
+    incomeReport(scope),
+    productionReport(scope),
+    adjustmentsReport(scope),
+    Promise.all(branches.map((c) => getCashDay(t, { date, clinicId: c.id }))),
+    db.payment.findMany({
+      where: { tenantId: t, deletedAt: null, paidAt: span(scope) },
+      orderBy: [{ paidAt: "asc" }, { id: "asc" }],
+      select: {
+        id: true,
+        receiptNumber: true,
+        paidAt: true,
+        patientId: true,
+        kind: true,
+        method: true,
+        amount: true,
+        clinicId: true,
+        procedureId: true,
+        appointmentId: true,
+        patient: { select: { fullName: true } },
+        procedure: { select: { quantity: true, stages: true, priceItem: { select: { name: true } }, treatment: { select: { name: true } } } },
+        allocations: { select: { amount: true, invoice: { select: { id: true, number: true, lines: { orderBy: { position: "asc" }, select: { amount: true, description: true, charge: { select: { procedureId: true, appointmentId: true } } } } } } } },
+      },
+    }),
+    namesOf(t),
+  ]);
+  const kept = payments.filter((p) => inBranch(scope, p.clinicId));
+  const visitIds = [...new Set(kept.map((p) => p.appointmentId).filter((id): id is string => Boolean(id)))];
+  const visits = visitIds.length
+    ? new Map((await db.appointment.findMany({ where: { tenantId: t, id: { in: visitIds } }, select: { id: true, startsAt: true, doctorId: true } })).map((a) => [a.id, a]))
+    : new Map<string, { id: string; startsAt: Date; doctorId: string | null }>();
+  const visitLabel = (id: string | null) => {
+    const v = id ? visits.get(id) : undefined;
+    if (!v) return null;
+    const doctor = v.doctorId ? names.get(v.doctorId) : null;
+    return `Visit of ${formatDateInTz(v.startsAt, scope.timezone, { day: "numeric", month: "short" })}, ${formatTimeInTz(v.startsAt, scope.timezone)}${doctor ? ` with ${doctor}` : ""}`;
+  };
+  const summary = { receipts: kept.length, onInvoices: 0, credit: 0, fees: 0, refunds: 0, untraced: 0 };
+  const trace: TraceRow[] = kept.map((p) => {
+    const legs: TraceLeg[] = [];
+    const problems: string[] = [];
+    if (!p.receiptNumber) problems.push("no receipt number");
+    if (p.kind === "REFUND") {
+      legs.push({ kind: "refund", amount: -p.amount, invoiceId: null, invoiceNumber: null, work: [] });
+      summary.refunds -= p.amount;
+    } else if (p.kind === "CONSULTATION_FEE") {
+      const visit = visitLabel(p.appointmentId);
+      legs.push({ kind: "fee", amount: p.amount, invoiceId: null, invoiceNumber: null, work: visit ? [visit] : [] });
+      if (!visit) problems.push("a fee with no visit");
+      summary.fees += p.amount;
+    } else {
+      for (const a of p.allocations) {
+        const work = [...new Set(a.invoice.lines.filter((l) => l.amount > 0).map((l) => l.description))];
+        if (a.invoice.lines.some((l) => l.amount > 0 && !l.charge.procedureId && !l.charge.appointmentId)) problems.push(`a line of ${a.invoice.number ?? "an invoice"} is for no procedure or visit`);
+        legs.push({ kind: "invoice", amount: a.amount, invoiceId: a.invoice.id, invoiceNumber: a.invoice.number, work });
+        summary.onInvoices += a.amount;
+      }
+      const left = p.amount - p.allocations.reduce((s, a) => s + a.amount, 0);
+      if (left > 0) {
+        const pr = p.procedure;
+        const name = pr ? (pr.priceItem?.name ?? pr.treatment.name) : null;
+        legs.push({ kind: "credit", amount: left, invoiceId: null, invoiceNumber: null, work: name ? [name] : [] });
+        summary.credit += left;
+      } else if (left < 0) {
+        problems.push("more put towards invoices than was paid");
+      }
+    }
+    if (problems.length) summary.untraced += 1;
+    return {
+      paymentId: p.id,
+      receiptNumber: p.receiptNumber,
+      at: p.paidAt.toISOString(),
+      patientId: p.patientId,
+      patientName: p.patient.fullName,
+      kind: p.kind,
+      method: p.method,
+      amount: p.kind === "REFUND" ? -p.amount : p.amount,
+      legs,
+      traced: !problems.length,
+      problem: problems.length ? problems.join("; ") : null,
+    };
+  });
+  // The drawer: what each branch's shifts expect (the float aside) and the money entered late, by method.
+  const drawerBy = new Map<PaymentMethodValue, number>();
+  for (const d of days) {
+    const floats = d.shifts.reduce((s, x) => s + x.openingFloat, 0);
+    for (const m of d.totals) drawerBy.set(m.method, (drawerBy.get(m.method) ?? 0) + m.expected - (m.method === "CASH" ? floats : 0));
+  }
+  const methods = PAYMENT_METHODS.filter((m) => (drawerBy.get(m) ?? 0) !== 0 || (income.totals.methods[m] ?? 0) !== 0);
+  return {
+    date,
+    branches: days.map((d) => {
+      const counted = d.totals.every((x) => x.difference !== null);
+      return {
+        clinicId: d.clinic.id,
+        name: d.clinic.name,
+        signedOff: d.signedOff ? { at: d.signedOff.at, by: d.signedOff.by } : null,
+        shifts: d.shifts.length,
+        open: d.shifts.filter((x) => x.status === "OPEN").length,
+        difference: counted ? d.totals.reduce((s, x) => s + (x.difference ?? 0), 0) : null,
+      };
+    }),
+    income: income.totals,
+    production: production.totals,
+    adjustments: adjustments.totals,
+    drawer: methods.map((method) => ({ method, label: METHOD_LABELS[method], drawer: drawerBy.get(method) ?? 0, books: income.totals.methods[method] ?? 0 })),
+    trace,
+    summary,
+  };
+}
+
 // ── CSV ──────────────────────────────────────────────────────────────────────
 
 const PRODUCTION_HEADERS = ["Gross production (EGP)", "Discounts (EGP)", "Cancelled work (EGP)", "Consultation fees (EGP)", "Net production (EGP)", "Procedures and sessions"];
@@ -916,6 +1086,30 @@ const productionCells = (p: ProductionTotals): CsvCell[] => [p.gross, p.discount
 export async function financeReportCsv(scope: ReportScope, key: FinanceReportKey): Promise<{ filename: string; csv: string }> {
   const filename = `${key}-${scope.period.fromKey}-to-${scope.period.toKey}.csv`;
   const date = (iso: string) => formatDateInTz(new Date(iso), scope.timezone);
+  if (key === "day") {
+    const r = await dayCloseReport(scope);
+    const where = (leg: TraceLeg) =>
+      leg.kind === "invoice" ? `Invoice ${leg.invoiceNumber ?? ""}${leg.work.length ? `: ${leg.work.join(", ")}` : ""}` : leg.kind === "credit" ? `Not put towards an invoice: the patient's credit${leg.work.length ? ` (a deposit for ${leg.work.join(", ")})` : ""}` : leg.kind === "fee" ? `Consultation fee${leg.work.length ? `: ${leg.work.join(", ")}` : ""}` : "Paid back";
+    return {
+      filename: `day-close-${r.date}.csv`,
+      csv: toCsv(
+        ["Receipt", "Time", "Patient", "Kind", "Method", "Amount (EGP)", "Where it went", "Of which (EGP)", "Traced"],
+        r.trace.flatMap((x) =>
+          x.legs.map((leg, i) => [
+            i === 0 ? x.receiptNumber : "",
+            i === 0 ? formatTimeInTz(new Date(x.at), scope.timezone) : "",
+            i === 0 ? x.patientName : "",
+            i === 0 ? x.kind : "",
+            i === 0 ? METHOD_LABELS[x.method] : "",
+            i === 0 ? x.amount : "",
+            where(leg),
+            leg.amount,
+            i === 0 ? (x.traced ? "yes" : (x.problem ?? "no")) : "",
+          ]),
+        ),
+      ),
+    };
+  }
   if (key === "income") {
     const r = await incomeReport(scope);
     const methods = PAYMENT_METHODS.filter((m) => r.totals.methods[m] !== undefined);
@@ -978,6 +1172,8 @@ export async function financeReportCsv(scope: ReportScope, key: FinanceReportKey
 export async function financeReport(scope: ReportScope, key: FinanceReportKey) {
   const base = { report: key, period: { preset: scope.period.preset, from: scope.period.fromKey, to: scope.period.toKey }, clinicId: scope.clinicId, timezone: scope.timezone };
   switch (key) {
+    case "day":
+      return { ...base, ...(await dayCloseReport(scope)) };
     case "income":
       return { ...base, ...(await incomeReport(scope)) };
     case "production":

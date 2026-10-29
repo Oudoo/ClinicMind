@@ -3,7 +3,7 @@ import Link from "next/link";
 import { getActingContext } from "@/lib/auth/session";
 import { can } from "@/lib/auth/rbac";
 import { TenantScopeError } from "@/lib/tenant-scope";
-import { dateKeyInTz, formatDateInTz, fromDateKey } from "@/lib/time";
+import { dateKeyInTz, formatDateInTz, formatTimeInTz, fromDateKey } from "@/lib/time";
 import { cn, formatNumber } from "@/lib/utils";
 import { PROCEDURE_STATUSES, PROCEDURE_STATUS_LABELS } from "@/modules/finance/constants";
 import {
@@ -15,6 +15,7 @@ import {
   adjustmentsReport,
   balancesReport,
   branchReport,
+  dayCloseReport,
   incomeReport,
   isFinanceReport,
   productionReport,
@@ -31,9 +32,12 @@ import { Badge, Card, EmptyState, SectionTitle } from "@/components/ui/primitive
 import { Kpi } from "@/components/ui/kpi";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/input";
+import { METHOD_LABELS } from "@/modules/finance/constants";
 import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/table";
 import { PeriodPicker } from "@/components/clinicmind/report-period-picker";
 import { CsvLink, NotForRole } from "@/components/clinicmind/report-shared";
+import { DentaloreCompare } from "@/components/clinicmind/dentalore-compare";
+import { Input } from "@/components/ui/input";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Finance reports" };
@@ -46,6 +50,7 @@ const egp = (v: number) => (v < 0 ? `−${formatNumber(-v)}` : formatNumber(v));
 const NUM = "text-right font-mono tabular-nums whitespace-nowrap";
 
 const DESCRIPTIONS: Record<FinanceReportKey, string> = {
+  day: "One day, the way it is closed: the drawer against the books, the day's figures beside Dentalore's, and every receipt traced to where its money went.",
   income: "The money that came in each day, by kind and method, less refunds, and whether the drawer was signed off.",
   production: "The work done each day: its price before any discount, the discounts, work cancelled, consultation fees and what was charged.",
   branches: "Each branch side by side: its production, the money it took and what it wrote off.",
@@ -73,7 +78,8 @@ export default async function FinanceReportsPage({ searchParams }: { searchParam
     );
   }
   const raw = Object.fromEntries(Object.entries(sp).map(([k, v]) => [k, first(v)]));
-  const report: FinanceReportKey = isFinanceReport(raw.report) ? raw.report : "income";
+  const report: FinanceReportKey = isFinanceReport(raw.report) ? raw.report : "day";
+  raw.report = report;
   const scope = await reportScope(ctx.tenantId, raw).catch((err: unknown) => {
     if (err instanceof TenantScopeError) return reportScope(ctx.tenantId, { ...raw, clinicId: undefined });
     throw err;
@@ -87,7 +93,7 @@ export default async function FinanceReportsPage({ searchParams }: { searchParam
     return `/dashboard/finance/reports?${params.toString()}`;
   };
   const filterEntries = { status: scope.filters.status, doctorId: scope.filters.doctorId, type: scope.filters.type };
-  const csvQuery = new URLSearchParams(Object.entries({ ...keep, ...filterEntries, format: "csv" }).filter((e): e is [string, string] => Boolean(e[1])));
+  const csvQuery = new URLSearchParams(Object.entries({ ...keep, ...filterEntries, ...(report === "day" ? { date: period.fromKey } : {}), format: "csv" }).filter((e): e is [string, string] => Boolean(e[1])));
   const day = (key: string) => formatDateInTz(fromDateKey(key, tz)!, tz, { weekday: "short", day: "numeric", month: "short" });
   const previous = { fromKey: dateKeyInTz(period.previous.from, tz), toKey: dateKeyInTz(new Date(period.previous.to.getTime() - 1), tz) };
 
@@ -123,8 +129,28 @@ export default async function FinanceReportsPage({ searchParams }: { searchParam
           </div>
           <CsvLink href={`/api/finance/reports/${report}?${csvQuery.toString()}`} label="Download CSV" />
         </div>
-        <PeriodPicker basePath="/dashboard/finance/reports" preset={period.preset} fromKey={period.fromKey} toKey={period.toKey} previous={previous} keep={{ report, ...(scope.clinicId ? { clinicId: scope.clinicId } : {}), ...Object.fromEntries(Object.entries(filterEntries).filter((e): e is [string, string] => Boolean(e[1]))) }} />
-        {scope.clinics.length > 1 && report !== "branches" ? (
+        {report === "day" ? (
+          <form method="get" className="flex flex-wrap items-end gap-2" aria-label="Day">
+            <input type="hidden" name="report" value="day" />
+            <Input type="date" name="date" defaultValue={period.fromKey} max={dateKeyInTz(new Date(), tz)} aria-label="Day" className="w-44" />
+            {scope.clinics.length > 1 ? (
+              <Select name="clinicId" defaultValue={scope.clinicId ?? ""} aria-label="Branch" className="w-56">
+                <option value="">Every branch</option>
+                {scope.clinics.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </Select>
+            ) : null}
+            <Button type="submit" variant="outline" className="h-10">
+              Show
+            </Button>
+          </form>
+        ) : (
+          <PeriodPicker basePath="/dashboard/finance/reports" preset={period.preset} fromKey={period.fromKey} toKey={period.toKey} previous={previous} keep={{ report, ...(scope.clinicId ? { clinicId: scope.clinicId } : {}), ...Object.fromEntries(Object.entries(filterEntries).filter((e): e is [string, string] => Boolean(e[1]))) }} />
+        )}
+        {scope.clinics.length > 1 && report !== "branches" && report !== "day" ? (
           <form method="get" className="flex flex-wrap items-end gap-2" aria-label="Branch">
             <input type="hidden" name="report" value={report} />
             {Object.entries(periodQuery(period)).map(([k, v]) => (
@@ -146,6 +172,7 @@ export default async function FinanceReportsPage({ searchParams }: { searchParam
         {report === "balances" ? <p className="text-xs text-muted-foreground">Balances are as they stand now, at every branch; the period and the branch choose the invoices listed.</p> : null}
       </Card>
 
+      {report === "day" ? <DayClose scope={scope} /> : null}
       {report === "income" ? <Income scope={scope} day={day} /> : null}
       {report === "production" ? <Production scope={scope} day={day} /> : null}
       {report === "branches" ? <Branches scope={scope} /> : null}
@@ -163,6 +190,154 @@ export default async function FinanceReportsPage({ searchParams }: { searchParam
           <li>A doctor&apos;s collections are the money put towards their invoiced work, each payment shared over the invoice&apos;s lines, plus their consultation fees.</li>
           <li>Days run on the clinic&apos;s clock ({tz}).</li>
         </ul>
+      </Card>
+    </div>
+  );
+}
+
+async function DayClose({ scope }: { scope: ReportScope }) {
+  const r = await dayCloseReport(scope);
+  const tz = scope.timezone;
+  const when = (iso: string) => `${formatDateInTz(new Date(iso), tz, { day: "numeric", month: "short" })}, ${formatTimeInTz(new Date(iso), tz)}`;
+  const agree = r.drawer.every((m) => m.drawer === m.books);
+  const s = r.summary;
+  const figures = [
+    { key: "income", label: "Income (net of refunds)", value: r.income.net },
+    ...r.drawer.map((m) => ({ key: `m-${m.method}`, label: `  ${m.label}`, value: m.books })),
+    { key: "production", label: "Production (net)", value: r.production.net },
+    { key: "discounts", label: "Discounts", value: r.adjustments.DISCOUNT.amount },
+    { key: "writeoffs", label: "Written off", value: r.adjustments.WRITE_OFF.amount },
+  ];
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        {r.branches.map((b) => (
+          <Card key={b.clinicId} className="space-y-1.5 p-4 sm:p-5" data-testid="day-branch">
+            <div className="flex items-start justify-between gap-2">
+              <p className="font-medium">{b.name}</p>
+              {b.signedOff ? <Badge tone="success">Signed off</Badge> : <Badge tone="warning">Not signed off</Badge>}
+            </div>
+            <p className="text-sm text-muted-foreground">
+              {b.signedOff ? `By ${b.signedOff.by ?? "the owner"}, ${when(b.signedOff.at)}. ` : ""}
+              {b.shifts ? `${b.shifts - b.open} of ${b.shifts} shift${b.shifts === 1 ? "" : "s"} closed` : "No shift that day"}
+              {b.difference !== null && b.shifts ? `; counted ${b.difference === 0 ? "to the pound" : `${b.difference > 0 ? "over" : "short"} by ${formatNumber(Math.abs(b.difference))} EGP`}` : ""}.
+            </p>
+            <Link href={`/dashboard/finance/cash?${new URLSearchParams({ date: r.date, clinicId: b.clinicId }).toString()}`} className="text-sm underline underline-offset-2">
+              Open the drawer
+            </Link>
+          </Card>
+        ))}
+      </div>
+
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-5">
+        <Kpi label="Income · EGP" value={egp(r.income.net)} tone="accent" hint={`${formatNumber(r.income.receipts)} receipts`} />
+        <Kpi label="Production · EGP" value={egp(r.production.net)} hint={`${formatNumber(r.production.procedures)} procedures and sessions`} />
+        <Kpi label="Discounts · EGP" value={egp(r.adjustments.DISCOUNT.amount)} hint={`${r.adjustments.DISCOUNT.count} given`} />
+        <Kpi label="Written off · EGP" value={egp(r.adjustments.WRITE_OFF.amount)} hint={`${r.adjustments.WRITE_OFF.count} written off`} />
+        <Kpi label="Refunds · EGP" value={egp(r.income.refunds)} hint="money paid back" />
+      </div>
+
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <Card className="min-w-0 space-y-3">
+          <SectionTitle title="The drawer and the books" description="What the drawers hold (their floats aside) and the money entered late, against the day's payments, by method." />
+          {r.drawer.length ? (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm" aria-label="The drawer and the books">
+                <thead>
+                  <tr className="border-b border-border text-xs text-muted-foreground">
+                    <th className="py-2 pe-3 text-start font-normal">Method</th>
+                    <th className="py-2 pe-3 text-end font-normal">Drawer</th>
+                    <th className="py-2 pe-3 text-end font-normal">Payments</th>
+                    <th className="py-2 text-end font-normal">
+                      <span className="sr-only">Agree</span>
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {r.drawer.map((m) => (
+                    <tr key={m.method} className="border-b border-border/60">
+                      <td className="py-2 pe-3">{m.label}</td>
+                      <td className={cn("py-2 pe-3", NUM)}>{egp(m.drawer)}</td>
+                      <td className={cn("py-2 pe-3", NUM)}>{egp(m.books)}</td>
+                      <td className={cn("py-2 text-end text-xs", m.drawer === m.books ? "text-success" : "text-danger")}>{m.drawer === m.books ? "agree" : `off by ${egp(m.drawer - m.books)}`}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <EmptyState title="No money that day" />
+          )}
+          <p className={cn("text-sm", agree ? "text-success" : "text-danger")}>{agree ? "The drawer and the payments agree, method by method." : "The drawer and the payments differ: see the receipts below."}</p>
+        </Card>
+        <Card className="min-w-0 space-y-3">
+          <SectionTitle title="Compare with Dentalore" description="While both run, type Dentalore's totals for the same day and branch." />
+          <DentaloreCompare figures={figures} />
+        </Card>
+      </div>
+
+      <Card className="overflow-hidden p-0">
+        <div className="space-y-1 px-4 pt-4 sm:px-5">
+          <h3 className="font-display text-base font-semibold tracking-tight">Every receipt, traced</h3>
+          <p className="text-sm text-muted-foreground" data-testid="trace-summary">
+            {s.receipts} receipt{s.receipts === 1 ? "" : "s"} · {egp(s.onInvoices)} EGP on invoices · {egp(s.credit)} the patients&apos; credit · {egp(s.fees)} consultation fees · {egp(s.refunds)} paid back ·{" "}
+            <span className={s.untraced ? "text-danger" : "text-success"}>{s.untraced ? `${s.untraced} not traced` : "every pound traced"}</span>
+          </p>
+        </div>
+        {r.trace.length ? (
+          <Table aria-label="Receipts traced">
+            <THead>
+              <TR>
+                <TH>Receipt</TH>
+                <TH className="text-right">Amount</TH>
+                <TH>Where it went</TH>
+              </TR>
+            </THead>
+            <TBody>
+              {r.trace.map((x) => (
+                <TR key={x.paymentId} className="align-top">
+                  <TD className="whitespace-nowrap">
+                    <span className="font-mono text-xs font-medium">{x.receiptNumber ?? "no number"}</span>
+                    <span className="block text-xs text-muted-foreground">
+                      {formatTimeInTz(new Date(x.at), tz)} · {METHOD_LABELS[x.method]}
+                    </span>
+                    <Link href={`/dashboard/patients/${x.patientId}?tab=account`} className="block text-sm underline-offset-2 hover:underline">
+                      {x.patientName}
+                    </Link>
+                  </TD>
+                  <TD className={NUM}>{egp(x.amount)}</TD>
+                  <TD className="min-w-0 text-sm">
+                    <ul className="space-y-1">
+                      {x.legs.map((leg, i) => (
+                        <li key={i}>
+                          <span className="font-mono text-xs tabular-nums">{egp(leg.amount)}</span>{" "}
+                          {leg.kind === "invoice" ? (
+                            <>
+                              on{" "}
+                              <Link href={`/dashboard/finance/invoices/${leg.invoiceId}`} className="font-mono text-xs underline underline-offset-2">
+                                {leg.invoiceNumber}
+                              </Link>
+                              {leg.work.length ? <span className="text-muted-foreground">: {leg.work.join(", ")}</span> : null}
+                            </>
+                          ) : leg.kind === "credit" ? (
+                            <span className="text-muted-foreground">not put towards an invoice: the patient&apos;s credit{leg.work.length ? ` (a deposit for ${leg.work.join(", ")})` : ""}</span>
+                          ) : leg.kind === "fee" ? (
+                            <span className="text-muted-foreground">consultation fee{leg.work.length ? `: ${leg.work.join(", ")}` : ""}</span>
+                          ) : (
+                            <span className="text-muted-foreground">paid back from the patient&apos;s credit</span>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+                    {x.problem ? <span className="mt-1 block text-xs text-danger">Not traced: {x.problem}</span> : null}
+                  </TD>
+                </TR>
+              ))}
+            </TBody>
+          </Table>
+        ) : (
+          <EmptyState title="No receipts that day" hint="Pick another day, or another branch." />
+        )}
       </Card>
     </div>
   );

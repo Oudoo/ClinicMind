@@ -31,7 +31,7 @@ import {
 } from "../../prisma/seed/clinical";
 import { accountPosition } from "@/modules/finance/ledger";
 import { addDays, dateKeyInTz } from "@/lib/time";
-import { adjustmentsReport, balancesReport, branchReport, incomeReport, productionReport, providersReport, reportScope } from "@/modules/finance/reports";
+import { adjustmentsReport, balancesReport, branchReport, dayCloseReport, incomeReport, productionReport, providersReport, reportScope } from "@/modules/finance/reports";
 
 const FEMALE_ONLY = /\b(PCOS|polycystic|hirsutism|melasma)\b/i;
 
@@ -345,5 +345,26 @@ describe("the seeded demo database (when DATABASE_URL points at one)", () => {
     expect(balances.rows.filter((r) => r.balance !== r.dueOnInvoices + r.notInvoiced - r.credit).map((r) => r.patientName)).toEqual([]);
     expect(balances.rows.reduce((s, r) => s + Math.max(0, r.balance), 0)).toBe(balances.totals.owed);
     expect(balances.rows.reduce((s, r) => s + r.aging.reduce((x, y) => x + y, 0), 0)).toBe(balances.totals.dueOnInvoices);
+  });
+
+  it("closes every day of the last fortnight the same way: the drawer agrees with the books, every receipt traced", async (ctx) => {
+    if (!demo) return ctx.skip();
+    const tenantId = demo.id;
+    const tz = (await db.clinic.findFirstOrThrow({ where: { tenantId }, orderBy: [{ createdAt: "asc" }, { id: "asc" }], select: { timezone: true } })).timezone;
+    const problems: string[] = [];
+    for (let back = 14; back >= 0; back--) {
+      const date = dateKeyInTz(addDays(new Date(), -back, tz), tz);
+      const day = await dayCloseReport(await reportScope(tenantId, { report: "day", date }));
+      for (const m of day.drawer) if (m.drawer !== m.books) problems.push(`${date} ${m.method}: drawer ${m.drawer}, payments ${m.books}`);
+      for (const r of day.trace) if (!r.traced) problems.push(`${date} ${r.receiptNumber ?? r.paymentId}: ${r.problem}`);
+      if (day.trace.reduce((s, r) => s + r.amount, 0) !== day.income.net) problems.push(`${date}: receipts ${day.trace.length} do not add up to the income`);
+    }
+    expect(problems).toEqual([]);
+    // Every pound collected has its receipt, and no payment paid out more than it brought in.
+    expect(await db.payment.count({ where: { tenantId, deletedAt: null, receiptNumber: null } })).toBe(0);
+    const over = await db.$queryRaw<{ id: string }[]>`
+      SELECT p.id FROM "payments" p JOIN "payment_allocations" a ON a."paymentId" = p.id
+      WHERE p."tenantId" = ${tenantId} GROUP BY p.id, p.amount HAVING SUM(a.amount) > p.amount`;
+    expect(over).toEqual([]);
   });
 });

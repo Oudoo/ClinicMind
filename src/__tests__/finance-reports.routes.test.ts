@@ -312,8 +312,42 @@ describe.skipIf(!dbTestsEnabled)("finance report routes", () => {
     expect(r.rows.reduce((s: number, x: { net: number }) => s + x.net, 0)).toBe(r.totals.net);
   });
 
+  it("closes a day: the drawer against the books, and every receipt traced to where its money went", async () => {
+    const today = dayKey(0);
+    const { res, json: r } = await report("day", { date: today });
+    expect(res.status).toBe(200);
+    expect(r.date).toBe(today);
+    expect(r.branches.map((x: { name: string; signedOff: unknown; shifts: number; open: number }) => [x.name, x.signedOff, x.shifts, x.open])).toEqual([
+      ["Test Clinic — Zamalek", null, 1, 1],
+      ["Test Clinic — Dokki", null, 2, 2],
+    ]);
+    expect(r.income).toMatchObject({ net: 7_200, receipts: 4 });
+    // The drawers hold what the payments say, method by method.
+    expect(r.drawer).toEqual([
+      { method: "CASH", label: "Cash", drawer: 4_700, books: 4_700 },
+      { method: "CARD", label: "Card", drawer: 500, books: 500 },
+      { method: "BANK_TRANSFER", label: "Bank transfer", drawer: 2_000, books: 2_000 },
+    ]);
+    expect(r.production.net).toBe((await report("production", { period: "custom", from: today, to: today })).json.totals.net);
+    expect(r.summary).toEqual({ receipts: 4, onInvoices: 6_700, credit: 300, fees: 500, refunds: -300, untraced: 0 });
+    const receipt = (kind: string) => r.trace.find((x: { kind: string }) => x.kind === kind);
+    expect(receipt("PAYMENT")).toMatchObject({ amount: 5_000, traced: true, legs: [{ kind: "invoice", amount: 5_000, invoiceId: invoice.p1, invoiceNumber: p1Number, work: ["Acne treatment"] }] });
+    expect(receipt("DEPOSIT").legs).toEqual([
+      expect.objectContaining({ kind: "invoice", amount: 1_700, invoiceId: invoice.p2, work: ["Laser course · session 1 of 4", "Laser course · session 2 of 4", "Laser course · sessions 3–4 of 4"] }),
+      expect.objectContaining({ kind: "credit", amount: 300, work: ["Laser course"] }),
+    ]);
+    expect(receipt("CONSULTATION_FEE").legs).toEqual([expect.objectContaining({ kind: "fee", amount: 500, work: [expect.stringMatching(/^Visit of .+ with Dr\. Omar$/)] })]);
+    expect(receipt("REFUND")).toMatchObject({ amount: -300, traced: true, legs: [{ kind: "refund", amount: -300 }] });
+    expect(r.trace.every((x: { receiptNumber: string | null }) => x.receiptNumber)).toBe(true);
+    const dokkiDay = (await report("day", { date: today, clinicId: dokki })).json;
+    expect(dokkiDay.summary).toEqual({ receipts: 3, onInvoices: 1_700, credit: 300, fees: 500, refunds: -300, untraced: 0 });
+    expect(dokkiDay.branches.map((x: { name: string }) => x.name)).toEqual(["Test Clinic — Dokki"]);
+    // An impossible date is today's.
+    expect((await report("day", { date: "2026-02-30" })).json.date).toBe(today);
+  });
+
   it("downloads each report as CSV, audited", async () => {
-    for (const key of ["income", "production", "branches", "adjustments", "balances", "procedures", "providers"]) {
+    for (const key of ["day", "income", "production", "branches", "adjustments", "balances", "procedures", "providers"]) {
       const res = await reportRoute(request(`/api/finance/reports/${key}?period=7d&format=csv`, { cookie: ownerCookie }), params("report", key));
       expect(res.status).toBe(200);
       expect(res.headers.get("content-type")).toContain("text/csv");
@@ -324,7 +358,9 @@ describe.skipIf(!dbTestsEnabled)("finance report routes", () => {
     expect(production).toContain("Total,19800,-2300,-1200,500,16800,6");
     const adjustments = await (await reportRoute(request(`/api/finance/reports/adjustments?period=7d&format=csv&type=VOID`, { cookie: ownerCookie }), params("report", "adjustments"))).text();
     expect(adjustments).toContain("Voided payment,Report Three");
-    expect(await db.auditLog.count({ where: { tenantId: a, action: "finance.report.export" } })).toBe(9);
+    expect(await db.auditLog.count({ where: { tenantId: a, action: "finance.report.export" } })).toBe(10);
+    const day = await (await reportRoute(request(`/api/finance/reports/day?date=${dayKey(0)}&format=csv`, { cookie: ownerCookie }), params("report", "day"))).text();
+    expect(day).toContain(`${p1Number}: Acne treatment`);
   });
 
   it("is the owner's: other roles are refused, an unknown report is not found, another clinic's branch neither", async () => {
