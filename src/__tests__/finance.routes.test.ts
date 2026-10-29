@@ -346,15 +346,16 @@ describe.skipIf(!dbTestsEnabled)("finance routes", () => {
       expect(res.status).toBe(200);
       const { summary, period } = await res.json();
       expect(period.preset).toBe("90d");
-      // Signed so far: the transplant (62,000 − 5,000; performed in three days, outside the period) and Ali's acne (2,000, today).
+      // Charged so far: the transplant (62,000 − 5,000; performed in three days, outside the period) and Ali's acne (2,000, today).
       expect(summary.revenue.current).toBe(2_000);
       expect(summary.procedures.current).toBe(1);
       // Collected: deposit 5,000 + refund −1,000 (the 30,000 payment was voided).
       expect(summary.collected.current).toBe(4_000);
       expect(summary.deposits.current).toBe(5_000);
       expect(summary.refunds.current).toBe(1_000);
-      expect(summary.outstanding).toMatchObject({ amount: 55_000, patients: 2, procedures: 2, previousAmount: 0 });
-      expect(summary.outstandingPatients[0]).toMatchObject({ patientId: patientA, amount: 53_000, procedures: 1, oldestTreatment: "Hair transplant" });
+      // Owed on the patients' accounts: the transplant less the deposit, plus the refund; Ali's acne.
+      expect(summary.outstanding).toMatchObject({ amount: 55_000, patients: 2, previousAmount: 0 });
+      expect(summary.outstandingPatients[0]).toMatchObject({ patientId: patientA, amount: 53_000, dueOnInvoices: 0, notInvoiced: 57_000, oldestDueAt: null });
       expect(summary.byDoctor).toEqual([expect.objectContaining({ id: owner.id, amount: 2_000, count: 1 })]);
       const other = await (await summaryRoute(request("/api/finance/summary?period=90d", { cookie: ownerBCookie }))).json();
       expect(other.summary.revenue.current).toBe(0);
@@ -362,9 +363,10 @@ describe.skipIf(!dbTestsEnabled)("finance routes", () => {
     });
 
     it("compares what is owed now with what was owed when the comparison period ended", async () => {
-      // Tenant B: a procedure signed 120 days ago for 10,000; 4,000 paid 100 days ago and 3,000 ten days ago.
+      // Tenant B: a procedure signed (and charged) 120 days ago for 10,000; 4,000 paid 100 days ago and 3,000 ten days ago.
       const signedAt = new Date(Date.now() - 120 * DAY);
       const old = await db.procedure.create({ data: { tenantId: b, patientId: patientB, treatmentId: acneB, performedAt: signedAt, signedAt, status: "SIGNED", price: 10_000 } });
+      await db.charge.create({ data: { tenantId: b, patientId: patientB, procedureId: old.id, amount: 10_000, description: "Acne treatment", chargedAt: signedAt } });
       await db.payment.createMany({
         data: [
           { tenantId: b, patientId: patientB, procedureId: old.id, kind: "PAYMENT", amount: 4_000, paidAt: new Date(Date.now() - 100 * DAY) },

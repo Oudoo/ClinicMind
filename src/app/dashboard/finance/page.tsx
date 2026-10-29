@@ -8,7 +8,7 @@ import { formatNumber } from "@/lib/utils";
 import { getTenantTimezone } from "@/modules/appointments/service";
 import { KIND_LABELS, METHOD_LABELS } from "@/modules/finance/constants";
 import { listPayments } from "@/modules/finance/payments";
-import { getFinanceSummary, getPatientOutstanding } from "@/modules/finance/service";
+import { getFinanceSummary, getPatientOwing } from "@/modules/finance/service";
 import { periodQuery } from "@/modules/reporting/period";
 import { parseReportQuery, periodFromQuery } from "@/modules/reporting/query";
 import { listReportDoctors } from "@/modules/reporting/service";
@@ -65,16 +65,16 @@ export default async function FinancePage({ searchParams }: { searchParams: Prom
   const canRecordProcedure = can(ctx.role, "patients:write");
   const canVoid = can(ctx.role, "tenant:manage");
 
-  const [summary, recent, treatments, doctors, owingPatient, owingRows, prices, discountLimit] = await Promise.all([
+  const [summary, recent, treatments, doctors, owingPatient, prices, discountLimit] = await Promise.all([
     getFinanceSummary(ctx.tenantId, period, timezone),
     listPayments(ctx.tenantId, { from: period.from, to: period.to, includeVoided: false, page, pageSize: PAGE_SIZE }),
     listTreatments(ctx.tenantId),
     listReportDoctors(ctx.tenantId),
     owingId ? db.patient.findFirst({ where: { id: owingId, tenantId: ctx.tenantId, ...notDeleted }, select: { id: true, fullName: true, phone: true } }) : Promise.resolve(null),
-    owingId ? getPatientOutstanding(ctx.tenantId, owingId) : Promise.resolve([]),
     listPriceList(ctx.tenantId),
     discountLimitOf(ctx.tenantId, ctx.role),
   ]);
+  const owing = owingPatient ? await getPatientOwing(ctx.tenantId, owingPatient) : null;
 
   const pq = periodQuery(period);
   const exportQuery = new URLSearchParams(pq).toString();
@@ -89,7 +89,7 @@ export default async function FinancePage({ searchParams }: { searchParams: Prom
     <div className="space-y-6">
       <SectionTitle
         title="Finance"
-        description="Revenue from signed procedures, money in and out, and what patients still owe."
+        description="Production from the work charged, money in and out, and what patients owe."
         action={
           <FinanceActions
             timezone={timezone}
@@ -108,11 +108,11 @@ export default async function FinancePage({ searchParams }: { searchParams: Prom
 
       <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-3 xl:grid-cols-6">
         <Kpi
-          label="Revenue · EGP"
+          label="Production · EGP"
           value={tile(s.revenue.current)}
           tone="accent"
           delta={<DeltaChip current={s.revenue.current} previous={s.revenue.previous} goodWhen="up" format={fmtEgp} />}
-          hint={`${formatNumber(s.procedures.current)} signed procedures`}
+          hint={`${formatNumber(s.procedures.current)} procedures and sessions, after discounts`}
         />
         <Kpi
           label="Collected · EGP"
@@ -137,38 +137,38 @@ export default async function FinancePage({ searchParams }: { searchParams: Prom
           label="Consultation fees · EGP"
           value={tile(s.consultationFees.current)}
           delta={<DeltaChip current={s.consultationFees.current} previous={s.consultationFees.previous} goodWhen="up" format={fmtEgp} />}
-          hint="their own line, not revenue"
+          hint="part of production and of the money in"
         />
         <Kpi
-          label="Outstanding · EGP"
+          label="Owed · EGP"
           value={tile(s.outstanding.amount)}
           tone={s.outstanding.amount > 0 ? "warning" : "default"}
           delta={<DeltaChip current={s.outstanding.amount} previous={s.outstanding.previousAmount} goodWhen="down" format={fmtEgp} />}
-          hint={`${s.outstanding.patients} patients · ${s.outstanding.procedures} procedures · was ${fmtEgp(s.outstanding.previousAmount)}`}
+          hint={`${s.outstanding.patients} patients · was ${fmtEgp(s.outstanding.previousAmount)}`}
         />
       </div>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <Card className="min-w-0 space-y-4">
-          <SectionTitle title="Revenue by doctor" description="Signed procedures by the date performed, net of discounts." />
+          <SectionTitle title="Production by doctor" description="The work charged in the period, after discounts and cancellations, and consultation fees." />
           {s.byDoctor.length ? (
             <>
               <HBars items={s.byDoctor.map((d) => ({ label: d.label, value: d.amount }))} format={short} labelWidth="w-28 sm:w-44" />
               <BreakdownTable rows={s.byDoctor} total={revenueTotal} first="Doctor" />
             </>
           ) : (
-            <EmptyState title="No signed procedures in this period" hint="Revenue counts once a clinician signs the procedure." />
+            <EmptyState title="No work charged in this period" hint="Work counts once it is charged: signed, or a session marked done." />
           )}
         </Card>
         <Card className="min-w-0 space-y-4">
-          <SectionTitle title="Revenue by treatment" description="The same revenue, by what was done." />
+          <SectionTitle title="Production by treatment" description="The same production, by what was done." />
           {s.byTreatment.length ? (
             <>
               <HBars items={s.byTreatment.map((d) => ({ label: d.label, value: d.amount }))} format={short} labelWidth="w-28 sm:w-44" />
               <BreakdownTable rows={s.byTreatment} total={revenueTotal} first="Treatment" />
             </>
           ) : (
-            <EmptyState title="No signed procedures in this period" />
+            <EmptyState title="No work charged in this period" />
           )}
         </Card>
       </div>
@@ -215,54 +215,52 @@ export default async function FinancePage({ searchParams }: { searchParams: Prom
       <Card id="outstanding" className="min-w-0 space-y-4 p-0">
         <div className="px-4 pt-4 sm:px-6 sm:pt-6">
           <SectionTitle
-            title="Outstanding balances"
-            description="Signed procedures not yet paid in full, by patient (all time). Open a patient for the procedures and to take a payment."
+            title="What patients owe"
+            description="Balances now, at every branch: due on invoices and work not invoiced yet, less any credit. Open one for the account and to take a payment."
             action={<Badge tone={s.outstanding.amount ? "warning" : "success"}>{fmtEgp(s.outstanding.amount)}</Badge>}
           />
         </div>
         {owingId ? (
           <div className="mx-4 rounded-lg border border-accent/40 bg-accent-muted/30 p-4 sm:mx-6">
-            {owingPatient ? (
+            {owingPatient && owing ? (
               <div className="space-y-3">
                 <div className="flex flex-wrap items-start justify-between gap-2">
                   <div>
-                    <Link href={`/dashboard/patients/${owingPatient.id}`} className="font-medium underline-offset-2 hover:text-accent hover:underline">
+                    <Link href={`/dashboard/patients/${owingPatient.id}?tab=account`} className="font-medium underline-offset-2 hover:text-accent hover:underline">
                       {owingPatient.fullName}
                     </Link>
                     <p className="text-xs text-muted-foreground">
-                      Owes {fmtEgp(owingRows.reduce((t, r) => t + r.balance, 0))} on {owingRows.length} {owingRows.length === 1 ? "procedure" : "procedures"}
+                      {owing.balance > 0 ? `Owes ${fmtEgp(owing.balance)}` : owing.balance < 0 ? `In credit ${fmtEgp(-owing.balance)}` : "Settled"}
+                      {owing.notInvoiced ? ` · ${fmtEgp(owing.notInvoiced)} not invoiced yet` : ""}
+                      {owing.credit ? ` · ${fmtEgp(owing.credit)} credit` : ""}
                       {owingPatient.phone ? <span className="font-mono"> · {owingPatient.phone}</span> : null}
                     </p>
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
-                    {canPay && owingRows.length ? (
-                      <RecordPaymentForPatient
-                        timezone={timezone}
-                        patient={{ id: owingPatient.id, fullName: owingPatient.fullName }}
-                        procedures={owingRows.map((r) => ({ id: r.id, balance: r.balance, label: `${r.treatment} · ${date(r.performedAt)} · owes ${formatNumber(r.balance)} EGP` }))}
-                      />
-                    ) : null}
+                    {canPay && owing.balance > 0 ? <RecordPaymentForPatient timezone={timezone} patient={{ id: owingPatient.id, fullName: owingPatient.fullName }} procedures={[]} /> : null}
                     <Link href={owingHref(null)} className="text-xs text-muted-foreground underline-offset-2 hover:underline">
                       Close
                     </Link>
                   </div>
                 </div>
-                {owingRows.length ? (
+                {owing.openInvoices.length ? (
                   <ul className="divide-y divide-border rounded-md border border-border bg-card">
-                    {owingRows.map((r) => (
-                      <li key={r.id} className="flex items-center justify-between gap-3 px-3 py-2 text-sm">
+                    {owing.openInvoices.map((i) => (
+                      <li key={i.id} className="flex items-center justify-between gap-3 px-3 py-2 text-sm">
                         <div className="min-w-0">
-                          <div className="truncate">{r.treatment}</div>
+                          <Link href={`/dashboard/finance/invoices/${i.id}`} className="font-mono text-xs font-medium underline-offset-2 hover:underline">
+                            {i.number}
+                          </Link>
                           <div className="font-mono text-xs text-muted-foreground">
-                            {date(r.performedAt)} · {fmtEgp(r.net)}
+                            {i.issuedAt ? date(new Date(i.issuedAt)) : ""} · {fmtEgp(i.total)}
                           </div>
                         </div>
-                        <span className="shrink-0 font-mono tabular-nums text-warning">{fmtEgp(r.balance)}</span>
+                        <span className="shrink-0 font-mono tabular-nums text-warning">{fmtEgp(i.due)}</span>
                       </li>
                     ))}
                   </ul>
                 ) : (
-                  <p className="text-sm text-success">Nothing owed any more.</p>
+                  <p className="text-sm text-muted-foreground">No invoice is waiting to be paid.</p>
                 )}
               </div>
             ) : (
@@ -276,8 +274,9 @@ export default async function FinancePage({ searchParams }: { searchParams: Prom
               <TR className="hover:bg-transparent">
                 <TH>Patient</TH>
                 <TH className="text-right">Owes</TH>
-                <TH className="hidden md:table-cell">Procedures</TH>
-                <TH className="hidden lg:table-cell">Oldest procedure</TH>
+                <TH className="hidden text-right md:table-cell">On invoices</TH>
+                <TH className="hidden text-right md:table-cell">Not invoiced</TH>
+                <TH className="hidden lg:table-cell">Oldest invoice</TH>
                 <TH className="w-10">
                   <span className="sr-only">Details</span>
                 </TH>
@@ -287,16 +286,15 @@ export default async function FinancePage({ searchParams }: { searchParams: Prom
               {s.outstandingPatients.map((o) => (
                 <TR key={o.patientId} className={o.patientId === owingId ? "bg-accent-muted/40" : undefined}>
                   <TD>
-                    <Link href={`/dashboard/patients/${o.patientId}`} className="font-medium underline-offset-2 hover:text-accent hover:underline">
+                    <Link href={`/dashboard/patients/${o.patientId}?tab=account`} className="font-medium underline-offset-2 hover:text-accent hover:underline">
                       {o.fullName}
                     </Link>
-                    <div className="text-xs text-muted-foreground lg:hidden">since {date(o.oldestAt)}</div>
+                    {o.oldestDueAt ? <div className="text-xs text-muted-foreground lg:hidden">invoiced {date(new Date(o.oldestDueAt))}</div> : null}
                   </TD>
                   <TD className="whitespace-nowrap text-right font-mono tabular-nums text-warning">{fmtEgp(o.amount)}</TD>
-                  <TD className="hidden font-mono tabular-nums md:table-cell">{o.procedures}</TD>
-                  <TD className="hidden text-sm lg:table-cell">
-                    <span className="font-mono text-xs">{date(o.oldestAt)}</span> · {o.oldestTreatment}
-                  </TD>
+                  <TD className="hidden whitespace-nowrap text-right font-mono tabular-nums md:table-cell">{fmtEgp(o.dueOnInvoices)}</TD>
+                  <TD className="hidden whitespace-nowrap text-right font-mono tabular-nums md:table-cell">{fmtEgp(o.notInvoiced)}</TD>
+                  <TD className="hidden font-mono text-xs lg:table-cell">{o.oldestDueAt ? date(new Date(o.oldestDueAt)) : "—"}</TD>
                   <TD>
                     <Link href={owingHref(o.patientId)} className="inline-flex h-8 w-8 items-center justify-center rounded-md hover:bg-muted" aria-label={`Details for ${o.fullName}`} scroll={false}>
                       <ChevronRight className="h-4 w-4" aria-hidden="true" />
@@ -308,14 +306,17 @@ export default async function FinancePage({ searchParams }: { searchParams: Prom
           </Table>
         ) : (
           <div className="px-4 pb-6 sm:px-6">
-            <EmptyState title="Nothing outstanding" hint="Every signed procedure is paid in full." />
+            <EmptyState title="Nothing owed" hint="Every patient's account is settled or in credit." />
           </div>
         )}
-        {s.outstanding.patients > s.outstandingPatients.length ? (
-          <p className="px-4 pb-4 text-xs text-muted-foreground sm:px-6">
-            The {s.outstandingPatients.length} largest balances of {s.outstanding.patients}.
-          </p>
-        ) : null}
+        <p className="px-4 pb-4 text-xs text-muted-foreground sm:px-6">
+          {s.outstanding.patients > s.outstandingPatients.length ? `The ${s.outstandingPatients.length} largest balances of ${s.outstanding.patients}. ` : ""}
+          Every balance, by age, in{" "}
+          <Link href={`/dashboard/finance/reports?${new URLSearchParams({ report: "balances", ...pq }).toString()}`} className="underline underline-offset-2">
+            Finance reports
+          </Link>
+          .
+        </p>
       </Card>
 
       <Card className="min-w-0 overflow-hidden p-0">
@@ -405,7 +406,7 @@ function BreakdownTable({ rows, total, first }: { rows: { id: string; label: str
           <TR className="hover:bg-transparent">
             <TH className={cell}>{first}</TH>
             <TH className={`${cell} hidden text-right sm:table-cell`}>Count</TH>
-            <TH className={`${cell} text-right`}>Revenue</TH>
+            <TH className={`${cell} text-right`}>Production</TH>
             <TH className={`${cell} hidden text-right md:table-cell`}>Share</TH>
           </TR>
         </THead>

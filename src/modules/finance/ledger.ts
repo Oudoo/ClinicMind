@@ -222,22 +222,28 @@ export interface AccountPosition {
   openInvoices: { id: string; number: string | null; patientId: string; patientName: string; issuedAt: string | null; total: number; paid: number; writtenOff: number; due: number }[];
 }
 
-/** Each patient's balance now (patients with nothing on their account are 0). */
-export async function patientBalances(client: Client, tenantId: string, ids: readonly string[]): Promise<Map<string, number>> {
+/** Each patient's balance now, or as it stood just before `asOf` (patients with nothing on their account are 0). */
+export async function patientBalances(client: Client, tenantId: string, ids: readonly string[], asOf?: Date): Promise<Map<string, number>> {
   const unique = [...new Set(ids)];
   const balances = new Map(unique.map((id) => [id, 0]));
   if (!unique.length) return balances;
   const add = (id: string, amount: number) => balances.set(id, (balances.get(id) ?? 0) + amount);
+  const before = asOf ? { lt: asOf } : undefined;
   const [charges, payments, transfers, writeOffs] = await Promise.all([
-    client.charge.groupBy({ by: ["patientId"], where: { tenantId, patientId: { in: unique } }, _sum: { amount: true } }),
-    client.payment.groupBy({ by: ["patientId", "kind"], where: { tenantId, patientId: { in: unique }, deletedAt: null, kind: { in: [...CREDITING_KINDS, "REFUND"] } }, _sum: { amount: true } }),
+    client.charge.groupBy({ by: ["patientId"], where: { tenantId, patientId: { in: unique }, ...(before ? { chargedAt: before } : {}) }, _sum: { amount: true } }),
+    client.payment.groupBy({
+      by: ["patientId", "kind"],
+      where: { tenantId, patientId: { in: unique }, deletedAt: null, kind: { in: [...CREDITING_KINDS, "REFUND"] }, ...(before ? { paidAt: before } : {}) },
+      _sum: { amount: true },
+    }),
     transfersOf(client, tenantId, unique),
-    client.writeOff.groupBy({ by: ["patientId"], where: { tenantId, patientId: { in: unique }, voidedAt: null }, _sum: { amount: true } }),
+    client.writeOff.groupBy({ by: ["patientId"], where: { tenantId, patientId: { in: unique }, voidedAt: null, ...(before ? { writtenOffAt: before } : {}) }, _sum: { amount: true } }),
   ]);
   for (const c of charges) add(c.patientId, c._sum.amount ?? 0);
   for (const w of writeOffs) add(w.patientId, -(w._sum.amount ?? 0));
   for (const p of payments) add(p.patientId, p.kind === "REFUND" ? (p._sum.amount ?? 0) : -(p._sum.amount ?? 0));
   for (const t of transfers) {
+    if (asOf && new Date(t.at).getTime() >= asOf.getTime()) continue;
     if (balances.has(t.payerId)) add(t.payerId, t.amount);
     if (balances.has(t.payeeId)) add(t.payeeId, -t.amount);
   }

@@ -1,17 +1,20 @@
-import type { Prisma } from "@prisma/client";
 import { db, notDeleted } from "@/lib/db";
 import { formatDateInTz } from "@/lib/time";
 import { toCsv } from "@/modules/reporting/csv";
 import { periodBuckets, type ResolvedPeriod } from "@/modules/reporting/period";
-import { KIND_LABELS, METHOD_LABELS, PAYMENT_METHODS, PROCEDURE_STATUS_LABELS, procedureBalance, type PaymentMethodValue } from "./constants";
+import { KIND_LABELS, METHOD_LABELS, PAYMENT_METHODS, type PaymentMethodValue } from "./constants";
+import { accountPosition, patientBalances, type AccountPosition } from "./ledger";
 import { listPayments, type PaymentListQuery } from "./payments";
+import { balancesReport, financeReportCsv, previousOf, productionReport, providersReport, scopeForPeriod } from "./reports";
 
 /**
- * The finance dashboard: revenue (signed procedures by performedAt), money in
- * and out (payments by paidAt; "collected" is everything received, deposits
- * included, net of refunds), outstanding balances, and the breakdowns by
- * doctor, treatment, day and method. Every figure carries the same figure for
- * the comparison period.
+ * The finance dashboard: production (the work charged, after discounts and
+ * cancellations, and consultation fees: the reports' net production), money
+ * in and out (payments by paidAt; "collected" is everything received,
+ * deposits included, net of refunds), what patients owe (their accounts'
+ * balances, as the ledger keeps them), and the breakdowns by doctor,
+ * treatment, day and method. Every figure carries the same figure for the
+ * comparison period.
  */
 
 export interface MoneyPair {
@@ -29,21 +32,25 @@ export interface NamedAmount {
 export interface OutstandingPatient {
   patientId: string;
   fullName: string;
+  /** Owed now: due on invoices, and work not invoiced yet, less any credit. */
   amount: number;
-  procedures: number;
-  oldestAt: Date;
-  oldestTreatment: string;
+  dueOnInvoices: number;
+  notInvoiced: number;
+  /** When the oldest invoice with something due was issued. */
+  oldestDueAt: Date | null;
 }
 
 export interface FinanceSummary {
+  /** Net production (see reports.ts). */
   revenue: MoneyPair;
+  /** Procedures and sessions charged. */
   procedures: MoneyPair;
   collected: MoneyPair;
   deposits: MoneyPair;
   refunds: MoneyPair;
   consultationFees: MoneyPair;
-  /** Owed now on signed procedures; `previousAmount` is what was owed when the comparison period ended. */
-  outstanding: { amount: number; patients: number; procedures: number; previousAmount: number };
+  /** Owed now on patients' accounts; `previousAmount` is what was owed when the comparison period ended. */
+  outstanding: { amount: number; patients: number; previousAmount: number };
   byDoctor: NamedAmount[];
   byTreatment: NamedAmount[];
   collectedPerBucket: { label: string; value: number; compare: number | undefined }[];
@@ -58,35 +65,23 @@ const moneyIn = (kind: string) => kind === "PAYMENT" || kind === "DEPOSIT" || ki
 const netCash = (p: { kind: string; amount: number }) => (moneyIn(p.kind) ? p.amount : p.kind === "REFUND" ? -p.amount : 0);
 
 export async function getFinanceSummary(tenantId: string, period: ResolvedPeriod, timeZone: string): Promise<FinanceSummary> {
-  const span = { gte: period.previous.from, lt: period.to };
-  const [procedures, payments, signedAll] = await Promise.all([
-    db.procedure.findMany({
-      where: { tenantId, ...notDeleted, status: "SIGNED", performedAt: span },
-      select: { id: true, doctorId: true, performedAt: true, price: true, discount: true, treatment: { select: { key: true, name: true } } },
-      take: 20_000,
-    }),
+  const scope = await scopeForPeriod(tenantId, period, timeZone);
+  const previousScope = { ...scope, period: previousOf(period, timeZone) };
+  const [production, previousProduction, providers, balances, payments] = await Promise.all([
+    productionReport(scope),
+    productionReport(previousScope),
+    providersReport(scope),
+    balancesReport(scope),
     db.payment.findMany({
-      where: { tenantId, ...notDeleted, paidAt: span },
+      where: { tenantId, ...notDeleted, paidAt: { gte: period.previous.from, lt: period.to } },
       select: { kind: true, method: true, amount: true, paidAt: true },
       take: 50_000,
     }),
-    db.procedure.findMany({
-      where: { tenantId, ...notDeleted, status: "SIGNED" },
-      select: {
-        id: true,
-        patientId: true,
-        performedAt: true,
-        signedAt: true,
-        price: true,
-        discount: true,
-        patient: { select: { fullName: true } },
-        treatment: { select: { name: true } },
-        payments: { where: { deletedAt: null }, select: { kind: true, amount: true, paidAt: true } },
-      },
-      orderBy: { performedAt: "asc" },
-      take: 20_000,
-    }),
   ]);
+  const owing = balances.rows.filter((r) => r.balance > 0);
+  // What was owed when the comparison period ended: every account as it stood then.
+  const then = await patientBalances(db, tenantId, await patientsWithAccounts(tenantId), period.from);
+  const previousAmount = [...then.values()].reduce((s, b) => s + Math.max(0, b), 0);
 
   const inCurrent = (d: Date) => d >= period.from && d < period.to;
   const pair = <T extends { at: Date }>(rows: T[], value: (r: T) => number): MoneyPair => {
@@ -98,39 +93,12 @@ export async function getFinanceSummary(tenantId: string, period: ResolvedPeriod
     }
     return { current, previous };
   };
-  const procRows = procedures.map((p) => ({ ...p, at: p.performedAt, net: p.price - p.discount }));
   const payRows = payments.map((p) => ({ ...p, at: p.paidAt }));
-
-  const revenue = pair(procRows, (p) => p.net);
-  const count = pair(procRows, () => 1);
   // Collected: everything received in the period (deposits included) net of refunds.
   const collected = pair(payRows, netCash);
   const deposits = pair(payRows, (p) => (p.kind === "DEPOSIT" ? p.amount : 0));
   const refunds = pair(payRows, (p) => (p.kind === "REFUND" ? p.amount : 0));
   const consultationFees = pair(payRows, (p) => (p.kind === "CONSULTATION_FEE" ? p.amount : 0));
-
-  // Doctor names in one tenant-scoped lookup.
-  const doctorIds = [...new Set(procRows.map((p) => p.doctorId).filter((id): id is string => Boolean(id)))];
-  const users = doctorIds.length
-    ? await db.user.findMany({ where: { tenantId, id: { in: doctorIds } }, select: { id: true, fullName: true, email: true } })
-    : [];
-  const doctorName = new Map(users.map((u) => [u.id, u.fullName ?? u.email]));
-
-  const byDoctorMap = new Map<string, NamedAmount>();
-  const byTreatmentMap = new Map<string, NamedAmount>();
-  for (const p of procRows) {
-    if (!inCurrent(p.at)) continue;
-    const dId = p.doctorId ?? "none";
-    const d = byDoctorMap.get(dId) ?? { id: dId, label: p.doctorId ? (doctorName.get(p.doctorId) ?? "Unknown doctor") : "No doctor", amount: 0, count: 0 };
-    d.amount += p.net;
-    d.count += 1;
-    byDoctorMap.set(dId, d);
-    const t = byTreatmentMap.get(p.treatment.key) ?? { id: p.treatment.key, label: p.treatment.name, amount: 0, count: 0 };
-    t.amount += p.net;
-    t.count += 1;
-    byTreatmentMap.set(p.treatment.key, t);
-  }
-  const byAmount = (a: NamedAmount, b: NamedAmount) => b.amount - a.amount;
 
   // Collected per day (or week) against the previous period, aligned by bucket index.
   const buckets = periodBuckets(period, timeZone);
@@ -143,66 +111,48 @@ export async function getFinanceSummary(tenantId: string, period: ResolvedPeriod
     return { method, label: METHOD_LABELS[method], amount: rows.reduce((s, p) => s + p.amount, 0), count: rows.length };
   }).filter((m) => m.count > 0);
 
-  // Outstanding balances of signed procedures (all time), grouped by patient; and the same figure as it
-  // stood when the comparison period ended (procedures signed by then, payments made by then).
-  const owing = new Map<string, OutstandingPatient>();
-  let outstandingAmount = 0;
-  let outstandingProcedures = 0;
-  let previousOutstanding = 0;
-  const cutoff = period.from.getTime();
-  for (const p of signedAll) {
-    if (p.performedAt.getTime() < cutoff && (p.signedAt ?? p.performedAt).getTime() < cutoff) {
-      const then = procedureBalance(p.price, p.discount, p.payments.filter((x) => x.paidAt.getTime() < cutoff));
-      if (then > 0) previousOutstanding += then;
-    }
-  }
-  for (const p of signedAll) {
-    const balance = procedureBalance(p.price, p.discount, p.payments);
-    if (balance <= 0) continue;
-    outstandingAmount += balance;
-    outstandingProcedures += 1;
-    const row = owing.get(p.patientId) ?? { patientId: p.patientId, fullName: p.patient.fullName, amount: 0, procedures: 0, oldestAt: p.performedAt, oldestTreatment: p.treatment.name };
-    row.amount += balance;
-    row.procedures += 1;
-    if (p.performedAt < row.oldestAt) {
-      row.oldestAt = p.performedAt;
-      row.oldestTreatment = p.treatment.name;
-    }
-    owing.set(p.patientId, row);
-  }
-
+  const byAmount = (a: NamedAmount, b: NamedAmount) => b.amount - a.amount;
   return {
-    revenue,
-    procedures: count,
+    revenue: { current: production.totals.net, previous: previousProduction.totals.net },
+    procedures: { current: production.totals.procedures, previous: previousProduction.totals.procedures },
     collected,
     deposits,
     refunds,
     consultationFees,
-    outstanding: { amount: outstandingAmount, patients: owing.size, procedures: outstandingProcedures, previousAmount: previousOutstanding },
-    byDoctor: [...byDoctorMap.values()].sort(byAmount),
-    byTreatment: [...byTreatmentMap.values()].sort(byAmount),
+    outstanding: { amount: balances.totals.owed, patients: balances.totals.owing, previousAmount },
+    byDoctor: providers.rows.filter((r) => r.net !== 0 || r.procedures).map((r) => ({ id: r.doctorId ?? "none", label: r.name, amount: r.net, count: r.procedures })).sort(byAmount),
+    byTreatment: production.byTreatment.map((t) => ({ id: t.name, label: t.name, amount: t.net, count: t.procedures })).sort(byAmount),
     collectedPerBucket,
     bucketStep: period.days <= 31 ? "day" : "week",
     methodMix,
-    outstandingPatients: [...owing.values()].sort((a, b) => b.amount - a.amount).slice(0, 25),
+    outstandingPatients: owing.slice(0, 25).map((r) => ({
+      patientId: r.patientId,
+      fullName: r.patientName,
+      amount: r.balance,
+      dueOnInvoices: r.dueOnInvoices,
+      notInvoiced: r.notInvoiced,
+      oldestDueAt: r.oldestDueAt ? new Date(r.oldestDueAt) : null,
+    })),
   };
 }
 
-/** Patients owing on signed procedures, with the procedures themselves (for the drill-down). */
-export async function getPatientOutstanding(tenantId: string, patientId: string) {
-  const rows = await db.procedure.findMany({
-    where: { tenantId, ...notDeleted, status: "SIGNED", patientId },
-    select: { id: true, performedAt: true, price: true, discount: true, treatment: { select: { name: true } }, payments: { where: { deletedAt: null }, select: { kind: true, amount: true } } },
-    orderBy: { performedAt: "asc" },
-  });
-  return rows
-    .map((p) => ({ id: p.id, performedAt: p.performedAt, treatment: p.treatment.name, net: p.price - p.discount, balance: procedureBalance(p.price, p.discount, p.payments) }))
-    .filter((p) => p.balance > 0);
+/** Every patient with anything on their account (a charge or money), owing or not. */
+async function patientsWithAccounts(tenantId: string): Promise<string[]> {
+  const [charged, paid] = await Promise.all([
+    db.charge.groupBy({ by: ["patientId"], where: { tenantId } }),
+    db.payment.groupBy({ by: ["patientId"], where: { tenantId, deletedAt: null } }),
+  ]);
+  return [...new Set([...charged.map((r) => r.patientId), ...paid.map((r) => r.patientId)])];
+}
+
+/** Where one patient's account stands (the drill-down): due on invoices, not invoiced, credit, the open invoices. */
+export async function getPatientOwing(tenantId: string, patient: { id: string; fullName: string }): Promise<AccountPosition> {
+  return db.$transaction((tx) => accountPosition(tx, tenantId, [patient]));
 }
 
 export type ExportKind = "payments" | "procedures";
 
-/** CSV of the period's payments or procedures. */
+/** CSV of the period's payments, or its procedures (as the procedures tracking report has them). */
 export async function exportFinanceCsv(tenantId: string, kind: ExportKind, period: ResolvedPeriod, timeZone: string): Promise<{ filename: string; csv: string }> {
   const name = `${kind}-${period.fromKey}-to-${period.toKey}.csv`;
   if (kind === "payments") {
@@ -236,45 +186,7 @@ export async function exportFinanceCsv(tenantId: string, kind: ExportKind, perio
       ),
     };
   }
-  const where: Prisma.ProcedureWhereInput = { tenantId, ...notDeleted, performedAt: { gte: period.from, lt: period.to } };
-  const rows = await db.procedure.findMany({
-    where,
-    orderBy: { performedAt: "asc" },
-    take: 20_000,
-    select: {
-      id: true,
-      doctorId: true,
-      performedAt: true,
-      price: true,
-      discount: true,
-      status: true,
-      patient: { select: { fullName: true } },
-      treatment: { select: { name: true } },
-      payments: { where: { deletedAt: null }, select: { kind: true, amount: true } },
-    },
-  });
-  const doctorIds = [...new Set(rows.map((r) => r.doctorId).filter((id): id is string => Boolean(id)))];
-  const users = doctorIds.length ? await db.user.findMany({ where: { tenantId, id: { in: doctorIds } }, select: { id: true, fullName: true, email: true } }) : [];
-  const doctorName = new Map(users.map((u) => [u.id, u.fullName ?? u.email]));
-  return {
-    filename: name,
-    csv: toCsv(
-      ["Date", "Patient", "Treatment", "Doctor", "Status", "Price (EGP)", "Discount (EGP)", "Net (EGP)", "Paid (EGP)", "Balance (EGP)"],
-      rows.map((p) => {
-        const paid = p.payments.reduce((s, x) => s + (x.kind === "REFUND" ? -x.amount : x.amount), 0);
-        return [
-          formatDateInTz(p.performedAt, timeZone),
-          p.patient.fullName,
-          p.treatment.name,
-          p.doctorId ? (doctorName.get(p.doctorId) ?? "") : "",
-          PROCEDURE_STATUS_LABELS[p.status],
-          p.price,
-          p.discount,
-          p.price - p.discount,
-          paid,
-          p.status === "SIGNED" ? procedureBalance(p.price, p.discount, p.payments) : 0,
-        ];
-      }),
-    ),
-  };
+  // Procedures: the procedures tracking report (charged, invoiced and not invoiced for each).
+  const { csv } = await financeReportCsv(await scopeForPeriod(tenantId, period, timeZone), "procedures");
+  return { filename: name, csv };
 }

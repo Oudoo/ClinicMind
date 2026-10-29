@@ -62,8 +62,10 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
   return { title: patient ? patient.fullName : "Patient" };
 }
 
-export default async function PatientPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function PatientPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const { id } = await params;
+  // `?tab=account` opens a tab (from the finance reports); anything else, the overview.
+  const asked = (await searchParams).tab;
   const ctx = await actingContext();
   if (!ctx) return null;
 
@@ -218,7 +220,7 @@ export default async function PatientPage({ params }: { params: Promise<{ id: st
           <Metric label="Timeline events" value={patient._count.timeline} />
         </Bento>
 
-        <Tabs defaultValue="overview">
+        <Tabs defaultValue={asked === "account" && seesAccounts ? "account" : asked === "timeline" || asked === "visits" || asked === "documents" ? asked : "overview"}>
           <TabsList className="h-auto flex-wrap">
             <TabsTrigger value="overview">Overview</TabsTrigger>
             <TabsTrigger value="timeline">Timeline</TabsTrigger>

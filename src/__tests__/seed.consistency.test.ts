@@ -30,7 +30,8 @@ import {
   medicationStartDays,
 } from "../../prisma/seed/clinical";
 import { accountPosition } from "@/modules/finance/ledger";
-import { dateKeyInTz } from "@/lib/time";
+import { addDays, dateKeyInTz } from "@/lib/time";
+import { adjustmentsReport, balancesReport, branchReport, incomeReport, productionReport, providersReport, reportScope } from "@/modules/finance/reports";
 
 const FEMALE_ONLY = /\b(PCOS|polycystic|hirsutism|melasma)\b/i;
 
@@ -310,5 +311,39 @@ describe("the seeded demo database (when DATABASE_URL points at one)", () => {
     const closes = new Set((await db.dayClose.findMany({ where: { tenantId, clinicId: clinic.id }, select: { day: true } })).map((d) => d.day));
     expect([...days].filter((d) => d !== today && d !== yesterday && !closes.has(d))).toEqual([]);
     expect(closes.has(today) || closes.has(yesterday)).toBe(false);
+  });
+
+  it("adds every report up the same way over the last year: production from the charges, income from the money, branches and doctors to the totals", async (ctx) => {
+    if (!demo) return ctx.skip();
+    const tenantId = demo.id;
+    const tz = (await db.clinic.findFirstOrThrow({ where: { tenantId }, orderBy: [{ createdAt: "asc" }, { id: "asc" }], select: { timezone: true } })).timezone;
+    const scope = await reportScope(tenantId, { period: "custom", from: dateKeyInTz(addDays(new Date(), -365, tz), tz), to: dateKeyInTz(new Date(), tz) });
+    const span = { gte: scope.period.from, lt: scope.period.to };
+    const [production, income, branches, providers, adjustments, balances, charged, fees, money] = await Promise.all([
+      productionReport(scope),
+      incomeReport(scope),
+      branchReport(scope),
+      providersReport(scope),
+      adjustmentsReport(scope),
+      balancesReport(scope),
+      db.charge.aggregate({ where: { tenantId, chargedAt: span }, _sum: { amount: true } }),
+      db.payment.aggregate({ where: { tenantId, kind: "CONSULTATION_FEE", deletedAt: null, paidAt: span }, _sum: { amount: true } }),
+      db.payment.findMany({ where: { tenantId, deletedAt: null, paidAt: span }, select: { kind: true, amount: true } }),
+    ]);
+    const t = production.totals;
+    expect(t.net).toBe((charged._sum.amount ?? 0) + (fees._sum.amount ?? 0));
+    expect(t.gross + t.discounts + t.cancelled + t.fees).toBe(t.net);
+    expect(production.days.reduce((s, d) => s + d.net, 0)).toBe(t.net);
+    expect(income.totals.net).toBe(money.reduce((s, p) => s + (p.kind === "REFUND" ? -p.amount : p.amount), 0));
+    expect(branches.rows.reduce((s, r) => s + r.net, 0)).toBe(t.net);
+    expect(branches.totals.income).toBe(income.totals.net);
+    expect(providers.rows.reduce((s, r) => s + r.net, 0)).toBe(t.net);
+    expect(providers.rows.reduce((s, r) => s + r.collected, 0)).toBe(providers.totals.collected);
+    expect(adjustments.totals.DISCOUNT.amount).toBe(t.discounts);
+    expect(adjustments.totals.CANCELLED.amount).toBe(t.cancelled);
+    // Every balance is due on invoices plus not invoiced, less the credit; the owed and the credit add up.
+    expect(balances.rows.filter((r) => r.balance !== r.dueOnInvoices + r.notInvoiced - r.credit).map((r) => r.patientName)).toEqual([]);
+    expect(balances.rows.reduce((s, r) => s + Math.max(0, r.balance), 0)).toBe(balances.totals.owed);
+    expect(balances.rows.reduce((s, r) => s + r.aging.reduce((x, y) => x + y, 0), 0)).toBe(balances.totals.dueOnInvoices);
   });
 });

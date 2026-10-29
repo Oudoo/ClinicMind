@@ -26,6 +26,7 @@ import {
   ClipboardCheck,
   FileText,
   Wallet,
+  FileSpreadsheet,
 } from "lucide-react";
 import { BRAND } from "@/lib/brand";
 import { onAuthChange } from "@/lib/auth/browser-session";
@@ -60,6 +61,7 @@ const NAV: NavItem[] = [
   { href: "/dashboard/finance/prices", label: "Price list", icon: Tags, permission: "patients:write" },
   { href: "/dashboard/finance/unbilled", label: "Not billed", icon: ClipboardCheck, permission: "payments:write" },
   { href: "/dashboard/finance/cash", label: "Cash drawer", icon: Wallet, permission: "payments:write" },
+  { href: "/dashboard/finance/reports", label: "Finance reports", icon: FileSpreadsheet, permission: "finance:read" },
   { href: "/dashboard/reports", label: "Reports", icon: ChartColumn, permission: "reports:read" },
   { href: "/dashboard/assistant", label: "AI Assistant", icon: Sparkles, badge: "RAG", permission: "ai:assistant" },
   { href: "/dashboard/clinic-ai", label: "Clinic AI", icon: Workflow, badge: "module" },
