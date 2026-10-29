@@ -27,6 +27,7 @@ export const NOTIFICATION_KINDS = [
   "SAFETY_OVERRIDE",
   "AI_REVIEW",
   "QUOTE_ANSWERED",
+  "INSTALMENT_OVERDUE",
   "SYSTEM",
 ] as const satisfies readonly NotificationKind[];
 
@@ -51,6 +52,7 @@ export const KIND_LABELS: Record<NotificationKind, string> = {
   SAFETY_OVERRIDE: "Prescribing safety override",
   AI_REVIEW: "Monthly AI review",
   QUOTE_ANSWERED: "Treatment plan answered",
+  INSTALMENT_OVERDUE: "Instalment overdue",
   SYSTEM: "System",
 };
 
@@ -74,6 +76,7 @@ export const KIND_HINTS: Record<NotificationKind, string> = {
   SAFETY_OVERRIDE: "A clinician signed a prescription over a safety stop, with a reason.",
   AI_REVIEW: "On the first of the month: the questions asked of the clinic's AI last month, how they were answered and rated.",
   QUOTE_ANSWERED: "A patient accepted or declined a treatment plan from its link.",
+  INSTALMENT_OVERDUE: "An instalment of a payment plan was not paid by its day.",
   SYSTEM: "Account, digest and test notifications.",
 };
 

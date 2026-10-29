@@ -14,6 +14,8 @@ import { QuoteActions } from "@/components/clinicmind/quote-actions";
 import { QuoteStateBadge } from "@/components/clinicmind/quote-shared";
 import { PrintButton } from "@/components/clinicmind/invoice-actions";
 import { STATUS_TONE } from "@/components/clinicmind/finance-shared";
+import { NewInstalmentPlanButton } from "@/components/clinicmind/instalment-plan-dialog";
+import { quotePlans } from "@/modules/finance/instalments";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Treatment plan" };
@@ -39,6 +41,10 @@ export default async function QuotePage({ params }: { params: Promise<{ id: stri
   const when = (iso: string) => formatDateTimeInTz(new Date(iso), quote.timezone);
   const discounts = quote.items.filter((i) => i.discount > 0);
   const accepted = quote.items.filter((i) => i.procedure);
+  // An accepted plan can be paid over time: the desk makes the instalment plan from it.
+  const seesPlans = quote.status === "ACCEPTED" && (can(ctx.role, "payments:write") || can(ctx.role, "finance:read"));
+  const plans = seesPlans ? await quotePlans(ctx.tenantId, quote.id) : [];
+  const canPlan = seesPlans && can(ctx.role, "payments:write") && !plans.some((p) => p.status !== "CANCELLED");
 
   return (
     <div className="mx-auto max-w-3xl space-y-4">
@@ -114,6 +120,45 @@ export default async function QuotePage({ params }: { params: Promise<{ id: stri
                 On the patient&apos;s page under Procedures &amp; payments; book them from there or from the recall list.
               </p>
             </div>
+          ) : null}
+        </Card>
+      ) : null}
+
+      {seesPlans && (plans.length || canPlan) ? (
+        <Card className="no-print space-y-3 text-sm" aria-label="Paying for it">
+          <SectionTitle
+            title="Paying for it"
+            description={plans.length ? "In instalments: payments recorded towards the plan cover them in order." : "The patient can pay over time: a down payment, then monthly instalments with a WhatsApp reminder before each."}
+            action={
+              canPlan ? (
+                <NewInstalmentPlanButton
+                  patientId={quote.patient.id}
+                  patientName={quote.patient.fullName}
+                  todayKey={dateKeyInTz(new Date(), quote.timezone)}
+                  quote={{ id: quote.id, title: quote.title ?? `Treatment plan ${quote.number ?? ""}`.trim(), total: quote.acceptedTotal ?? quote.total }}
+                  label="Pay in instalments"
+                />
+              ) : null
+            }
+          />
+          {plans.length ? (
+            <ul className="space-y-1" data-testid="quote-instalment-plans">
+              {plans.map((p) => (
+                <li key={p.id} className="flex flex-wrap items-center justify-between gap-2">
+                  <Link href={`/dashboard/patients/${quote.patient.id}`} className="underline-offset-2 hover:underline">
+                    {p.title}
+                  </Link>
+                  <span className="flex items-center gap-2">
+                    <span className="font-mono text-xs tabular-nums">
+                      {formatNumber(p.position.paid)} / {formatNumber(p.total)} EGP
+                    </span>
+                    <Badge tone={p.status === "COMPLETED" ? "success" : p.status === "ACTIVE" ? (p.position.overdue ? "danger" : "accent") : "default"}>
+                      {p.status === "COMPLETED" ? "Paid in full" : p.status === "CANCELLED" ? "Stopped" : p.position.overdue ? `${p.position.daysLate} days late` : "Active"}
+                    </Badge>
+                  </span>
+                </li>
+              ))}
+            </ul>
           ) : null}
         </Card>
       ) : null}

@@ -12,6 +12,7 @@ import { requireTenantAppointment, type Actor } from "./procedures";
 import { takeNumber, visitClinic } from "./documents";
 import { assertDayOpen, cashFor, zPaidAt } from "./cash";
 import { allocateCredit, CREDITING_KINDS, patientCredit, payableBy, refreshInvoiceStatus, releasePayment, settledOn } from "./allocations";
+import { requirePlanFor, settlePlan } from "./instalments";
 
 /**
  * Payments: money in or out, whole EGP. Deposits and payments are linked to a
@@ -40,12 +41,15 @@ export const PaymentInput = z
     appointmentId: zOptionalText(64),
     /** Put it towards this invoice first (matched by hand); otherwise the oldest open invoice is paid first. */
     invoiceId: zOptionalText(64),
+    /** The instalment plan it pays towards (the patient's, or a family member's for the head): it covers the plan's instalments in order. */
+    instalmentPlanId: zOptionalText(64),
     reference: zOptionalText(120),
     note: zOptionalText(1000),
   })
   .superRefine((v, ctx) => {
     if (v.kind === "REFUND" && !v.note) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["note"], message: "Say why the money is refunded" });
     if (v.invoiceId && v.kind !== "PAYMENT") ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["invoiceId"], message: "Only a payment goes towards an invoice" });
+    if (v.instalmentPlanId && v.kind === "CONSULTATION_FEE") ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["instalmentPlanId"], message: "A consultation fee goes towards no instalment plan" });
   });
 export type PaymentInput = z.infer<typeof PaymentInput>;
 
@@ -128,6 +132,8 @@ export async function recordPayment(tenantId: string, rawInput: unknown, actor: 
         })
       : null;
     if (input.invoiceId && !invoice) throw new TenantScopeError("invoice", input.invoiceId);
+    // Towards an instalment plan: the patient's own, or a family member's when the head pays.
+    const plan = input.instalmentPlanId ? await requirePlanFor(tx, tenantId, input.instalmentPlanId, await payableBy(tx, tenantId, input.patientId), input.kind) : null;
     if (invoice && invoice.status !== "ISSUED" && invoice.status !== "PART_PAID") {
       throw new FinanceError(409, "invalid_state", "the invoice has nothing to pay", { status: invoice.status, action: "paid", message: `Invoice ${invoice.number ?? ""} has nothing left to pay.` });
     }
@@ -150,17 +156,19 @@ export async function recordPayment(tenantId: string, rawInput: unknown, actor: 
         shiftId,
         receiptSequence: receipt?.sequence ?? null,
         receiptNumber: receipt?.number ?? null,
+        instalmentPlanId: plan?.id ?? null,
         createdById: actor.id ?? null,
       },
       include: paymentInclude,
     });
+    if (plan) await settlePlan(tx, tenantId, plan.id, paidAt);
     await tx.timelineEvent.create({
       data: {
         tenantId,
         patientId: input.patientId,
         kind: "PAYMENT",
         title: describe(payment),
-        body: [procedureLabel ? `Towards ${procedureLabel}` : null, input.reference ? `Ref ${input.reference}` : null, input.note ?? null].filter(Boolean).join(" · ") || null,
+        body: [procedureLabel ? `Towards ${procedureLabel}` : null, plan ? `Instalment plan: ${plan.title}` : null, input.reference ? `Ref ${input.reference}` : null, input.note ?? null].filter(Boolean).join(" · ") || null,
         refId: payment.id,
         occurredAt: paidAt,
       },
@@ -193,6 +201,7 @@ export async function recordPayment(tenantId: string, rawInput: unknown, actor: 
       patientId: payment.patientId,
       procedureId: payment.procedureId,
       appointmentId: payment.appointmentId,
+      instalmentPlanId: payment.instalmentPlanId,
       kind: payment.kind,
       method: payment.method,
       amount: payment.amount,
@@ -230,6 +239,8 @@ export async function voidPayment(tenantId: string, id: string, rawInput: unknow
     // What it paid on invoices is taken back; a voided refund gives the credit back. Either way, re-allocate.
     await releasePayment(tx, tenantId, id, before.patientId, actor.id ?? null);
     await allocateCredit(tx, tenantId, before.patientId, actor.id ?? null);
+    // What it covered of an instalment plan is owed again.
+    if (before.instalmentPlanId) await settlePlan(tx, tenantId, before.instalmentPlanId, now);
     await tx.timelineEvent.create({
       data: {
         tenantId,

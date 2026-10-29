@@ -203,6 +203,8 @@ model Tenant {
   aiFeedback              AiFeedback[]
   quotes                  Quote[]
   quoteItems              QuoteItem[]
+  instalmentPlans         InstalmentPlan[]
+  instalments             Instalment[]
 
   @@index([status])
   @@map("tenants")
@@ -430,6 +432,7 @@ model Patient {
   writeOffs        WriteOff[]
   recalls          Recall[]
   quotes           Quote[]
+  instalmentPlans  InstalmentPlan[]
 
   @@index([tenantId])
   @@index([tenantId, householdHeadId])
@@ -978,6 +981,7 @@ enum NotificationKind {
   SAFETY_OVERRIDE
   AI_REVIEW
   QUOTE_ANSWERED
+  INSTALMENT_OVERDUE
   SYSTEM
 }
 
@@ -1515,33 +1519,36 @@ model DayClose {
 
 /// Money in or out, whole EGP: deposits, payments, refunds and consultation fees.
 model Payment {
-  id              String        @id @default(cuid())
-  tenantId        String
-  tenant          Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  patientId       String
-  patient         Patient       @relation(fields: [patientId], references: [id], onDelete: Cascade)
-  procedureId     String?
-  procedure       Procedure?    @relation(fields: [procedureId], references: [id])
-  appointmentId   String?
-  leadId          String?
-  kind            PaymentKind
-  method          PaymentMethod @default(CASH)
-  amount          Int
-  currency        String        @default("EGP")
-  paidAt          DateTime
-  reference       String?
-  note            String?
-  importBatchId   String?
+  id               String          @id @default(cuid())
+  tenantId         String
+  tenant           Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  patientId        String
+  patient          Patient         @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  procedureId      String?
+  procedure        Procedure?      @relation(fields: [procedureId], references: [id])
+  appointmentId    String?
+  leadId           String?
+  kind             PaymentKind
+  method           PaymentMethod   @default(CASH)
+  amount           Int
+  currency         String          @default("EGP")
+  paidAt           DateTime
+  reference        String?
+  note             String?
+  importBatchId    String?
   /// The branch that took it, and its receipt (money in) or refund voucher (money out) number there, gapless.
-  clinicId        String?
-  receiptSequence Int?
-  receiptNumber   String?
+  clinicId         String?
+  receiptSequence  Int?
+  receiptNumber    String?
   /// The cashier's shift it was taken in (none for a card-machine import).
-  shiftId         String?
-  shift           CashShift?    @relation(fields: [shiftId], references: [id], onDelete: NoAction)
-  createdById     String?
-  createdAt       DateTime      @default(now())
-  deletedAt       DateTime?
+  shiftId          String?
+  shift            CashShift?      @relation(fields: [shiftId], references: [id], onDelete: NoAction)
+  /// The instalment plan it pays towards: it covers the plan's instalments in order.
+  instalmentPlanId String?
+  instalmentPlan   InstalmentPlan? @relation(fields: [instalmentPlanId], references: [id], onDelete: SetNull)
+  createdById      String?
+  createdAt        DateTime        @default(now())
+  deletedAt        DateTime?
 
   allocations PaymentAllocation[]
 
@@ -1551,6 +1558,7 @@ model Payment {
   @@index([tenantId, appointmentId])
   @@index([procedureId])
   @@index([shiftId])
+  @@index([instalmentPlanId])
   @@map("payments")
 }
 
@@ -2295,7 +2303,8 @@ model Quote {
   createdAt       DateTime    @default(now())
   updatedAt       DateTime    @updatedAt
 
-  items QuoteItem[]
+  items           QuoteItem[]
+  instalmentPlans InstalmentPlan[]
 
   @@unique([tenantId, clinicId, sequence])
   @@unique([tenantId, number])
@@ -2343,4 +2352,73 @@ model QuoteItem {
 
   @@index([tenantId, quoteId])
   @@map("quote_items")
+}
+
+// ── Instalment plans ─────────────────────────────────────────────────────────
+
+/// ACTIVE until every instalment is paid (COMPLETED) or the clinic stops it with a reason (CANCELLED).
+enum InstalmentPlanStatus {
+  ACTIVE
+  COMPLETED
+  CANCELLED
+}
+
+/// Paying for treatment over time: a down payment and instalments on set days, for an implant, braces, a
+/// hair transplant or a laser course. Payments recorded towards the plan cover its instalments in order; the
+/// patient is reminded on WhatsApp before each one is due and once when one is late.
+model InstalmentPlan {
+  id            String               @id @default(cuid())
+  tenantId      String
+  tenant        Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  patientId     String
+  patient       Patient              @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  /// The treatment plan it pays for, when it came from one.
+  quoteId       String?
+  quote         Quote?               @relation(fields: [quoteId], references: [id], onDelete: SetNull)
+  title         String
+  /// What it covers in all, the down payment included.
+  total         Int
+  downPayment   Int                  @default(0)
+  /// Months between two instalments.
+  everyMonths   Int                  @default(1)
+  /// The reminder goes this many days before each due day (0: on the day).
+  reminderDays  Int                  @default(3)
+  status        InstalmentPlanStatus @default(ACTIVE)
+  note          String?
+  completedAt   DateTime?
+  cancelledAt   DateTime?
+  cancelledById String?
+  cancelReason  String?
+  createdById   String?
+  createdAt     DateTime             @default(now())
+  updatedAt     DateTime             @updatedAt
+
+  instalments Instalment[]
+  payments    Payment[]
+
+  @@index([tenantId, status])
+  @@index([tenantId, patientId])
+  @@map("instalment_plans")
+}
+
+/// One amount of a plan on its day: number 0 is the down payment, then 1, 2, …
+model Instalment {
+  id                String         @id @default(cuid())
+  tenantId          String
+  tenant            Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  planId            String
+  plan              InstalmentPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+  number            Int
+  /// The day it is due (that day's start on the clinic clock).
+  dueAt             DateTime
+  amount            Int
+  /// When the payments towards the plan first covered it in full (cleared if a payment is voided).
+  paidAt            DateTime?
+  /// The reminder before the due day, and the one the day after it when still unpaid: each sent once.
+  remindedAt        DateTime?
+  overdueRemindedAt DateTime?
+
+  @@unique([planId, number])
+  @@index([tenantId, dueAt])
+  @@map("instalments")
 }

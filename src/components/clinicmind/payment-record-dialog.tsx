@@ -18,6 +18,14 @@ interface ProcedureListResponse {
   procedures: { id: string; status: string; performedAt: string; balance: number; treatment: { name: string } }[];
 }
 
+/** An active instalment plan the payment can go towards, and what is owed next on it. */
+interface PlanChoice {
+  id: string;
+  title: string;
+  patient: { id: string; fullName: string };
+  position: { left: number; next: { number: number; owed: number; dueKey: string; state: string } | null };
+}
+
 /**
  * Record a payment: kind (payment, deposit, refund, consultation fee),
  * method, amount, date and time on the clinic clock, the procedure it goes
@@ -39,7 +47,7 @@ export function RecordPaymentDialog({
   patient?: PatientOption | null;
   /** The patient's procedures, when the caller already has them; otherwise fetched once a patient is chosen. */
   procedures?: ProcedureChoice[];
-  defaults?: { kind?: PaymentKindValue; amount?: number; procedureId?: string };
+  defaults?: { kind?: PaymentKindValue; amount?: number; procedureId?: string; instalmentPlanId?: string };
   onOpenChange: (open: boolean) => void;
   onDone: () => void;
 }) {
@@ -58,6 +66,9 @@ export function RecordPaymentDialog({
   // The patient's invoices still to be paid: a payment can be matched to one by hand.
   const [openInvoices, setOpenInvoices] = useState<{ id: string; number: string | null; due: number; patientId: string; patientName: string }[]>([]);
   const [invoiceId, setInvoiceId] = useState("");
+  // The patient's active instalment plans (a family head's include the members'): a payment can go towards one.
+  const [plans, setPlans] = useState<PlanChoice[]>([]);
+  const [planId, setPlanId] = useState(defaults.instalmentPlanId ?? "");
   const [issues, setIssues] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
   // Money taken today goes into the cashier's open shift: without one, the way to the drawer.
@@ -105,6 +116,20 @@ export function RecordPaymentDialog({
     };
   }, [patient]);
 
+  useEffect(() => {
+    if (!patient) return;
+    let cancelled = false;
+    apiFetch<{ plans: PlanChoice[] }>(`/api/instalments?patientId=${encodeURIComponent(patient.id)}&payable=1&view=active&pageSize=20`)
+      .then((res) => {
+        if (!cancelled) setPlans(res.plans);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [patient]);
+
+  const chosenPlan = plans.find((p) => p.id === planId) ?? null;
   const chosen = choices?.find((c) => c.id === procedureId) ?? null;
   const chosenInvoice = openInvoices.find((i) => i.id === invoiceId) ?? null;
 
@@ -134,6 +159,7 @@ export function RecordPaymentDialog({
           paidAt: paidAt.toISOString(),
           procedureId: procedureId || undefined,
           invoiceId: kind === "PAYMENT" && invoiceId ? invoiceId : undefined,
+          instalmentPlanId: kind !== "CONSULTATION_FEE" && planId ? planId : undefined,
           reference: reference.trim() || undefined,
           note: note.trim() || undefined,
         },
@@ -182,6 +208,8 @@ export function RecordPaymentDialog({
                 setChoices(null);
                 setInvoiceId("");
                 setOpenInvoices([]);
+                setPlanId("");
+                setPlans([]);
               }}
               error={issues.patientId}
             />
@@ -228,6 +256,34 @@ export function RecordPaymentDialog({
             </Field>
           </div>
 
+          {patient && kind !== "CONSULTATION_FEE" && plans.length ? (
+            <Field
+              label="Towards an instalment plan"
+              htmlFor={`${id}-plan`}
+              hint={
+                issue("instalmentPlanId") ??
+                (chosenPlan?.position.next
+                  ? `Next: ${chosenPlan.position.next.number === 0 ? "the down payment" : `instalment ${chosenPlan.position.next.number}`} · ${formatNumber(chosenPlan.position.next.owed)} EGP · due ${formatDateInTz(new Date(`${chosenPlan.position.next.dueKey}T12:00:00Z`), timezone)}${chosenPlan.position.next.state === "OVERDUE" ? " · overdue" : ""}`
+                  : "Optional · it covers the plan's instalments in order")
+              }
+            >
+              <div className="flex gap-2">
+                <Select id={`${id}-plan`} value={planId} onChange={(e) => setPlanId(e.target.value)}>
+                  <option value="">None</option>
+                  {plans.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.title} · {formatNumber(p.position.left)} EGP left{p.patient.id !== patient.id ? ` · ${p.patient.fullName}` : ""}
+                    </option>
+                  ))}
+                </Select>
+                {chosenPlan?.position.next && kind !== "REFUND" ? (
+                  <Button type="button" variant="outline" size="sm" className="h-10 shrink-0" onClick={() => setAmount(String(chosenPlan.position.next!.owed))}>
+                    What is due
+                  </Button>
+                ) : null}
+              </div>
+            </Field>
+          ) : null}
           {patient && kind === "PAYMENT" && openInvoices.length ? (
             <Field label="Towards an invoice" htmlFor={`${id}-invoice`} hint={issue("invoiceId") ?? (chosenInvoice ? `To pay on it: ${formatNumber(chosenInvoice.due)} EGP` : "Otherwise the oldest open invoice is paid first")}>
               <div className="flex gap-2">

@@ -18,14 +18,15 @@ import { seedRecalls } from "./recalls";
 import { seedReminders } from "./reminders";
 import { seedEvidence } from "./evidence";
 import { seedQuotes } from "./quotes";
+import { seedInstalmentReminders, seedInstalments } from "./instalments";
 
 /**
  * The second half of the demo seed: everything the PM round-2 modules need
  * (the price list, CRM leads and conversations, procedures and payments, concierge
  * enrolments, intake links, dictated appointment notes, campaign costs,
  * review snapshots, alert rules, prescribing-safety overrides, the evidence
- * library and recorded pregnancies, treatment plans and quotes, notifications, recalls, and the reminders
- * and recall messages the clinic sent on its own).
+ * library and recorded pregnancies, treatment plans and quotes and the instalment plans paying for them,
+ * notifications, recalls, and the reminders, recall and instalment messages the clinic sent on its own).
  * Runs after the core clinic
  * (staff, patients, appointments, visits) exists; each module reads what it
  * needs from the database and keeps its own deterministic random stream.
@@ -74,6 +75,10 @@ export async function seedRound2(ctx: SeedContext): Promise<void> {
     ["receipts and invoices", seedInvoices],
     ["family accounts", seedHouseholds],
     ["discounts and write-offs", seedAdjustments],
+    // Before the recalls: what was accepted and never booked joins the recall list.
+    ["treatment plans", seedQuotes],
+    // Accepted plans paid over time: the payments before the cash drawer.
+    ["instalment plans", seedInstalments],
     // After every step that writes money: a day signed off takes no more.
     ["cash drawer", seedCash],
     ["concierge", seedConcierge],
@@ -83,13 +88,13 @@ export async function seedRound2(ctx: SeedContext): Promise<void> {
     ["prescribing safety", seedSafety],
     // After the safety overrides: the isotretinoin one gets the negative test its reason names.
     ["evidence library and pregnancy", seedEvidence],
-    // Before the recalls: what was accepted and never booked joins the recall list.
-    ["treatment plans", seedQuotes],
     ["notifications", seedNotifications],
     // Last: replays every signed procedure and consultation, then sweeps up to today.
     ["recalls", seedRecalls],
     // After the recalls: their automatic messages, beside the appointment reminders and the consents.
     ["reminders and consents", seedReminders],
+    // After the consents: what the instalment reminders said, and to whom.
+    ["instalment reminders", seedInstalmentReminders],
   ];
   for (const [name, fn] of steps) {
     const started = Date.now();

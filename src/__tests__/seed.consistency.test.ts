@@ -37,6 +37,9 @@ import { checkPrescribing } from "@/modules/consultations/safety/engine";
 import { answerablePassages } from "@/modules/evidence/answer";
 import { pregnancyKnown } from "@/modules/patients/pregnancy";
 import { cleanSignature, quoteState } from "@/modules/quotes/constants";
+import { coverInstalments, planPosition } from "@/modules/finance/instalment-schedule";
+import { netPaid } from "@/modules/finance/constants";
+import { DEFAULT_REMINDER_SETTINGS, isQuiet } from "@/modules/messaging/reminder-settings";
 
 const FEMALE_ONLY = /\b(PCOS|polycystic|hirsutism|melasma)\b/i;
 
@@ -493,5 +496,77 @@ describe("the seeded demo database (when DATABASE_URL points at one)", () => {
     const unbooked = await db.recall.findMany({ where: { tenantId: demo.id, kind: "UNBOOKED", procedure: { quoteItem: { isNot: null } } }, select: { label: true } });
     expect(unbooked.length).toBeGreaterThan(0);
     expect(unbooked.every((r) => /\(ZAM-QT-\d{6}\), not booked$/.test(r.label))).toBe(true);
+  });
+
+  it("has instalment plans for accepted treatment plans (overdue, due this week, paid in full, stopped) whose payments cover them in order; reminders only to patients who agreed, outside the quiet hours", async (ctx) => {
+    if (!demo) return ctx.skip();
+    const tenantId = demo.id;
+    const tz = "Africa/Cairo";
+    const today = dateKeyInTz(new Date(), tz);
+    const plans = await db.instalmentPlan.findMany({
+      where: { tenantId },
+      include: { instalments: { orderBy: { number: "asc" } }, payments: { where: { deletedAt: null } }, quote: { select: { status: true, patientId: true } } },
+    });
+    expect(plans.length).toBeGreaterThanOrEqual(5);
+    const positions = new Map<string, ReturnType<typeof planPosition>>();
+    for (const plan of plans) {
+      const each = plan.instalments.filter((i) => i.number > 0);
+      // The schedule: the down payment, then instalments 1, 2, … in order, adding up to the total.
+      expect(plan.instalments.reduce((sum, i) => sum + i.amount, 0), plan.title).toBe(plan.total);
+      expect(each.map((i) => i.number)).toEqual(each.map((_, k) => k + 1));
+      expect(plan.instalments.find((i) => i.number === 0)?.amount ?? 0).toBe(plan.downPayment);
+      expect(each.every((i, k) => k === 0 || i.dueAt > each[k - 1]!.dueAt)).toBe(true);
+      if (plan.quote) expect(plan.quote).toEqual({ status: "ACCEPTED", patientId: plan.patientId });
+      // The payments cover the instalments in order: those covered in full are stamped paid, the others not.
+      const covered = coverInstalments(
+        plan.instalments.map((i) => ({ number: i.number, dueKey: dateKeyInTz(i.dueAt, tz), amount: i.amount })),
+        netPaid(plan.payments),
+        today,
+        plan.reminderDays,
+      );
+      for (const c of covered) expect(Boolean(plan.instalments.find((i) => i.number === c.number)!.paidAt), `${plan.title} #${c.number}`).toBe(c.owed === 0);
+      const position = planPosition(plan.total, covered);
+      positions.set(plan.id, position);
+      if (plan.status === "COMPLETED") expect(position.left).toBe(0);
+      if (plan.status === "ACTIVE") expect(position.left).toBeGreaterThan(0);
+      if (plan.status === "CANCELLED") expect(Boolean(plan.cancelledAt && plan.cancelReason)).toBe(true);
+      expect(plan.payments.every((p) => p.receiptNumber && p.kind !== "CONSULTATION_FEE" && p.patientId === plan.patientId)).toBe(true);
+    }
+    const active = plans.filter((p) => p.status === "ACTIVE").map((p) => positions.get(p.id)!);
+    expect(active.some((p) => p.overdue > 0)).toBe(true);
+    expect(active.some((p) => p.overdue === 0 && p.next?.state === "DUE")).toBe(true);
+    expect(plans.some((p) => p.status === "COMPLETED")).toBe(true);
+    expect(plans.some((p) => p.status === "CANCELLED")).toBe(true);
+
+    // Each message the reminder job sent is the one its instalment was claimed for, to a patient who had agreed, outside the quiet hours.
+    const messages = await db.message.findMany({
+      where: { tenantId, templateKey: { in: ["instalment:due", "instalment:overdue"] }, author: "SYSTEM" },
+      select: { templateKey: true, meta: true, createdAt: true, conversation: { select: { patient: { select: { reminderConsent: true, reminderConsentAt: true } } } } },
+    });
+    // Every reminder claimed for a patient who had agreed went out: before an instalment's day, and the day after one missed.
+    const agreed = new Map((await db.patient.findMany({ where: { tenantId, id: { in: plans.map((p) => p.patientId) } }, select: { id: true, reminderConsent: true, reminderConsentAt: true } })).map((p) => [p.id, p]));
+    const agreedAt = (patientId: string, t: Date) => agreed.get(patientId)!.reminderConsent || (agreed.get(patientId)!.reminderConsentAt?.getTime() ?? 0) > t.getTime();
+    const claimed = plans.flatMap((p) =>
+      p.instalments.flatMap((i) => [
+        ...(i.remindedAt ? [{ key: "instalment:due", plan: p.id, number: i.number, at: i.remindedAt, patientId: p.patientId }] : []),
+        ...(i.overdueRemindedAt ? [{ key: "instalment:overdue", plan: p.id, number: i.number, at: i.overdueRemindedAt, patientId: p.patientId }] : []),
+      ]),
+    );
+    expect(claimed.some((c) => c.key === "instalment:due")).toBe(true);
+    expect(claimed.some((c) => c.key === "instalment:overdue")).toBe(true);
+    for (const c of claimed.filter((x) => agreedAt(x.patientId, x.at))) {
+      const sent = messages.filter((m) => m.templateKey === c.key && (m.meta as { instalmentPlanId: string }).instalmentPlanId === c.plan && (m.meta as { instalment: number }).instalment === c.number);
+      expect(sent.length, `${c.key} ${c.plan} #${c.number}`).toBe(1);
+    }
+    for (const m of messages) {
+      const meta = m.meta as { instalmentPlanId: string; instalment: number };
+      const i = plans.find((p) => p.id === meta.instalmentPlanId)?.instalments.find((x) => x.number === meta.instalment);
+      expect(i, JSON.stringify(meta)).toBeDefined();
+      expect((m.templateKey === "instalment:due" ? i!.remindedAt : i!.overdueRemindedAt)?.getTime()).toBe(m.createdAt.getTime());
+      const patient = m.conversation.patient!;
+      expect(patient.reminderConsent || (patient.reminderConsentAt?.getTime() ?? 0) > m.createdAt.getTime()).toBe(true);
+      expect(isQuiet(m.createdAt, tz, DEFAULT_REMINDER_SETTINGS)).toBe(false);
+    }
+    expect(await db.notification.count({ where: { tenantId, kind: "INSTALMENT_OVERDUE" } })).toBeGreaterThan(0);
   });
 });
