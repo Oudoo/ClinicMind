@@ -31,7 +31,8 @@ export type TenantScopedEntity =
   | "intake_link"
   | "escalation"
   | "recall"
-  | "recall_rule";
+  | "recall_rule"
+  | "evidence_source";
 
 /**
  * Thrown when a referenced row does not belong to the acting tenant (or does

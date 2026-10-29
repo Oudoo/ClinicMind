@@ -30,6 +30,8 @@ export interface ConsultationPanelProps {
   /** Patient preselected for a new capture (e.g. arriving from the patient record). */
   presetPatient: PatientOption | null;
   canSign: boolean;
+  /** The evidence panel beside the review. */
+  canAskEvidence?: boolean;
   userId: string | null;
   /** The list should refresh (a draft was created, signed or discarded). */
   onChanged: () => void;
@@ -49,7 +51,7 @@ export interface ConsultationPanelProps {
  * through the clinic's speech-to-text provider; the audio itself is not kept.
  */
 export function ConsultationPanel(props: ConsultationPanelProps) {
-  const { consultation, canSign, userId, onChanged, onClosed, onNew } = props;
+  const { consultation, canSign, canAskEvidence, userId, onChanged, onClosed, onNew } = props;
 
   if (consultation) {
     if (consultation.status === "PENDING_REVIEW" && canSign) {
@@ -62,6 +64,7 @@ export function ConsultationPanel(props: ConsultationPanelProps) {
           appointment={null}
           empty={isExtractionEmpty(consultation.extraction)}
           canDiscard
+          canAskEvidence={canAskEvidence}
           onSigned={onChanged}
           onClosed={onClosed}
           onNew={onNew}
@@ -83,7 +86,7 @@ export function ConsultationPanel(props: ConsultationPanelProps) {
 
 // ── Capture ──────────────────────────────────────────────────────────────────
 
-function CaptureForm({ presetPatient, canSign, onChanged, onClosed, onNew, onOpen }: ConsultationPanelProps) {
+function CaptureForm({ presetPatient, canSign, canAskEvidence, onChanged, onClosed, onNew, onOpen }: ConsultationPanelProps) {
   const { toast } = useToast();
   const [patient, setPatient] = useState<PatientOption | null>(presetPatient);
   const [appointment, setAppointment] = useState<AppointmentOption | null>(null);
@@ -150,6 +153,7 @@ function CaptureForm({ presetPatient, canSign, onChanged, onClosed, onNew, onOpe
         appointment={extracted.appointment}
         empty={extracted.result.empty}
         canDiscard
+        canAskEvidence={canAskEvidence}
         onSigned={onChanged}
         onClosed={onClosed}
         onNew={onNew}

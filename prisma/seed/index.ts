@@ -16,13 +16,15 @@ import { seedNotifications } from "./notifications";
 import { seedSafety } from "./safety";
 import { seedRecalls } from "./recalls";
 import { seedReminders } from "./reminders";
+import { seedEvidence } from "./evidence";
 
 /**
  * The second half of the demo seed: everything the PM round-2 modules need
  * (the price list, CRM leads and conversations, procedures and payments, concierge
  * enrolments, intake links, dictated appointment notes, campaign costs,
- * review snapshots, alert rules, prescribing-safety overrides, notifications,
- * recalls, and the reminders and recall messages the clinic sent on its own).
+ * review snapshots, alert rules, prescribing-safety overrides, the evidence
+ * library and recorded pregnancies, notifications, recalls, and the reminders
+ * and recall messages the clinic sent on its own).
  * Runs after the core clinic
  * (staff, patients, appointments, visits) exists; each module reads what it
  * needs from the database and keeps its own deterministic random stream.
@@ -78,6 +80,8 @@ export async function seedRound2(ctx: SeedContext): Promise<void> {
     ["appointment notes", seedAppointmentNotes],
     ["reporting", seedReporting],
     ["prescribing safety", seedSafety],
+    // After the safety overrides: the isotretinoin one gets the negative test its reason names.
+    ["evidence library and pregnancy", seedEvidence],
     ["notifications", seedNotifications],
     // Last: replays every signed procedure and consultation, then sweeps up to today.
     ["recalls", seedRecalls],

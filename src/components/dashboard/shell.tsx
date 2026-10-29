@@ -28,6 +28,7 @@ import {
   Wallet,
   FileSpreadsheet,
   PhoneCall,
+  BookOpenCheck,
 } from "lucide-react";
 import { BRAND } from "@/lib/brand";
 import { onAuthChange } from "@/lib/auth/browser-session";
@@ -66,6 +67,7 @@ const NAV: NavItem[] = [
   { href: "/dashboard/finance/reports", label: "Finance reports", icon: FileSpreadsheet, permission: "finance:read" },
   { href: "/dashboard/reports", label: "Reports", icon: ChartColumn, permission: "reports:read" },
   { href: "/dashboard/assistant", label: "AI Assistant", icon: Sparkles, badge: "RAG", permission: "ai:assistant" },
+  { href: "/dashboard/evidence", label: "Evidence library", icon: BookOpenCheck, permission: "evidence:read" },
   { href: "/dashboard/clinic-ai", label: "Clinic AI", icon: Workflow, badge: "module" },
   { href: "/dashboard/audit", label: "Audit log", icon: ScrollText, permission: "audit:read" },
   { href: "/dashboard/settings", label: "Settings", icon: Settings },

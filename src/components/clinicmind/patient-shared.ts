@@ -1,6 +1,7 @@
 import type { ComponentProps } from "react";
 import type { Badge } from "@/components/ui/primitives";
 import { ApiError } from "@/lib/http";
+import { dateKeyInTz } from "@/lib/time";
 
 /**
  * Types, labels and small helpers shared by the patient pages (server) and the
@@ -52,7 +53,17 @@ export interface PatientFormValues {
   reminderConsent: boolean;
   /** Offers and news, and the message after a year without a visit. */
   marketingConsent: boolean;
+  /** Women only: "" (not recorded), PREGNANT, or NOT_PREGNANT (excluded by a test or the patient's word). */
+  pregnancyStatus: "" | "PREGNANT" | "NOT_PREGNANT";
+  /** The day it was checked (`YYYY-MM-DD` on the clinic clock), or blank for today. */
+  pregnancyCheckedOn: string;
 }
+
+export const PREGNANCY_LABELS: Record<"" | "PREGNANT" | "NOT_PREGNANT", string> = {
+  "": "Not recorded",
+  PREGNANT: "Pregnant",
+  NOT_PREGNANT: "Pregnancy excluded (a test or the patient's word)",
+};
 
 export const EMPTY_PATIENT_FORM: PatientFormValues = {
   fullName: "",
@@ -70,6 +81,8 @@ export const EMPTY_PATIENT_FORM: PatientFormValues = {
   notes: "",
   reminderConsent: true,
   marketingConsent: false,
+  pregnancyStatus: "",
+  pregnancyCheckedOn: "",
 };
 
 export interface HistoryFormValues {
@@ -96,7 +109,9 @@ export function patientFormValues(patient: {
   notes: string | null;
   reminderConsent?: boolean;
   marketingConsent?: boolean;
-}): PatientFormValues {
+  pregnancyStatus?: "PREGNANT" | "NOT_PREGNANT" | null;
+  pregnancyCheckedAt?: Date | null;
+}, timezone = "Africa/Cairo"): PatientFormValues {
   return {
     fullName: patient.fullName,
     gender: patient.gender,
@@ -113,6 +128,8 @@ export function patientFormValues(patient: {
     notes: patient.notes ?? "",
     reminderConsent: patient.reminderConsent ?? true,
     marketingConsent: patient.marketingConsent ?? false,
+    pregnancyStatus: patient.pregnancyStatus ?? "",
+    pregnancyCheckedOn: patient.pregnancyStatus && patient.pregnancyCheckedAt ? dateKeyInTz(patient.pregnancyCheckedAt, timezone) : "",
   };
 }
 

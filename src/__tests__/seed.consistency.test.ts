@@ -33,6 +33,9 @@ import { accountPosition } from "@/modules/finance/ledger";
 import { END_AFTER_SILENT_DAYS, END_AFTER_WINDOW_DAYS } from "@/modules/recalls/constants";
 import { addDays, dateKeyInTz } from "@/lib/time";
 import { adjustmentsReport, balancesReport, branchReport, dayCloseReport, incomeReport, productionReport, providersReport, reportScope } from "@/modules/finance/reports";
+import { checkPrescribing } from "@/modules/consultations/safety/engine";
+import { answerablePassages } from "@/modules/evidence/answer";
+import { pregnancyKnown } from "@/modules/patients/pregnancy";
 
 const FEMALE_ONLY = /\b(PCOS|polycystic|hirsutism|melasma)\b/i;
 
@@ -410,5 +413,43 @@ describe("the seeded demo database (when DATABASE_URL points at one)", () => {
     expect(forgotten.map((r) => r.dedupeKey)).toEqual([]);
     // And some were ended that way, so the demo shows it.
     expect(await db.recall.count({ where: { tenantId: demo.id, status: "UNREACHABLE", closedById: null } })).toBeGreaterThan(0);
+  });
+
+  it("keeps pregnancy on women's records only; a pregnant woman takes nothing to avoid in pregnancy", async (ctx) => {
+    if (!demo) return ctx.skip();
+    const recorded = await db.patient.findMany({
+      where: { tenantId: demo.id, pregnancyStatus: { not: null } },
+      select: { fullName: true, gender: true, dateOfBirth: true, pregnancyStatus: true, pregnancyCheckedAt: true, medications: { where: { active: true }, select: { name: true, dosage: true, frequency: true } } },
+    });
+    expect(recorded.filter((p) => p.gender !== "FEMALE").map((p) => p.fullName)).toEqual([]);
+    const now = new Date();
+    const pregnant = recorded.filter((p) => pregnancyKnown(p, now) === true);
+    expect(pregnant.length).toBeGreaterThan(0);
+    const unsafe = pregnant.filter((p) =>
+      checkPrescribing({ patient: { gender: "FEMALE", dateOfBirth: p.dateOfBirth, pregnant: true }, allergies: [], conditions: [], activeMedications: [], proposed: p.medications, now }).some((f) => f.rule.startsWith("pregnancy.")),
+    );
+    expect(unsafe.map((p) => p.fullName)).toEqual([]);
+    // An exclusion that counts, and one too old to (the checks ask again).
+    expect(recorded.some((p) => pregnancyKnown(p, now) === false)).toBe(true);
+    expect(recorded.some((p) => p.pregnancyStatus === "NOT_PREGNANT" && pregnancyKnown(p, now) === null)).toBe(true);
+  });
+
+  it("has a library the evidence panel answers from: approved sources in passages, one waiting, one retired, every one marked as demo text", async (ctx) => {
+    if (!demo) return ctx.skip();
+    const sources = await db.evidenceSource.findMany({ where: { tenantId: demo.id }, select: { title: true, status: true, body: true, publisher: true, _count: { select: { passages: true } } } });
+    expect(sources.filter((s) => s.status === "APPROVED").length).toBeGreaterThanOrEqual(5);
+    expect(sources.some((s) => s.status === "DRAFT")).toBe(true);
+    expect(sources.some((s) => s.status === "RETIRED")).toBe(true);
+    expect(sources.filter((s) => !s._count.passages).map((s) => s.title)).toEqual([]);
+    // Written for the demo, and saying so: no real publisher's text.
+    expect(sources.filter((s) => !/demo|تجريبي/i.test(s.title) || !/demo/i.test(s.publisher ?? "") || !/demo|تجريبي/i.test(s.body.slice(0, 200))).map((s) => s.title)).toEqual([]);
+
+    const passages = await db.evidencePassage.findMany({ where: { tenantId: demo.id, source: { status: "APPROVED" } }, select: { id: true, sourceId: true, heading: true, content: true, source: { select: { title: true } } } });
+    const candidates = passages.map((p) => ({ id: p.id, sourceId: p.sourceId, title: p.source.title, heading: p.heading, content: p.content }));
+    const cited = (q: string) => answerablePassages(q, candidates).map((c) => `${c.item.title} · ${c.item.heading}`);
+    expect(cited("Can doxycycline be given with isotretinoin?")).toEqual(expect.arrayContaining([expect.stringMatching(/^Isotretinoin for acne.* · Do not combine$/)]));
+    expect(cited("ينفع دوكسيسيكلين مع روكيوتان؟").length).toBeGreaterThan(0);
+    expect(cited("التقشير مع الحمل")).toEqual(expect.arrayContaining([expect.stringMatching(/التقشير الكيميائي.* · الحمل والرضاعة$/)]));
+    expect(cited("What dose of tranexamic acid for melasma?")).toEqual([]);
   });
 });

@@ -32,6 +32,7 @@ import {
   warningSignature,
 } from "./consultation-safety";
 import { SummaryCheck, mentionSignature } from "./consultation-summary-check";
+import { EvidencePanel } from "./evidence-panel";
 
 type ListKey = "symptoms" | "diagnoses" | "tests" | "followUps";
 
@@ -62,6 +63,8 @@ export interface ConsultationReviewProps {
   /** Nothing could be extracted: the editor starts blank on purpose and says so. */
   empty: boolean;
   canDiscard: boolean;
+  /** The evidence panel beside the review (a clinician who may ask the library). */
+  canAskEvidence?: boolean;
   onSigned: (result: SignResponse) => void;
   /** The draft is gone (discarded, or no longer pending): leave the review. */
   onClosed: () => void;
@@ -81,7 +84,7 @@ export interface ConsultationReviewProps {
  * unless rewritten or confirmed. The server repeats every check on signing.
  */
 export function ConsultationReview(props: ConsultationReviewProps) {
-  const { consultationId, patient, draft, draftSummary, empty, canDiscard, onSigned, onClosed, onNew } = props;
+  const { consultationId, patient, draft, draftSummary, empty, canDiscard, canAskEvidence = false, onSigned, onClosed, onNew } = props;
   const { toast } = useToast();
 
   const [lists, setLists] = useState<Record<ListKey, string[]>>(() => ({
@@ -397,6 +400,8 @@ export function ConsultationReview(props: ConsultationReviewProps) {
           disabled={busy}
         />
       </div>
+
+      {canAskEvidence ? <EvidencePanel patientId={patient.id} /> : null}
 
       {formError ? <Alert>{formError}</Alert> : null}
 

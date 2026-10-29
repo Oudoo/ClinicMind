@@ -198,6 +198,8 @@ model Tenant {
   recallRules             RecallRule[]
   recalls                 Recall[]
   recallActivities        RecallActivity[]
+  evidenceSources         EvidenceSource[]
+  evidencePassages        EvidencePassage[]
 
   @@index([status])
   @@map("tenants")
@@ -357,11 +359,11 @@ model AuthToken {
 // ── Patients & clinical records ──────────────────────────────────────────────
 
 model Patient {
-  id                 String      @id @default(cuid())
+  id                 String           @id @default(cuid())
   tenantId           String
-  tenant             Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant             Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   fullName           String
-  gender             Gender      @default(UNDISCLOSED)
+  gender             Gender           @default(UNDISCLOSED)
   dateOfBirth        DateTime?
   phone              String?
   whatsapp           String?
@@ -369,8 +371,8 @@ model Patient {
   emergencyContact   String?
   address            String?
   /// Preferred language for communication: "ar" | "en".
-  language           String      @default("ar")
-  tags               String[]    @default([])
+  language           String           @default("ar")
+  tags               String[]         @default([])
   notes              String?
   /// National ID or passport number, for the front desk's exact lookup.
   nationalId         String?
@@ -381,15 +383,19 @@ model Patient {
   /// The family member who pays for this patient: their payments go towards this patient's invoices too.
   /// One level only (a head has no head of their own and a member heads no one; a trigger enforces it).
   householdHeadId    String?
-  householdHead      Patient?    @relation("Household", fields: [householdHeadId], references: [id], onDelete: SetNull)
+  householdHead      Patient?         @relation("Household", fields: [householdHeadId], references: [id], onDelete: SetNull)
   /// How the patient is related to the head: SPOUSE, CHILD, PARENT, SIBLING or OTHER.
   householdRelation  String?
   /// Treatment reminders on WhatsApp (appointment reminders, recall messages): on unless the patient says no (a STOP reply, or the desk).
-  reminderConsent    Boolean     @default(true)
+  reminderConsent    Boolean          @default(true)
   reminderConsentAt  DateTime?
   /// Offers and news, and asking a patient not seen for a year to come back: off unless the patient says yes.
-  marketingConsent   Boolean     @default(false)
+  marketingConsent   Boolean          @default(false)
   marketingConsentAt DateTime?
+  /// Pregnancy as last recorded (null: not recorded), and the day it was checked: the safety checks and the
+  /// evidence panel use it while it is recent (modules/patients/pregnancy.ts).
+  pregnancyStatus    PregnancyStatus?
+  pregnancyCheckedAt DateTime?
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -2116,4 +2122,68 @@ model RecallActivity {
   @@index([tenantId, recallId, at])
   @@index([tenantId, byId, at])
   @@map("recall_activities")
+}
+
+/// PREGNANT, or NOT_PREGNANT: pregnancy excluded (a test or the patient's word) on the day checked.
+enum PregnancyStatus {
+  PREGNANT
+  NOT_PREGNANT
+}
+
+/// What a source in the clinic's evidence library is.
+enum EvidenceKind {
+  GUIDELINE
+  DRUG_INFO
+  PROTOCOL
+}
+
+/// DRAFT (added, not yet approved) → APPROVED (answers may cite it) → RETIRED (kept for the answers that cited it).
+enum EvidenceStatus {
+  DRAFT
+  APPROVED
+  RETIRED
+}
+
+/// A source the clinic approves for the evidence panel: a guideline, drug information or one of its protocols.
+model EvidenceSource {
+  id           String            @id @default(cuid())
+  tenantId     String
+  tenant       Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  title        String
+  kind         EvidenceKind
+  /// Who wrote it (a society, the manufacturer, the clinic) and when.
+  publisher    String?
+  year         Int?
+  url          String?
+  language     String            @default("en")
+  body         String
+  status       EvidenceStatus    @default(DRAFT)
+  approvedById String?
+  approvedAt   DateTime?
+  retiredAt    DateTime?
+  createdById  String?
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+  passages     EvidencePassage[]
+
+  @@index([tenantId, status])
+  @@map("evidence_sources")
+}
+
+/// A passage of a source, as the panel searches and cites it (remade whenever the text changes).
+model EvidencePassage {
+  id       String         @id @default(cuid())
+  tenantId String
+  tenant   Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  sourceId String
+  source   EvidenceSource @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  /// 0-based position in the source.
+  index    Int
+  /// The heading it sits under, when the text has headings.
+  heading  String?
+  content  String
+
+  @@unique([sourceId, index])
+  @@index([tenantId])
+  @@map("evidence_passages")
 }

@@ -9,6 +9,7 @@ import {
 } from "../types";
 import { ageInYears, checkPrescribing } from "./engine";
 import type { MedicationText } from "./identify";
+import { pregnancyKnown, type PregnancyRecord } from "@/modules/patients/pregnancy";
 
 /**
  * Server side of the prescribing checks: what the database says about the
@@ -20,7 +21,7 @@ import type { MedicationText } from "./identify";
 
 type Client = Prisma.TransactionClient | typeof db;
 
-export interface SafetyPatientRecord {
+export interface SafetyPatientRecord extends PregnancyRecord {
   gender: string;
   dateOfBirth: Date | null;
   allergies: string[];
@@ -37,7 +38,7 @@ function stringList(value: unknown): string[] {
 export async function loadSafetyRecord(client: Client, tenantId: string, patientId: string): Promise<SafetyPatientRecord> {
   const patient = await client.patient.findFirst({
     where: { id: patientId, tenantId },
-    select: { gender: true, dateOfBirth: true },
+    select: { gender: true, dateOfBirth: true, pregnancyStatus: true, pregnancyCheckedAt: true },
   });
   const history = await client.medicalHistory.findFirst({
     where: { patientId, tenantId },
@@ -51,6 +52,8 @@ export async function loadSafetyRecord(client: Client, tenantId: string, patient
   return {
     gender: patient?.gender ?? "UNDISCLOSED",
     dateOfBirth: patient?.dateOfBirth ?? null,
+    pregnancyStatus: patient?.pregnancyStatus ?? null,
+    pregnancyCheckedAt: patient?.pregnancyCheckedAt ?? null,
     allergies: stringList(history?.allergies),
     chronicConditions: stringList(history?.chronicConditions),
     diagnoses: stringList(history?.diagnoses),
@@ -73,7 +76,8 @@ export function runSafetyChecks(record: SafetyPatientRecord, input: SafetyRunInp
   const active = record.activeMedications.filter((m) => !stopped.has(m.id));
   const conditions = uniqueTerms([...record.chronicConditions, ...record.diagnoses, ...(input.diagnoses ?? [])]);
   const findings = checkPrescribing({
-    patient: { gender: record.gender, dateOfBirth: record.dateOfBirth },
+    // A pregnancy recorded recently is known (excluded: the teratogen checks need no reason); otherwise unknown.
+    patient: { gender: record.gender, dateOfBirth: record.dateOfBirth, pregnant: pregnancyKnown(record, now) },
     allergies: record.allergies,
     conditions,
     activeMedications: active,

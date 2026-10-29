@@ -5,6 +5,7 @@ import { audit } from "@/lib/audit";
 import { ingestInBackground } from "@/modules/knowledge/ingest";
 import { parsePaging, zDate, zOptionalText, zPhone, zText } from "@/lib/validation";
 import { endOfDayInTz, fromDateKey, startOfWeekInTz, zonedParts, zonedTimeToUtc } from "@/lib/time";
+import { getTenantTimezone } from "@/modules/appointments/service";
 import {
   AGE_BANDS,
   DEFAULT_SORT,
@@ -41,6 +42,7 @@ export const GENDERS = ["MALE", "FEMALE", "OTHER", "UNDISCLOSED"] as const;
 export const LANGUAGES = ["ar", "en"] as const;
 
 const blankToUndefined = (v: unknown) => (typeof v === "string" && v.trim() === "" ? undefined : v);
+const zDayKey = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Use a date (YYYY-MM-DD)");
 const blankToNull = (v: unknown) => (typeof v === "string" && v.trim() === "" ? null : v);
 
 /** Nobody on the registry is older than this. */
@@ -106,6 +108,9 @@ export const PatientInput = z.object({
   reminderConsent: z.boolean().default(true),
   /** Offers and news (and asking a patient not seen for a year to come back): off unless the patient says yes. */
   marketingConsent: z.boolean().default(false),
+  /** Women only: PREGNANT, or NOT_PREGNANT when pregnancy was excluded; checked on `pregnancyCheckedOn` (today by default). */
+  pregnancyStatus: z.enum(["PREGNANT", "NOT_PREGNANT"]).nullable().optional(),
+  pregnancyCheckedOn: z.preprocess(blankToUndefined, zDayKey.optional()),
   /** Save even though the phone, WhatsApp or national id already belongs to another patient (409 otherwise). */
   confirmDuplicate: z.boolean().default(false),
 });
@@ -127,6 +132,9 @@ export const PatientUpdateInput = z.object({
   notes: clearable(zText(2000)),
   reminderConsent: z.boolean().optional(),
   marketingConsent: z.boolean().optional(),
+  /** null clears it. */
+  pregnancyStatus: z.enum(["PREGNANT", "NOT_PREGNANT"]).nullable().optional(),
+  pregnancyCheckedOn: z.preprocess(blankToUndefined, zDayKey.optional()),
   /** Save even though a changed phone, WhatsApp or national id belongs to another patient (409 otherwise). */
   confirmDuplicate: z.boolean().optional(),
 });
@@ -175,8 +183,32 @@ const PROFILE_KEYS = [
   "notes",
   "reminderConsent",
   "marketingConsent",
+  "pregnancyStatus",
+  "pregnancyCheckedAt",
 ] as const;
 type ProfileKey = (typeof PROFILE_KEYS)[number];
+
+/**
+ * The pregnancy columns for a status sent (or null to clear it): women only,
+ * checked on the day given (on the clinic clock, not in the future) or now.
+ */
+async function pregnancyColumns(
+  tenantId: string,
+  status: "PREGNANT" | "NOT_PREGNANT" | null | undefined,
+  checkedOn: string | undefined,
+  gender: string,
+  now: Date,
+): Promise<{ pregnancyStatus: "PREGNANT" | "NOT_PREGNANT" | null; pregnancyCheckedAt: Date | null } | null> {
+  if (status === undefined) return null;
+  if (status === null) return { pregnancyStatus: null, pregnancyCheckedAt: null };
+  const fail = (path: string, message: string) => new z.ZodError([{ code: "custom", path: [path], message }]);
+  if (gender === "MALE") throw fail("pregnancyStatus", "Recorded for women only");
+  if (!checkedOn) return { pregnancyStatus: status, pregnancyCheckedAt: now };
+  const day = fromDateKey(checkedOn, await getTenantTimezone(tenantId));
+  if (!day) throw fail("pregnancyCheckedOn", "Not a real date");
+  if (day.getTime() > now.getTime()) throw fail("pregnancyCheckedOn", "Not in the future");
+  return { pregnancyStatus: status, pregnancyCheckedAt: day };
+}
 
 /** JSON-safe audit snapshot of the profile columns (dates as ISO strings). */
 function snapshot(patient: Record<ProfileKey, unknown>, keys: readonly ProfileKey[] = PROFILE_KEYS) {
@@ -795,6 +827,7 @@ export type PatientDetail = NonNullable<Awaited<ReturnType<typeof getPatient>>>;
 
 export async function createPatient(tenantId: string, input: unknown, actor: Actor = {}) {
   const data = PatientInput.parse(input);
+  const pregnancy = await pregnancyColumns(tenantId, data.pregnancyStatus, data.pregnancyCheckedOn, data.gender, new Date());
   // The same number or national id on another active patient: 409 unless confirmed.
   const duplicateOf = await guardDuplicates(tenantId, data, data.confirmDuplicate);
   const patient = await db.patient.create({
@@ -817,6 +850,7 @@ export async function createPatient(tenantId: string, input: unknown, actor: Act
       reminderConsentAt: new Date(),
       marketingConsent: data.marketingConsent,
       marketingConsentAt: new Date(),
+      ...(pregnancy ?? {}),
       medicalHistory: { create: { tenantId } },
     },
     include: { medicalHistory: true },
@@ -842,12 +876,18 @@ export async function createPatient(tenantId: string, input: unknown, actor: Act
  * first. Returns `null` when the patient is not an active member of the tenant.
  */
 export async function updatePatient(tenantId: string, id: string, input: unknown, actor: Actor = {}) {
-  const { confirmDuplicate, ...fields } = PatientUpdateInput.parse(input);
+  const { confirmDuplicate, pregnancyStatus, pregnancyCheckedOn, ...fields } = PatientUpdateInput.parse(input);
   const patch = definedEntries(fields);
-  const keys = Object.keys(patch) as ProfileKey[];
 
   const existing = await db.patient.findFirst({ where: { id, tenantId, ...notDeleted } });
   if (!existing) return null;
+  const gender = patch.gender ?? existing.gender;
+  // A day checked without a status re-dates the status recorded.
+  const pregnancy = await pregnancyColumns(tenantId, pregnancyStatus === undefined && pregnancyCheckedOn ? existing.pregnancyStatus : pregnancyStatus, pregnancyCheckedOn, gender, new Date());
+  // A man has no pregnancy on record.
+  const cleared = gender === "MALE" && existing.pregnancyStatus ? { pregnancyStatus: null, pregnancyCheckedAt: null } : null;
+  const changes = { ...patch, ...(pregnancy ?? cleared ?? {}) };
+  const keys = Object.keys(changes) as ProfileKey[];
   if (keys.length === 0) return existing;
 
   // Only a number or id that changes is checked against the other patients.
@@ -868,7 +908,7 @@ export async function updatePatient(tenantId: string, id: string, input: unknown
 
   let patient;
   try {
-    patient = await db.patient.update({ where: { id, tenantId, ...notDeleted }, data: { ...patch, ...consentAt } });
+    patient = await db.patient.update({ where: { id, tenantId, ...notDeleted }, data: { ...changes, ...consentAt } });
   } catch (err) {
     if (isNotFound(err)) return null;
     throw err;

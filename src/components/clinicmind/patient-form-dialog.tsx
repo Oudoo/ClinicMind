@@ -17,6 +17,7 @@ import {
   GENDER_LABELS,
   LANGUAGE_LABELS,
   MAX_AGE_YEARS,
+  PREGNANCY_LABELS,
   apiErrorMessage,
   duplicateInfo,
   oldestDateOfBirth,
@@ -162,7 +163,15 @@ function PatientForm({
     setPending(true);
     setErrors({});
     setFormError(null);
-    const body = confirmDuplicate ? { ...values, confirmDuplicate: true } : values;
+    // Pregnancy goes only when it changed (an edit of the phone leaves the day it was checked alone), and never for a man.
+    const { pregnancyStatus, pregnancyCheckedOn, ...profile } = values;
+    const before = target.mode === "edit" ? target.initial : EMPTY_PATIENT_FORM;
+    const pregnancyChanged = pregnancyStatus !== before.pregnancyStatus || (pregnancyStatus !== "" && pregnancyCheckedOn !== before.pregnancyCheckedOn);
+    const pregnancy =
+      values.gender !== "MALE" && pregnancyChanged
+        ? { pregnancyStatus: pregnancyStatus || null, ...(pregnancyStatus && pregnancyCheckedOn ? { pregnancyCheckedOn } : {}) }
+        : {};
+    const body = { ...profile, ...pregnancy, ...(confirmDuplicate ? { confirmDuplicate: true } : {}) };
     try {
       const { patient } =
         target.mode === "create"
@@ -267,6 +276,43 @@ function PatientForm({
             aria-invalid={errors.dateOfBirth ? true : undefined}
           />
         </FormField>
+
+        {values.gender !== "MALE" ? (
+          <>
+            <FormField
+              id="patient-pregnancy"
+              label="Pregnancy"
+              hint="The prescribing checks use it: an exclusion counts for 30 days, a pregnancy for 300."
+              error={errors.pregnancyStatus}
+            >
+              <Select
+                id="patient-pregnancy"
+                value={values.pregnancyStatus}
+                onChange={(e) => set("pregnancyStatus", e.target.value as PatientFormValues["pregnancyStatus"])}
+              >
+                {(Object.keys(PREGNANCY_LABELS) as PatientFormValues["pregnancyStatus"][]).map((s) => (
+                  <option key={s || "none"} value={s}>
+                    {PREGNANCY_LABELS[s]}
+                  </option>
+                ))}
+              </Select>
+            </FormField>
+            {values.pregnancyStatus ? (
+              <FormField id="patient-pregnancy-checked" label="Checked on" hint="Blank for today" error={errors.pregnancyCheckedOn}>
+                <Input
+                  id="patient-pregnancy-checked"
+                  type="date"
+                  value={values.pregnancyCheckedOn}
+                  onChange={(e) => set("pregnancyCheckedOn", e.target.value)}
+                  max={today}
+                  aria-invalid={errors.pregnancyCheckedOn ? true : undefined}
+                />
+              </FormField>
+            ) : (
+              <div className="hidden sm:block" />
+            )}
+          </>
+        ) : null}
 
         <FormField
           id="patient-phone"

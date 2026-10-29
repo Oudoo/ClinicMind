@@ -24,6 +24,8 @@ const LIST_PAGE_SIZE = 30;
 export interface ConsultationsWorkspaceProps {
   initial: ConsultationListResponse;
   canSign: boolean;
+  /** A clinician who may ask the clinic's evidence library from the review. */
+  canAskEvidence?: boolean;
   userId: string | null;
   /** Consultation to open on load (`?id=`). */
   openId?: string;
@@ -54,7 +56,7 @@ interface Selection {
   nonce: number;
 }
 
-function Workspace({ initial, canSign, userId, openId, presetPatient, presetAppointment = null, timezone = "Africa/Cairo" }: ConsultationsWorkspaceProps) {
+function Workspace({ initial, canSign, canAskEvidence = false, userId, openId, presetPatient, presetAppointment = null, timezone = "Africa/Cairo" }: ConsultationsWorkspaceProps) {
   const { toast } = useToast();
   const [items, setItems] = useState<ConsultationListItem[]>(initial.consultations);
   const [total, setTotal] = useState(initial.total);
@@ -153,6 +155,7 @@ function Workspace({ initial, canSign, userId, openId, presetPatient, presetAppo
             consultation={selection.id ? detail : null}
             presetPatient={presetPatient}
             canSign={canSign}
+            canAskEvidence={canAskEvidence}
             userId={userId}
             onChanged={() => void refresh()}
             onClosed={onClosed}

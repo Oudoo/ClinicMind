@@ -31,6 +31,8 @@ import { PatientAccount } from "@/components/clinicmind/patient-account";
 import { BalanceChip } from "@/components/clinicmind/patient-balance";
 import { canSeeAccounts, patientBalances } from "@/modules/finance/ledger";
 import { getHousehold } from "@/modules/finance/household";
+import { getTenantTimezone } from "@/modules/appointments/service";
+import { pregnancyLine } from "@/modules/patients/pregnancy";
 import {
   GENDER_LABELS,
   languageLabel,
@@ -98,6 +100,7 @@ export default async function PatientPage({ params, searchParams }: { params: Pr
   const [balance, household] = seesAccounts
     ? await Promise.all([patientBalances(db, ctx.tenantId, [patient.id]).then((b) => b.get(patient.id) ?? 0), getHousehold(ctx.tenantId, patient.id)])
     : [null, null];
+  const timezone = await getTenantTimezone(ctx.tenantId);
 
   const visitRows: VisitRow[] = [
     ...patient.visits.map(
@@ -154,6 +157,11 @@ export default async function PatientPage({ params, searchParams }: { params: Pr
                   {age !== null ? `${age} years` : "Age unknown"} · {GENDER_LABELS[patient.gender]}
                   {patient.dateOfBirth ? ` · born ${formatCalendarDate(patient.dateOfBirth)}` : ""}
                 </p>
+                {patient.gender !== "MALE" ? (
+                  <p className="text-xs text-muted-foreground" data-testid="patient-pregnancy">
+                    {pregnancyLine(patient, timezone)}
+                  </p>
+                ) : null}
                 <dl className="flex flex-wrap gap-x-5 gap-y-1 font-mono text-xs text-muted-foreground">
                   <ContactItem icon={Phone} label="Phone" value={patient.phone} />
                   <ContactItem icon={MessageCircle} label="WhatsApp" value={patient.whatsapp} />
@@ -196,7 +204,7 @@ export default async function PatientPage({ params, searchParams }: { params: Pr
                 patientId={patient.id}
                 fullName={patient.fullName}
                 archived={archived}
-                form={patientFormValues(patient)}
+                form={patientFormValues(patient, timezone)}
               />
             ) : null}
           </div>

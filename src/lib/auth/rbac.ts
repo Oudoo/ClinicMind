@@ -40,7 +40,11 @@ export type Permission =
   | "concierge:write" // answer check-ins, acknowledge and resolve escalations
   | "recalls:read" // the recall worklist and a patient's recalls
   | "recalls:write" // log calls and messages, book, snooze, decline, add a recall
-  | "recalls:manage"; // the recall rules (intervals, reviews, owners, channels)
+  | "recalls:manage" // the recall rules (intervals, reviews, owners, channels)
+  | "evidence:read" // the clinic's evidence library
+  | "evidence:write" // add and edit sources (an edited approved source waits for approval again)
+  | "evidence:approve" // approve and retire sources: what the evidence panel may quote (clinicians only, see canApproveEvidence)
+  | "evidence:ask"; // ask the evidence panel (clinicians only, see canAskEvidence)
 
 const ALL: Permission[] = [
   "platform:manage",
@@ -71,6 +75,10 @@ const ALL: Permission[] = [
   "recalls:read",
   "recalls:write",
   "recalls:manage",
+  "evidence:read",
+  "evidence:write",
+  "evidence:approve",
+  "evidence:ask",
 ];
 
 const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
@@ -106,6 +114,10 @@ const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
     "recalls:read",
     "recalls:write",
     "recalls:manage",
+    "evidence:read",
+    "evidence:write",
+    "evidence:approve",
+    "evidence:ask",
   ],
   DOCTOR: [
     "patients:read",
@@ -124,6 +136,9 @@ const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
     "concierge:write",
     "recalls:read",
     "recalls:write",
+    "evidence:read",
+    "evidence:write",
+    "evidence:ask",
   ],
   NURSE: [
     "patients:read",
@@ -212,6 +227,33 @@ export function assertCanSignClinical(actor: { role: UserRole; isClinician: bool
     throw new RbacError(
       actor.isClinician ? `Role ${actor.role} lacks permission consultations:sign` : "Only clinicians may sign clinical records",
     );
+  }
+}
+
+/**
+ * Asking the evidence panel a clinical question needs the role's evidence:ask
+ * permission AND the person's clinician mark, as signing does: the Clinic AI
+ * lead and the platform administrator do not ask clinical questions, whatever
+ * their role.
+ */
+export function canAskEvidence(actor: { role: UserRole; isClinician: boolean }): boolean {
+  return actor.isClinician && can(actor.role, "evidence:ask");
+}
+
+export function assertCanAskEvidence(actor: { role: UserRole; isClinician: boolean }): void {
+  if (!canAskEvidence(actor)) {
+    throw new RbacError(actor.isClinician ? `Role ${actor.role} lacks permission evidence:ask` : "Only clinicians may ask clinical questions");
+  }
+}
+
+/** Deciding what the evidence panel may quote is a clinician's call too: the owner, with the clinician mark. */
+export function canApproveEvidence(actor: { role: UserRole; isClinician: boolean }): boolean {
+  return actor.isClinician && can(actor.role, "evidence:approve");
+}
+
+export function assertCanApproveEvidence(actor: { role: UserRole; isClinician: boolean }): void {
+  if (!canApproveEvidence(actor)) {
+    throw new RbacError(actor.isClinician ? `Role ${actor.role} lacks permission evidence:approve` : "Only clinicians may approve clinical sources");
   }
 }
 
