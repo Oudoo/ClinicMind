@@ -164,14 +164,17 @@ function PatientForm({
     setErrors({});
     setFormError(null);
     // Pregnancy goes only when it changed (an edit of the phone leaves the day it was checked alone), and never for a man.
-    const { pregnancyStatus, pregnancyCheckedOn, ...profile } = values;
+    const { pregnancyStatus, pregnancyCheckedOn, weightKg, weighedOn, ...profile } = values;
     const before = target.mode === "edit" ? target.initial : EMPTY_PATIENT_FORM;
     const pregnancyChanged = pregnancyStatus !== before.pregnancyStatus || (pregnancyStatus !== "" && pregnancyCheckedOn !== before.pregnancyCheckedOn);
     const pregnancy =
       values.gender !== "MALE" && pregnancyChanged
         ? { pregnancyStatus: pregnancyStatus || null, ...(pregnancyStatus && pregnancyCheckedOn ? { pregnancyCheckedOn } : {}) }
         : {};
-    const body = { ...profile, ...pregnancy, ...(confirmDuplicate ? { confirmDuplicate: true } : {}) };
+    // The weight, like the pregnancy, only when it changed (its day stays put otherwise).
+    const weightChanged = weightKg.trim() !== before.weightKg.trim() || (weightKg.trim() !== "" && weighedOn !== before.weighedOn);
+    const weight = weightChanged ? { weightKg: weightKg.trim() === "" ? null : weightKg.trim(), ...(weightKg.trim() && weighedOn ? { weighedOn } : {}) } : {};
+    const body = { ...profile, ...pregnancy, ...weight, ...(confirmDuplicate ? { confirmDuplicate: true } : {}) };
     try {
       const { patient } =
         target.mode === "create"
@@ -276,6 +279,31 @@ function PatientForm({
             aria-invalid={errors.dateOfBirth ? true : undefined}
           />
         </FormField>
+
+        <FormField id="patient-weight" label="Weight (kg)" hint="Per-kilogram doses are checked against it for 180 days." error={errors.weightKg}>
+          <Input
+            id="patient-weight"
+            inputMode="decimal"
+            value={values.weightKg}
+            onChange={(e) => set("weightKg", e.target.value.replace(/[^\d.,]/g, "").slice(0, 6))}
+            placeholder="e.g. 62.5"
+            aria-invalid={errors.weightKg ? true : undefined}
+          />
+        </FormField>
+        {values.weightKg.trim() ? (
+          <FormField id="patient-weighed" label="Weighed on" hint="Blank for today" error={errors.weighedOn}>
+            <Input
+              id="patient-weighed"
+              type="date"
+              value={values.weighedOn}
+              onChange={(e) => set("weighedOn", e.target.value)}
+              max={today}
+              aria-invalid={errors.weighedOn ? true : undefined}
+            />
+          </FormField>
+        ) : (
+          <div className="hidden sm:block" />
+        )}
 
         {values.gender !== "MALE" ? (
           <>

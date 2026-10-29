@@ -5,7 +5,10 @@ import { checkPrescribing } from "../../src/modules/consultations/safety/engine"
 import { splitPassages } from "../../src/modules/evidence/passages";
 import { askEvidence } from "../../src/modules/evidence/service";
 import type { SeedContext } from "./index";
+import { zonedParts, zonedTimeToUtc } from "../../src/lib/time";
 import { daysBefore } from "./util";
+
+const TZ = "Africa/Cairo";
 
 /**
  * The evidence panel's library in the demo (Phase 4): the clinic's own
@@ -242,22 +245,23 @@ No tetracyclines with isotretinoin. No vitamin A supplements.`,
 ];
 
 /**
- * Questions the doctors asked the panel over the last six weeks, answered from
- * the library as it stood (offline, as the demo has no model), some rated:
- * last month's review has something in it, and its notification went out.
+ * Questions the doctors asked the panel last month (on these days of it, so
+ * last month's review always has them) and this month, answered from the
+ * library as it stood (offline, as the demo has no model), some rated; last
+ * month's review notification went out on the first.
  */
-const QUESTIONS: { question: string; by: "derm" | "hair" | "owner"; daysAgo: number; rating?: { helpful: boolean; comment?: string } }[] = [
-  { question: "What dose of tranexamic acid for melasma?", by: "derm", daysAgo: 44 },
-  { question: "Botox while breastfeeding?", by: "owner", daysAgo: 41, rating: { helpful: true } },
-  { question: "Can a pregnant woman have a chemical peel?", by: "derm", daysAgo: 38, rating: { helpful: true } },
-  { question: "When can minoxidil restart after a hair transplant?", by: "hair", daysAgo: 36, rating: { helpful: true } },
-  { question: "Spironolactone dose for acne in women?", by: "derm", daysAgo: 34, rating: { helpful: false, comment: "It names spironolactone but gives no dose: the clinic needs a sheet with doses." } },
-  { question: "Can doxycycline be given with isotretinoin?", by: "derm", daysAgo: 33, rating: { helpful: true } },
-  { question: "What monitoring is needed during isotretinoin?", by: "owner", daysAgo: 31 },
-  { question: "How long between laser hair removal sessions?", by: "hair", daysAgo: 30 },
-  { question: "ينفع دوكسيسيكلين مع روكيوتان؟", by: "derm", daysAgo: 12, rating: { helpful: true } },
-  { question: "Is finasteride safe for women?", by: "hair", daysAgo: 9 },
-  { question: "Which acne treatments are safe in pregnancy?", by: "derm", daysAgo: 4, rating: { helpful: true } },
+const QUESTIONS: { question: string; by: "derm" | "hair" | "owner"; lastMonthDay?: number; daysAgo?: number; rating?: { helpful: boolean; comment?: string } }[] = [
+  { question: "What dose of tranexamic acid for melasma?", by: "derm", lastMonthDay: 4 },
+  { question: "Botox while breastfeeding?", by: "owner", lastMonthDay: 7, rating: { helpful: true } },
+  { question: "Can a pregnant woman have a chemical peel?", by: "derm", lastMonthDay: 10, rating: { helpful: true } },
+  { question: "When can minoxidil restart after a hair transplant?", by: "hair", lastMonthDay: 13, rating: { helpful: true } },
+  { question: "Spironolactone dose for acne in women?", by: "derm", lastMonthDay: 16, rating: { helpful: false, comment: "It names spironolactone but gives no dose: the clinic needs a sheet with doses." } },
+  { question: "Can doxycycline be given with isotretinoin?", by: "derm", lastMonthDay: 20, rating: { helpful: true } },
+  { question: "What monitoring is needed during isotretinoin?", by: "owner", lastMonthDay: 23 },
+  { question: "How long between laser hair removal sessions?", by: "hair", lastMonthDay: 26 },
+  { question: "ينفع دوكسيسيكلين مع روكيوتان؟", by: "derm", daysAgo: 2, rating: { helpful: true } },
+  { question: "Is finasteride safe for women?", by: "hair", daysAgo: 1 },
+  { question: "Which acne treatments are safe in pregnancy?", by: "derm", daysAgo: 0.1, rating: { helpful: true } },
 ];
 
 const strings = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : []);
@@ -352,6 +356,8 @@ export async function seedEvidence(ctx: SeedContext): Promise<void> {
   const on = (w: (typeof women)[number], name: RegExp) => w.medications.some((m) => name.test(m.name));
   const acne = women.find((w) => !used.has(w.id) && childbearing(w) && w.age! <= 40 && on(w, /doxycycline/i) && on(w, /adapalene/i) && !w.consultations.length);
   await record(acne, "NOT_PREGNANT", 3, "the isotretinoin draft");
+  // Weighed at the same visit: her 20 mg is 0.34 mg/kg (raise it to 80 mg in the review and the per-kilogram check speaks).
+  if (acne) await db.patient.update({ where: { id: acne.id }, data: { weightKg: 58, weighedAt: daysBefore(now, 3) } });
   if (acne) {
     const mariam = doctor("derm");
     const medication = { name: "Isotretinoin", dosage: "20 mg", frequency: "Once daily" };
@@ -406,12 +412,21 @@ export async function seedEvidence(ctx: SeedContext): Promise<void> {
     "a pregnancy",
   );
 
+  // ── Weights: a dozen patients weighed at a recent visit, one too long ago to count ──
+  const weighed = await db.patient.findMany({ where: { tenantId, deletedAt: null, weightKg: null, dateOfBirth: { lte: daysBefore(now, 18 * 365.25) } }, orderBy: { fullName: "asc" }, take: 13, select: { id: true, gender: true } });
+  for (const [i, p] of weighed.entries()) {
+    const kg = (p.gender === "FEMALE" ? 54 : 68) + ((i * 7) % 23);
+    await db.patient.update({ where: { id: p.id }, data: { weightKg: kg, weighedAt: daysBefore(now, i === 12 ? 240 : 5 + i * 9) } });
+  }
+
   // ── Questions asked, rated; last month's review announced ─────────────────
   const offline = new EchoProvider();
   const askers = { derm: doctor("derm"), hair: doctor("hair"), owner };
   let answered = 0;
+  const today = zonedParts(now, TZ);
+  const last = today.month === 1 ? { year: today.year - 1, month: 12 } : { year: today.year, month: today.month - 1 };
   for (const q of QUESTIONS) {
-    const at = daysBefore(now, q.daysAgo);
+    const at = q.lastMonthDay ? zonedTimeToUtc({ ...last, day: q.lastMonthDay, hour: 11, minute: 30 }, TZ) : daysBefore(now, q.daysAgo ?? 0);
     const asker = askers[q.by];
     const answer = await askEvidence(tenantId, { question: q.question }, { id: asker.id, email: asker.email }, at, { provider: offline });
     if (answer.grounded) answered += 1;

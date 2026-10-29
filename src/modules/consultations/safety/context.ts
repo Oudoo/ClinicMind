@@ -10,6 +10,7 @@ import {
 import { ageInYears, checkPrescribing } from "./engine";
 import type { MedicationText } from "./identify";
 import { pregnancyKnown, type PregnancyRecord } from "@/modules/patients/pregnancy";
+import { weightKnown, type WeightRecord } from "@/modules/patients/weight";
 
 /**
  * Server side of the prescribing checks: what the database says about the
@@ -21,7 +22,7 @@ import { pregnancyKnown, type PregnancyRecord } from "@/modules/patients/pregnan
 
 type Client = Prisma.TransactionClient | typeof db;
 
-export interface SafetyPatientRecord extends PregnancyRecord {
+export interface SafetyPatientRecord extends PregnancyRecord, WeightRecord {
   gender: string;
   dateOfBirth: Date | null;
   allergies: string[];
@@ -38,7 +39,7 @@ function stringList(value: unknown): string[] {
 export async function loadSafetyRecord(client: Client, tenantId: string, patientId: string): Promise<SafetyPatientRecord> {
   const patient = await client.patient.findFirst({
     where: { id: patientId, tenantId },
-    select: { gender: true, dateOfBirth: true, pregnancyStatus: true, pregnancyCheckedAt: true },
+    select: { gender: true, dateOfBirth: true, pregnancyStatus: true, pregnancyCheckedAt: true, weightKg: true, weighedAt: true },
   });
   const history = await client.medicalHistory.findFirst({
     where: { patientId, tenantId },
@@ -54,6 +55,8 @@ export async function loadSafetyRecord(client: Client, tenantId: string, patient
     dateOfBirth: patient?.dateOfBirth ?? null,
     pregnancyStatus: patient?.pregnancyStatus ?? null,
     pregnancyCheckedAt: patient?.pregnancyCheckedAt ?? null,
+    weightKg: patient?.weightKg ?? null,
+    weighedAt: patient?.weighedAt ?? null,
     allergies: stringList(history?.allergies),
     chronicConditions: stringList(history?.chronicConditions),
     diagnoses: stringList(history?.diagnoses),
@@ -77,7 +80,8 @@ export function runSafetyChecks(record: SafetyPatientRecord, input: SafetyRunInp
   const conditions = uniqueTerms([...record.chronicConditions, ...record.diagnoses, ...(input.diagnoses ?? [])]);
   const findings = checkPrescribing({
     // A pregnancy recorded recently is known (excluded: the teratogen checks need no reason); otherwise unknown.
-    patient: { gender: record.gender, dateOfBirth: record.dateOfBirth, pregnant: pregnancyKnown(record, now) },
+    // A recent weight checks per-kilogram doses (isotretinoin).
+    patient: { gender: record.gender, dateOfBirth: record.dateOfBirth, pregnant: pregnancyKnown(record, now), weightKg: weightKnown(record, now) },
     allergies: record.allergies,
     conditions,
     activeMedications: active,
@@ -89,6 +93,8 @@ export function runSafetyChecks(record: SafetyPatientRecord, input: SafetyRunInp
     context: {
       sex: record.gender,
       age: ageInYears(record.dateOfBirth, now),
+      weightKg: weightKnown(record, now),
+      pregnant: pregnancyKnown(record, now),
       allergies: record.allergies,
       conditions,
       activeMedications: active.map((m) => [m.name, m.dosage, m.frequency].filter(Boolean).join(" · ")),

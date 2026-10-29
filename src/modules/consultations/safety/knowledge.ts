@@ -184,8 +184,10 @@ export interface Ingredient {
   aliases?: readonly Alias[];
   /** Usual adult maximum for the oral route, in mg per day. */
   maxDailyMg?: number;
-  /** Appended to the dose warning. */
+  /** Appended to the dose warning (when the weight is not known, for a medicine dosed per kilogram). */
   doseNote?: string;
+  /** Usual maximum per kilogram of the patient's weight, in mg per day, and the usual range in words. */
+  perKg?: { maxDailyMgPerKg: number; usual: string };
   /** Taken once a week (methotrexate): a daily schedule is a stop. */
   weeklyOnly?: { maxWeeklyMg: number };
   pregnancy?: PregnancyRisk;
@@ -314,6 +316,7 @@ export const INGREDIENTS: readonly Ingredient[] = [
     classes: ["oral-retinoid"],
     maxDailyMg: 80,
     doseNote: "the mg/kg dose cannot be checked without the patient's weight",
+    perKg: { maxDailyMgPerKg: 1, usual: "the usual 0.5 to 1 mg/kg a day" },
     pregnancy: { systemic: "teratogen", topical: "caution", why: "it causes severe birth defects, even after a single dose" },
     aliases: ["isotretinoin", "isotretinoine", "isotretinoina", "isotretinion", "roaccutane", "accutane", "acnotren", "claravis", "absorica", "amnesteem", "sotret", "myorisan", "zenatane", "oratane", "isotroin", { name: "isotrex", route: topical }, "ايزوتريتينوين", "روكتان"],
   },

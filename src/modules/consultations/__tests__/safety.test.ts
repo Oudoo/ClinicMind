@@ -362,3 +362,28 @@ describe("output", () => {
     expect(check([], { allergies: ["Penicillin"], activeMedications: [{ name: "Amoxicillin" }] })).toEqual([]);
   });
 });
+
+describe("per-kilogram doses", () => {
+  const isotretinoin = (dosage: string) => [{ name: "Isotretinoin", dosage, frequency: "Once daily" }];
+  const MAN_50KG = { ...MAN_40, weightKg: 50 };
+
+  it("warns when the daily dose is above the usual mg/kg for the recorded weight", () => {
+    const findings = check(isotretinoin("60 mg"), { patient: MAN_50KG });
+    expect(rules(findings)).toEqual(["warn:dose.per-kg"]);
+    expect(findings[0]!.message).toBe("Isotretinoin: 60 mg a day is 1.2 mg/kg a day for 50 kg, above the usual 0.5 to 1 mg/kg a day. Check the dose (written: “60 mg, Once daily”).");
+  });
+
+  it("says nothing within the usual range, and cannot check without a weight", () => {
+    expect(check(isotretinoin("40 mg"), { patient: MAN_50KG })).toEqual([]);
+    expect(check(isotretinoin("60 mg"), { patient: MAN_40 })).toEqual([]);
+    // Above the daily maximum without a weight: the warning says the mg/kg dose could not be checked.
+    const unknown = check(isotretinoin("100 mg"), { patient: MAN_40 });
+    expect(rules(unknown)).toEqual(["warn:dose.max-daily"]);
+    expect(unknown[0]!.message).toContain("cannot be checked without the patient's weight");
+    // With a weight both say so, and the note goes.
+    const both = check(isotretinoin("100 mg"), { patient: MAN_50KG });
+    expect(rules(both)).toEqual(["warn:dose.max-daily", "warn:dose.per-kg"]);
+    expect(both[0]!.message).not.toContain("cannot be checked");
+  });
+});
+

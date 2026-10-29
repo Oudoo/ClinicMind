@@ -206,6 +206,7 @@ describe.skipIf(!dbTestsEnabled)("the evidence library and panel", () => {
       expect(context.status).toBe(200);
       expect(context.json.context).toEqual([
         "Woman, 24 years",
+        "Weight not recorded",
         expect.stringMatching(/^Pregnancy excluded on \d{1,2} \w{3} \d{4}$/),
         "Allergies: Sulfa drugs",
         "Medications: Isotretinoin 20 mg Once daily",
@@ -275,6 +276,30 @@ describe.skipIf(!dbTestsEnabled)("the evidence library and panel", () => {
 
       await updatePatient(request(`/api/patients/${id}`, { method: "PATCH", cookie: owner, body: { gender: "MALE" } }), idParams(id));
       expect(await db.patient.findUniqueOrThrow({ where: { id }, select: { pregnancyStatus: true, pregnancyCheckedAt: true } })).toEqual({ pregnancyStatus: null, pregnancyCheckedAt: null });
+    });
+
+    it("records the weight with its day (not ahead), and checks isotretinoin per kilogram against it", async () => {
+      const created = await json(await createPatient(request("/api/patients", { cookie: owner, body: { fullName: "Weighed Patient", gender: "MALE", phone: "+201005550003", weightKg: "62,5" } })));
+      expect(created.status).toBe(201);
+      const id = created.json.patient.id;
+      const row = await db.patient.findUniqueOrThrow({ where: { id } });
+      expect(row.weightKg).toBe(62.5);
+      expect(Date.now() - row.weighedAt!.getTime()).toBeLessThan(60_000);
+      const patch = (body: Record<string, unknown>) => updatePatient(request(`/api/patients/${id}`, { method: "PATCH", cookie: owner, body }), idParams(id));
+      for (const weightKg of [0, 500, "heavy"]) expect((await patch({ weightKg })).status).toBe(422);
+      expect((await patch({ weightKg: 70, weighedOn: new Date(Date.now() + 3 * DAY).toISOString().slice(0, 10) })).status).toBe(422);
+
+      expect((await patch({ weightKg: 50 })).status).toBe(200);
+      const c = await db.consultation.create({
+        data: { tenantId: a, patientId: id, doctorId, status: "PENDING_REVIEW", transcript: "Doctor: prescription discussed today.", extraction: { symptoms: [], diagnoses: [], medications: [], tests: [], followUps: [] }, summary: "" },
+      });
+      const res = await safetyCheck(request(`/api/consultations/${c.id}/safety-check`, { cookie: doctor, body: { medications: [{ name: "Isotretinoin", dosage: "60 mg", frequency: "Once daily" }] } }), idParams(c.id));
+      const checked = await res.json();
+      expect(checked.findings.map((f: { severity: string; rule: string }) => `${f.severity}:${f.rule}`)).toEqual(["warn:dose.per-kg"]);
+      expect(checked.context).toMatchObject({ weightKg: 50 });
+
+      expect((await patch({ weightKg: null })).status).toBe(200);
+      expect(await db.patient.findUniqueOrThrow({ where: { id }, select: { weightKg: true, weighedAt: true } })).toEqual({ weightKg: null, weighedAt: null });
     });
 
     it("feeds the prescribing checks: excluded recently, isotretinoin warns about contraception; too long ago, it stops; pregnant, doxycycline stops", async () => {

@@ -151,6 +151,10 @@ export const SAFETY_WARNING_ACKNOWLEDGED = "acknowledged";
 export interface SafetyCheckContext {
   sex: string;
   age: number | null;
+  /** A recent weight in kg (per-kilogram doses are checked), or null. */
+  weightKg?: number | null;
+  /** A recent pregnancy status: true pregnant, false excluded, null unknown. */
+  pregnant?: boolean | null;
   allergies: string[];
   conditions: string[];
   activeMedications: string[];

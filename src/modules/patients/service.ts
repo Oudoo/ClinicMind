@@ -43,6 +43,11 @@ export const LANGUAGES = ["ar", "en"] as const;
 
 const blankToUndefined = (v: unknown) => (typeof v === "string" && v.trim() === "" ? undefined : v);
 const zDayKey = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Use a date (YYYY-MM-DD)");
+/** kg, rounded to 100 g; "" or null clears it. */
+const zWeight = z.preprocess(
+  (v) => (v === "" || v === null ? null : typeof v === "string" ? Number(v.replace(",", ".")) : v),
+  z.number({ error: "A weight in kg" }).min(1, "A weight in kg").max(400, "A weight in kg").transform((n) => Math.round(n * 10) / 10).nullable().optional(),
+);
 const blankToNull = (v: unknown) => (typeof v === "string" && v.trim() === "" ? null : v);
 
 /** Nobody on the registry is older than this. */
@@ -111,6 +116,9 @@ export const PatientInput = z.object({
   /** Women only: PREGNANT, or NOT_PREGNANT when pregnancy was excluded; checked on `pregnancyCheckedOn` (today by default). */
   pregnancyStatus: z.enum(["PREGNANT", "NOT_PREGNANT"]).nullable().optional(),
   pregnancyCheckedOn: z.preprocess(blankToUndefined, zDayKey.optional()),
+  /** The weight in kg (1 decimal) and the day it was taken (today by default): per-kilogram doses are checked against it. */
+  weightKg: zWeight,
+  weighedOn: z.preprocess(blankToUndefined, zDayKey.optional()),
   /** Save even though the phone, WhatsApp or national id already belongs to another patient (409 otherwise). */
   confirmDuplicate: z.boolean().default(false),
 });
@@ -135,6 +143,9 @@ export const PatientUpdateInput = z.object({
   /** null clears it. */
   pregnancyStatus: z.enum(["PREGNANT", "NOT_PREGNANT"]).nullable().optional(),
   pregnancyCheckedOn: z.preprocess(blankToUndefined, zDayKey.optional()),
+  /** null clears it. */
+  weightKg: zWeight,
+  weighedOn: z.preprocess(blankToUndefined, zDayKey.optional()),
   /** Save even though a changed phone, WhatsApp or national id belongs to another patient (409 otherwise). */
   confirmDuplicate: z.boolean().optional(),
 });
@@ -185,6 +196,8 @@ const PROFILE_KEYS = [
   "marketingConsent",
   "pregnancyStatus",
   "pregnancyCheckedAt",
+  "weightKg",
+  "weighedAt",
 ] as const;
 type ProfileKey = (typeof PROFILE_KEYS)[number];
 
@@ -208,6 +221,18 @@ async function pregnancyColumns(
   if (!day) throw fail("pregnancyCheckedOn", "Not a real date");
   if (day.getTime() > now.getTime()) throw fail("pregnancyCheckedOn", "Not in the future");
   return { pregnancyStatus: status, pregnancyCheckedAt: day };
+}
+
+/** The weight columns for a weight sent (or null to clear it), taken on the day given (not in the future) or now. */
+async function weightColumns(tenantId: string, weightKg: number | null | undefined, weighedOn: string | undefined, now: Date): Promise<{ weightKg: number | null; weighedAt: Date | null } | null> {
+  if (weightKg === undefined) return null;
+  if (weightKg === null) return { weightKg: null, weighedAt: null };
+  if (!weighedOn) return { weightKg, weighedAt: now };
+  const fail = (message: string) => new z.ZodError([{ code: "custom", path: ["weighedOn"], message }]);
+  const day = fromDateKey(weighedOn, await getTenantTimezone(tenantId));
+  if (!day) throw fail("Not a real date");
+  if (day.getTime() > now.getTime()) throw fail("Not in the future");
+  return { weightKg, weighedAt: day };
 }
 
 /** JSON-safe audit snapshot of the profile columns (dates as ISO strings). */
@@ -828,6 +853,7 @@ export type PatientDetail = NonNullable<Awaited<ReturnType<typeof getPatient>>>;
 export async function createPatient(tenantId: string, input: unknown, actor: Actor = {}) {
   const data = PatientInput.parse(input);
   const pregnancy = await pregnancyColumns(tenantId, data.pregnancyStatus, data.pregnancyCheckedOn, data.gender, new Date());
+  const weight = await weightColumns(tenantId, data.weightKg, data.weighedOn, new Date());
   // The same number or national id on another active patient: 409 unless confirmed.
   const duplicateOf = await guardDuplicates(tenantId, data, data.confirmDuplicate);
   const patient = await db.patient.create({
@@ -851,6 +877,7 @@ export async function createPatient(tenantId: string, input: unknown, actor: Act
       marketingConsent: data.marketingConsent,
       marketingConsentAt: new Date(),
       ...(pregnancy ?? {}),
+      ...(weight ?? {}),
       medicalHistory: { create: { tenantId } },
     },
     include: { medicalHistory: true },
@@ -876,7 +903,7 @@ export async function createPatient(tenantId: string, input: unknown, actor: Act
  * first. Returns `null` when the patient is not an active member of the tenant.
  */
 export async function updatePatient(tenantId: string, id: string, input: unknown, actor: Actor = {}) {
-  const { confirmDuplicate, pregnancyStatus, pregnancyCheckedOn, ...fields } = PatientUpdateInput.parse(input);
+  const { confirmDuplicate, pregnancyStatus, pregnancyCheckedOn, weightKg, weighedOn, ...fields } = PatientUpdateInput.parse(input);
   const patch = definedEntries(fields);
 
   const existing = await db.patient.findFirst({ where: { id, tenantId, ...notDeleted } });
@@ -886,7 +913,9 @@ export async function updatePatient(tenantId: string, id: string, input: unknown
   const pregnancy = await pregnancyColumns(tenantId, pregnancyStatus === undefined && pregnancyCheckedOn ? existing.pregnancyStatus : pregnancyStatus, pregnancyCheckedOn, gender, new Date());
   // A man has no pregnancy on record.
   const cleared = gender === "MALE" && existing.pregnancyStatus ? { pregnancyStatus: null, pregnancyCheckedAt: null } : null;
-  const changes = { ...patch, ...(pregnancy ?? cleared ?? {}) };
+  // A day weighed without a weight re-dates the weight recorded.
+  const weight = await weightColumns(tenantId, weightKg === undefined && weighedOn ? existing.weightKg : weightKg, weighedOn, new Date());
+  const changes = { ...patch, ...(pregnancy ?? cleared ?? {}), ...(weight ?? {}) };
   const keys = Object.keys(changes) as ProfileKey[];
   if (keys.length === 0) return existing;
 

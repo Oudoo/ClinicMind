@@ -57,6 +57,10 @@ export interface PatientFormValues {
   pregnancyStatus: "" | "PREGNANT" | "NOT_PREGNANT";
   /** The day it was checked (`YYYY-MM-DD` on the clinic clock), or blank for today. */
   pregnancyCheckedOn: string;
+  /** kg, as typed ("" when none). */
+  weightKg: string;
+  /** The day it was taken (`YYYY-MM-DD` on the clinic clock), or blank for today. */
+  weighedOn: string;
 }
 
 export const PREGNANCY_LABELS: Record<"" | "PREGNANT" | "NOT_PREGNANT", string> = {
@@ -83,6 +87,8 @@ export const EMPTY_PATIENT_FORM: PatientFormValues = {
   marketingConsent: false,
   pregnancyStatus: "",
   pregnancyCheckedOn: "",
+  weightKg: "",
+  weighedOn: "",
 };
 
 export interface HistoryFormValues {
@@ -111,6 +117,8 @@ export function patientFormValues(patient: {
   marketingConsent?: boolean;
   pregnancyStatus?: "PREGNANT" | "NOT_PREGNANT" | null;
   pregnancyCheckedAt?: Date | null;
+  weightKg?: number | null;
+  weighedAt?: Date | null;
 }, timezone = "Africa/Cairo"): PatientFormValues {
   return {
     fullName: patient.fullName,
@@ -130,6 +138,8 @@ export function patientFormValues(patient: {
     marketingConsent: patient.marketingConsent ?? false,
     pregnancyStatus: patient.pregnancyStatus ?? "",
     pregnancyCheckedOn: patient.pregnancyStatus && patient.pregnancyCheckedAt ? dateKeyInTz(patient.pregnancyCheckedAt, timezone) : "",
+    weightKg: patient.weightKg != null ? String(patient.weightKg) : "",
+    weighedOn: patient.weightKg != null && patient.weighedAt ? dateKeyInTz(patient.weighedAt, timezone) : "",
   };
 }
 

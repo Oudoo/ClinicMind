@@ -33,6 +33,7 @@ import { canSeeAccounts, patientBalances } from "@/modules/finance/ledger";
 import { getHousehold } from "@/modules/finance/household";
 import { getTenantTimezone } from "@/modules/appointments/service";
 import { pregnancyLine } from "@/modules/patients/pregnancy";
+import { weightLine } from "@/modules/patients/weight";
 import {
   GENDER_LABELS,
   languageLabel,
@@ -157,11 +158,15 @@ export default async function PatientPage({ params, searchParams }: { params: Pr
                   {age !== null ? `${age} years` : "Age unknown"} · {GENDER_LABELS[patient.gender]}
                   {patient.dateOfBirth ? ` · born ${formatCalendarDate(patient.dateOfBirth)}` : ""}
                 </p>
-                {patient.gender !== "MALE" ? (
-                  <p className="text-xs text-muted-foreground" data-testid="patient-pregnancy">
-                    {pregnancyLine(patient, timezone)}
-                  </p>
-                ) : null}
+                <p className="text-xs text-muted-foreground">
+                  <span data-testid="patient-weight">{weightLine(patient, timezone)}</span>
+                  {patient.gender !== "MALE" ? (
+                    <>
+                      {" · "}
+                      <span data-testid="patient-pregnancy">{pregnancyLine(patient, timezone)}</span>
+                    </>
+                  ) : null}
+                </p>
                 <dl className="flex flex-wrap gap-x-5 gap-y-1 font-mono text-xs text-muted-foreground">
                   <ContactItem icon={Phone} label="Phone" value={patient.phone} />
                   <ContactItem icon={MessageCircle} label="WhatsApp" value={patient.whatsapp} />

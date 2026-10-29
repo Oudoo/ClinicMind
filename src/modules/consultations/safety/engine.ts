@@ -47,6 +47,8 @@ export interface PrescribingPatient {
   dateOfBirth?: Date | string | null;
   /** true: pregnant · false: pregnancy excluded · null/undefined: unknown. */
   pregnant?: boolean | null;
+  /** A recent weight in kg (per-kilogram doses); null/undefined: not known. */
+  weightKg?: number | null;
 }
 
 export interface PrescribingInput {
@@ -90,7 +92,7 @@ export function checkPrescribing(input: PrescribingInput): SafetyFinding[] {
     const pregnancy = pregnancyFinding(p, patient);
     if (pregnancy) push(pregnancy);
     ageFindings(p, patient).forEach(push);
-    doseFindings(p).forEach(push);
+    doseFindings(p, patient).forEach(push);
     conditionFindings(p, conditions).forEach(push);
   }
   duplicateFindings(proposed, active).forEach(push);
@@ -171,6 +173,7 @@ interface PatientFacts {
   childbearing: boolean;
   pregnant: boolean | null;
   pregnancySource: "record" | "condition" | null;
+  weightKg: number | null;
 }
 
 export function ageInYears(dob: Date | string | null | undefined, now: Date): number | null {
@@ -210,7 +213,8 @@ function describePatient(p: PrescribingPatient, conditions: readonly string[], n
     pregnant = true;
     pregnancySource = "condition";
   }
-  return { female, sexKnown, age, childbearing, pregnant, pregnancySource };
+  const weightKg = typeof p.weightKg === "number" && p.weightKg > 0 ? p.weightKg : null;
+  return { female, sexKnown, age, childbearing, pregnant, pregnancySource, weightKg };
 }
 
 function womanDescription(p: PatientFacts): string {
@@ -348,7 +352,7 @@ function ageFindings(p: Resolved, patient: PatientFacts): SafetyFinding[] {
 
 // ── Dose ─────────────────────────────────────────────────────────────────────
 
-function doseFindings(p: Resolved): SafetyFinding[] {
+function doseFindings(p: Resolved, patient: PatientFacts): SafetyFinding[] {
   if (p.id.ingredients.length !== 1) return [];
   const ingredient = p.id.ingredients[0]!;
   const dose = dailyDose(p.med);
@@ -369,18 +373,37 @@ function doseFindings(p: Resolved): SafetyFinding[] {
     return [];
   }
 
-  if (!ingredient.maxDailyMg || p.id.route !== "oral" || !dose) return [];
-  if (dose.dailyMg <= ingredient.maxDailyMg + 1e-9) return [];
-  const amount = dose.dosesPerDay === null ? `a single dose of ${formatMg(dose.perDoseMg)}` : `${formatMg(dose.dailyMg)} a day`;
-  const note = ingredient.doseNote ? ` (${ingredient.doseNote})` : "";
-  return [
-    finding(p, "dose.max-daily", "warn", `${named(p, ingredient)}: ${amount} is above the usual maximum of ${formatMg(ingredient.maxDailyMg)} a day${note}. Check the dose (written: “${written}”).`, {
-      dailyMg: dose.dailyMg,
-      perDoseMg: dose.perDoseMg,
-      dosesPerDay: dose.dosesPerDay,
-      maxDailyMg: ingredient.maxDailyMg,
-    }),
-  ];
+  if (p.id.route !== "oral" || !dose) return [];
+  const out: SafetyFinding[] = [];
+  // Per kilogram, when the dose is daily and a recent weight is on the record (isotretinoin).
+  const perKgChecked = Boolean(ingredient.perKg && patient.weightKg && dose.dosesPerDay !== null);
+  if (ingredient.maxDailyMg && dose.dailyMg > ingredient.maxDailyMg + 1e-9) {
+    const amount = dose.dosesPerDay === null ? `a single dose of ${formatMg(dose.perDoseMg)}` : `${formatMg(dose.dailyMg)} a day`;
+    const note = ingredient.doseNote && !perKgChecked ? ` (${ingredient.doseNote})` : "";
+    out.push(
+      finding(p, "dose.max-daily", "warn", `${named(p, ingredient)}: ${amount} is above the usual maximum of ${formatMg(ingredient.maxDailyMg)} a day${note}. Check the dose (written: “${written}”).`, {
+        dailyMg: dose.dailyMg,
+        perDoseMg: dose.perDoseMg,
+        dosesPerDay: dose.dosesPerDay,
+        maxDailyMg: ingredient.maxDailyMg,
+      }),
+    );
+  }
+  if (perKgChecked && ingredient.perKg && patient.weightKg) {
+    const mgPerKg = dose.dailyMg / patient.weightKg;
+    if (mgPerKg > ingredient.perKg.maxDailyMgPerKg + 1e-9) {
+      const perKg = Math.round(mgPerKg * 100) / 100;
+      out.push(
+        finding(p, "dose.per-kg", "warn", `${named(p, ingredient)}: ${formatMg(dose.dailyMg)} a day is ${perKg} mg/kg a day for ${patient.weightKg} kg, above ${ingredient.perKg.usual}. Check the dose (written: “${written}”).`, {
+          dailyMg: dose.dailyMg,
+          weightKg: patient.weightKg,
+          mgPerKg: perKg,
+          maxDailyMgPerKg: ingredient.perKg.maxDailyMgPerKg,
+        }),
+      );
+    }
+  }
+  return out;
 }
 
 // ── Conditions ───────────────────────────────────────────────────────────────

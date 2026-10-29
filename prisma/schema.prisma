@@ -398,6 +398,9 @@ model Patient {
   /// evidence panel use it while it is recent (modules/patients/pregnancy.ts).
   pregnancyStatus    PregnancyStatus?
   pregnancyCheckedAt DateTime?
+  /// The last weight recorded, in kg, and when: per-kilogram doses are checked against it.
+  weightKg           Float?
+  weighedAt          DateTime?
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt

@@ -4,10 +4,11 @@ import { getTenantTimezone } from "@/modules/appointments/service";
 import { loadSafetyRecord } from "@/modules/consultations/safety/context";
 import { ageInYears } from "@/modules/consultations/safety/engine";
 import { pregnancyLine } from "@/modules/patients/pregnancy";
+import { weightLine } from "@/modules/patients/weight";
 
 /**
- * What goes with a question about a patient: their age, sex, pregnancy (when
- * it matters), allergies, medications and conditions, never their name,
+ * What goes with a question about a patient: their age, sex, weight, pregnancy
+ * (when it matters), allergies, medications and conditions, never their name,
  * phone, national ID or date of birth. And what to take out of the
  * question itself before it goes anywhere: the patient's name, numbers and
  * e-mail addresses.
@@ -32,6 +33,7 @@ export async function evidenceContext(tenantId: string, patientId: string, now: 
   const conditions = [...new Set([...record.chronicConditions, ...record.diagnoses])];
   const lines = [
     age === null ? `${sex}, age not recorded` : `${sex}, ${age} years`,
+    weightLine(record, tz, now),
     ...(record.gender === "MALE" ? [] : [pregnancyLine(record, tz, now)]),
     // "; " between items: a diagnosis can hold a comma ("Atopic dermatitis flare, flexural").
     record.allergies.length ? `Allergies: ${record.allergies.join("; ")}` : "No allergies recorded",

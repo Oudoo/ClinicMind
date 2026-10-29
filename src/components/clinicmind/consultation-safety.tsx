@@ -284,10 +284,14 @@ export function SafetyPanel({
 function CheckedAgainst({ context }: { context: SafetyCheckContext }) {
   const sex = context.sex === "FEMALE" ? "female" : context.sex === "MALE" ? "male" : "sex not recorded";
   const age = context.age === null ? "age not recorded" : `${context.age} years`;
+  const weight = context.weightKg ? `, ${context.weightKg} kg` : ", weight not recorded";
+  const pregnancy = context.sex === "MALE" ? "" : context.pregnant === true ? ", pregnant" : context.pregnant === false ? ", pregnancy excluded" : "";
   return (
     <div className="space-y-1 border-t border-border pt-2 text-xs text-muted-foreground">
       <p>
-        <span className="font-medium text-foreground">Checked against:</span> {sex}, {age} ·{" "}
+        <span className="font-medium text-foreground">Checked against:</span> {sex}, {age}
+        {weight}
+        {pregnancy} ·{" "}
         {context.allergies.length ? `allergies: ${context.allergies.join(", ")}` : "no allergies recorded"} ·{" "}
         {context.activeMedications.length ? `current: ${context.activeMedications.join(", ")}` : "no current medications"}
         {context.conditions.length ? ` · conditions: ${context.conditions.join(", ")}` : ""}

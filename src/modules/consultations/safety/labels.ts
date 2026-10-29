@@ -16,6 +16,7 @@ const EXACT: Record<string, string> = {
   "pregnancy.contraception": "Contraception needed",
   "pregnancy.sex-unknown": "Sex not recorded",
   "dose.max-daily": "Dose above the daily maximum",
+  "dose.per-kg": "Dose above the usual per kilogram",
   "dose.max-weekly": "Dose above the weekly maximum",
   "dose.weekly-only": "Once-weekly medicine",
 };
