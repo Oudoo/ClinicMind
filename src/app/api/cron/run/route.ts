@@ -16,7 +16,7 @@ export async function POST(req: Request) {
   if (auth !== `Bearer ${env.CRON_SECRET}`) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   const job = new URL(req.url).searchParams.get("job");
   if (job && !JOBS.some((j) => j.name === job)) return NextResponse.json({ error: "unknown_job", jobs: JOBS.map((j) => j.name) }, { status: 404 });
-  const results = await runDueJobs(new Date(), { force: true, only: job ? [job] : undefined });
+  const results = await runDueJobs(new Date(), job ? { force: true, only: [job] } : {});
   return NextResponse.json({ ranAt: new Date().toISOString(), results });
 }
 

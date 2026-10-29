@@ -5,8 +5,9 @@ const FIRST_TICK_MS = 20_000;
 
 /**
  * In-process scheduler: one timer per server process, started from
- * instrumentation.ts. Fine for a single instance; with several instances set
- * SCHEDULER=off on all but one, or use the cron endpoint instead.
+ * instrumentation.ts. Several instances may all run it (Hostinger starts two):
+ * each job's run is claimed in the database first (run.ts), so it still runs
+ * once per interval.
  */
 export function startScheduler(): void {
   const g = globalThis as typeof globalThis & { __clinicmindScheduler?: ReturnType<typeof setInterval> };

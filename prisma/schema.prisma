@@ -3240,3 +3240,13 @@ model ClaimAnswer {
   @@index([payerPaymentId])
   @@map("claim_answers")
 }
+
+/// When each background job last ran, for every server process at once: a process runs a job only
+/// after claiming its run here, so two processes (or a process and the cron endpoint) never run the
+/// same job twice in one interval (modules/jobs/run.ts). Not a clinic's data: system connection only.
+model JobRun {
+  name      String   @id
+  lastRunAt DateTime
+
+  @@map("job_runs")
+}
