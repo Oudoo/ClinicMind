@@ -23,6 +23,7 @@
 // domain names, never account user names, IP addresses, e-mail addresses or secret values.
 import { spawn } from "node:child_process";
 import { createHmac } from "node:crypto";
+import { lookup } from "node:dns/promises";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import readline from "node:readline";
@@ -381,7 +382,34 @@ async function status(api, request) {
     printAnalysis(answer?.analysis);
   });
   await section("The app's log (last hour)", () => runtimeLogs(api, site.username, domain));
+  await section("SSL, CDN and cache", async () => {
+    const settings = await api.call("hosting_websites_get-settings", { domain });
+    console.log(`  ssl=${show(settings?.ssl?.status)}  https_redirect=${show(settings?.ssl?.is_https_redirect_enabled ?? settings?.ssl?.https_redirect)}  cdn=${show(settings?.cdn?.is_enabled)}  cache=${show(settings?.cache?.is_enabled)}`);
+    if (settings?.ssl?.last_error ?? settings?.ssl?.error) console.log(`  ssl error: ${redact(JSON.stringify(settings.ssl.last_error ?? settings.ssl.error))}`);
+  });
+  await section("From the internet", () => reachability(domain));
   await section("Health check", async () => console.log(`  ${await health(domain, 2)}`));
+}
+
+/** Where a request to the site stops: the name, plain HTTP, then HTTPS, 15 s each. */
+async function reachability(domain) {
+  try {
+    const addresses = await lookup(domain, { all: true });
+    console.log(`  DNS: ${addresses.length} address${addresses.length === 1 ? "" : "es"} (${addresses.map((a) => `IPv${a.family}`).join(", ")})`);
+  } catch (err) {
+    console.log(`  DNS: ${err.code ?? err.message}`);
+    return;
+  }
+  for (const url of [`http://${domain}/api/health`, `https://${domain}/api/health`]) {
+    const started = Date.now();
+    try {
+      const res = await fetch(url, { redirect: "manual", signal: AbortSignal.timeout(15_000) });
+      const location = res.headers.get("location");
+      console.log(`  ${url} → ${res.status}${location ? ` → ${location}` : ""} in ${Date.now() - started} ms (server: ${show(res.headers.get("server"))})`);
+    } catch (err) {
+      console.log(`  ${url} → ${err?.name === "TimeoutError" ? "no answer in 15 s" : (err?.cause?.code ?? err?.message ?? err)}`);
+    }
+  }
 }
 
 const ACTIONS = { inventory, deploy, status };
