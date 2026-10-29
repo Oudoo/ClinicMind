@@ -11,15 +11,18 @@
 //   { "action": "deploy", "domain": "cm.growcdx.com", "app": ".hostinger/app" }
 //       the demo on the Node.js web hosting (docs/HOSTINGER.md): creates the website on the
 //       Business or Cloud plan when it is not there, sets its environment variables, uploads
-//       the bundle scripts/hostinger-package.sh made, follows the build and checks the site.
+//       the bundle scripts/hostinger-package.sh made, follows the build and checks the site
+//       (restarting the app when it does not answer).
 //       Needs DEMO_DATABASE_URL (PostgreSQL outside Hostinger); the app's database password
 //       and its secrets are derived from it, so they stay the same from one deploy to the next.
-//       "reseed": true rebuilds the demo clinic around today.
+//       "reseed": true rebuilds the demo clinic around today, with the running app's scheduler
+//       off until the new app runs.
 //   { "action": "status", "domain": "cm.growcdx.com" }
-//       read only: the last build, the app's log ("logPeriod", 24h by default) and its errors,
-//       its environment variable names, the SSL and CDN settings and a health check. The
-//       "Hostinger status" workflow runs it from deploy/hostinger/status.json, beside a deploy.
-//       "restart": true restarts the app first (Hostinger's remedy for a hung process).
+//       read only: the last build, the app's log and its errors ("logPeriod": 1h, 1d, 1w or
+//       1m; 1d by default), its environment variable names, the SSL and CDN settings and a
+//       health check. The "Hostinger status" workflow runs it from deploy/hostinger/status.json,
+//       beside a deploy. "restart": true restarts the app first (Hostinger's remedy for a hung
+//       process).
 //
 // The repository is public, so its workflow logs are too: this prints plan names, states and
 // domain names, never account user names, IP addresses, e-mail addresses or secret values.
@@ -339,20 +342,37 @@ async function followBuild(api, domain, buildUuid) {
   return state || "unknown (still running after 50 minutes)";
 }
 
+/** The site's health check, up to `attempts` times: whether it answered healthy, and what it said. */
 async function health(domain, attempts = 20) {
   for (let i = 0; i < attempts; i++) {
     try {
       // A site that is still starting can hold the request open: give up on it after 20 s.
       const res = await fetch(`${siteUrl(domain)}/api/health`, { headers: { "cache-control": "no-store" }, signal: AbortSignal.timeout(20_000) });
       const body = await res.text();
-      if (res.ok && body.includes('"service":"clinicmind"')) return `${res.status} ${body}`;
+      if (res.ok && body.includes('"service":"clinicmind"')) return { ok: true, text: `${res.status} ${body}` };
       console.log(`  ${siteUrl(domain)}/api/health → ${res.status}; trying again`);
     } catch (err) {
       console.log(`  ${siteUrl(domain)}/api/health → ${err instanceof Error ? err.cause?.code ?? err.message : err}; trying again`);
     }
     if (i < attempts - 1) await sleep(POLL_MS);
   }
-  return `no healthy answer after ${attempts} tries`;
+  return { ok: false, text: `no healthy answer after ${attempts} tries` };
+}
+
+/**
+ * The health check after a deploy. The app Hostinger starts at the end of a build can be up
+ * without its requests ever reaching it (HTTPS waits, the app logs nothing); restarting it
+ * through the API, Hostinger's remedy for a hung process, has brought it back. Up to two.
+ */
+async function ensureHealthy(api, username, domain) {
+  let result = await health(domain, 3);
+  for (let restart = 1; !result.ok && restart <= 2; restart++) {
+    console.log(`  no answer: restarting the app (${restart} of 2)`);
+    await api.call("hosting_nodejs_restart-application", { username, domain });
+    await sleep(Math.max(POLL_MS, 20_000));
+    result = await health(domain, 6);
+  }
+  return result;
 }
 
 /** The app's newest log entries (`limit`) of the last `period`, optionally only some levels. */
@@ -374,26 +394,51 @@ async function deploy(api, request) {
   const domain = request.domain;
   if (!domain) throw new Error('The request needs "domain".');
   const appDir = path.resolve(request.app ?? ".hostinger/app");
-  const envVars = demoEnvironment(domain, Boolean(request.reseed));
+  const reseed = Boolean(request.reseed);
+  const envVars = demoEnvironment(domain, reseed);
   console.log("\n▶ Website");
   const site = await website(api, domain, request.create !== false);
   const username = site.username;
+  const setEnvironment = (vars) => api.call("hosting_nodejs_replace-environment-variables", { username, domain, env_vars: vars });
+  const restart = () => api.call("hosting_nodejs_restart-application", { username, domain });
   console.log(`\n▶ Environment variables (${envVars.map((e) => e.key).join(", ")})`);
-  await api.call("hosting_nodejs_replace-environment-variables", { username, domain, env_vars: envVars });
-  console.log("\n▶ Upload and build");
-  const started = await api.call("hosting_deploy", { domain, path: appDir, type: "nodejs", appType: "next", nodeVersion: request.nodeVersion ?? 22, buildScript: "build", outputDirectory: ".next" }, 20 * 60_000);
-  const buildUuid = find(started, "buildUuid") ?? find(started, "build_uuid") ?? find(started, "uuid");
-  console.log(`  build ${show(buildUuid)} started`);
-  const state = await followBuild(api, domain, buildUuid);
-  console.log(`\n▶ Build: ${state}`);
+  if (reseed && site.website_type === "nodejs") {
+    // The build rebuilds the demo clinic while the running app goes on with its jobs, which would
+    // work on a clinic half built (and the app before job claims ran each one twice): the app runs
+    // without its scheduler until the new one is up.
+    console.log("  with SCHEDULER=off until the new app runs; restarting the running app with it");
+    await setEnvironment([...envVars, { key: "SCHEDULER", value: "off" }]);
+    await restart();
+  } else {
+    await setEnvironment(envVars);
+  }
+  let state = "";
+  try {
+    console.log("\n▶ Upload and build");
+    const started = await api.call("hosting_deploy", { domain, path: appDir, type: "nodejs", appType: "next", nodeVersion: request.nodeVersion ?? 22, buildScript: "build", outputDirectory: ".next" }, 20 * 60_000);
+    const buildUuid = find(started, "buildUuid") ?? find(started, "build_uuid") ?? find(started, "uuid");
+    console.log(`  build ${show(buildUuid)} started`);
+    state = await followBuild(api, domain, buildUuid);
+    console.log(`\n▶ Build: ${state}`);
+  } finally {
+    if (reseed) {
+      // Back to the usual variables (the scheduler on, no rebuilding on later builds), whatever the build did.
+      console.log("\n▶ The usual environment again (scheduler on), and a restart to apply it");
+      await setEnvironment(demoEnvironment(domain, false));
+      await restart();
+      await sleep(Math.max(POLL_MS, 20_000));
+    }
+  }
   if (!/^completed/i.test(state)) {
     process.exitCode = 1;
     return;
   }
   console.log("\n▶ Health check");
-  console.log(`  ${await health(domain)}`);
+  const result = await ensureHealthy(api, username, domain);
+  console.log(`  ${result.text}`);
   console.log("\n▶ The app's log (last hour)");
   await runtimeLogs(api, username, domain).catch((err) => console.log(`  could not read: ${redact(err.message)}`));
+  if (!result.ok) process.exitCode = 1;
 }
 
 async function status(api, request) {
@@ -413,7 +458,7 @@ async function status(api, request) {
     console.log(redact(logText(answer).split("\n").slice(-30).join("\n")));
     printAnalysis(answer?.analysis);
   });
-  const period = request.logPeriod ?? "24h";
+  const period = request.logPeriod ?? "1d";
   await section(`The app's log (newest 60 entries of ${period})`, () => runtimeLogs(api, username, domain, { period, limit: 60 }));
   await section(`Errors and warnings (${period})`, () => runtimeLogs(api, username, domain, { period, limit: 40, levels: ["ERROR", "WARN"] }));
   await section("Environment variables (names only)", async () => {
@@ -427,7 +472,7 @@ async function status(api, request) {
     console.log(`  CDN status: ${redact(JSON.stringify(await api.call("hosting_cdn_status", { username, domain }))).slice(0, 500)}`);
   });
   await section("From the internet", () => reachability(domain));
-  await section("Health check", async () => console.log(`  ${await health(domain, 2)}`));
+  await section("Health check", async () => console.log(`  ${(await health(domain, 2)).text}`));
 }
 
 /** Where a request to the site stops: the name, plain HTTP, then HTTPS, 15 s each. */

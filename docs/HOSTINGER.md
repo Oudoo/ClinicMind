@@ -18,7 +18,9 @@ runs no background workers besides the app itself.
 
 The **Hostinger** workflow (`.github/workflows/hostinger.yml`) does everything through
 Hostinger's API: it creates the website if needed, sets its environment variables, uploads the
-app, follows the build and checks the site.
+app, follows the build and checks the site. When the app Hostinger starts at the end of a build
+does not answer, it restarts it (up to twice), and then runs the end-to-end suite against the
+live site: every account's pages, signing in and out, a patient's account, the phone layout.
 
 1. Add these repository secrets (GitHub → Settings → Secrets and variables → Actions):
    - `HOSTINGER_API_TOKEN`: hPanel → Account → API.
@@ -29,8 +31,12 @@ app, follows the build and checks the site.
 
 The workflow derives the app's database password and its secrets from `DEMO_DATABASE_URL`, so
 they stay the same from one deploy to the next, and it uses the direct host when given a pooled
-one. `{ "action": "status", "domain": "cm.growcdx.com" }` shows the last build, the app's log
-and its health check without changing anything.
+one. `{ "action": "status", "domain": "cm.growcdx.com" }` in `deploy/hostinger/status.json`
+(the **Hostinger status** workflow) shows the last build, the app's log and its errors, its
+environment variable names, the SSL and CDN settings and its health check, without changing
+anything; with `"restart": true` it restarts the app first. A deploy with `"reseed": true`
+rebuilds the demo clinic around today; the running app's background jobs are off until the new
+app runs, so none of them works on a clinic half built.
 
 ## Option B: upload the zip in hPanel
 
@@ -84,7 +90,11 @@ Open `APP_URL/login`. Every demo account uses `SEED_DEMO_PASSWORD`:
 ## Limits of this hosting
 
 - Reminders and other scheduled jobs run inside the app, so only while Hostinger keeps the app
-  running.
+  running. Hostinger runs two copies of it; each job still runs once, because every run is
+  claimed in the database first.
+- If the site stops answering (the page keeps loading, the app's log shows nothing new),
+  restart the app: push `deploy/hostinger/status.json` with `"restart": true`, or use the
+  restart button on the website's Node.js page in hPanel.
 - A request that takes longer than 120 seconds is stopped. Long AI calls time out at 30 seconds
   first (`AI_TIMEOUT_MS`).
 - Files sent to the app (lab reports, receipt photos) are kept in the database, so a redeploy
