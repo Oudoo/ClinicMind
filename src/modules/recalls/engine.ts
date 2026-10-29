@@ -6,6 +6,8 @@ import { stageShare, summarizeCharges } from "@/modules/finance/charges";
 import {
   ACTIVE_RECALL_STATUSES,
   DUE_SOON_DAYS,
+  END_AFTER_SILENT_DAYS,
+  END_AFTER_WINDOW_DAYS,
   LAPSED_HORIZON_MONTHS,
   LAPSED_MONTHS,
   MISSED_AFTER_HOURS,
@@ -757,6 +759,32 @@ async function wakeSnoozed(tenantId: string, now: Date): Promise<number> {
   return n;
 }
 
+/**
+ * Every recall ends: one still waiting END_AFTER_WINDOW_DAYS after its window
+ * ended, with nothing done on it for END_AFTER_SILENT_DAYS (no call, message,
+ * snooze ending or note), is ended as unreachable by the system. Its messages
+ * went and the desk had its chance; reopening it puts it back on the list.
+ */
+async function endForgotten(tenantId: string, now: Date): Promise<number> {
+  const rows = await db.recall.findMany({
+    where: {
+      tenantId,
+      status: { in: ["OPEN", "CONTACTED"] },
+      windowEndAt: { lt: new Date(now.getTime() - END_AFTER_WINDOW_DAYS * DAY_MS) },
+      activities: { none: { at: { gt: new Date(now.getTime() - END_AFTER_SILENT_DAYS * DAY_MS) } } },
+    },
+    orderBy: { windowEndAt: "asc" },
+    take: 500,
+    select: { id: true },
+  });
+  let n = 0;
+  for (const r of rows) {
+    const note = `Not booked ${END_AFTER_WINDOW_DAYS} days after its window ended, nothing done on it for ${END_AFTER_SILENT_DAYS}: ended automatically.`;
+    if (await closeRecall(tenantId, r.id, { status: "UNREACHABLE", note, outcomeNote: note, at: now })) n += 1;
+  }
+  return n;
+}
+
 /** A course with sessions left and no recall for the next one (the hook failed, or it predates recalls). */
 async function recallCourses(tenantId: string, now: Date, tz: string): Promise<number> {
   const courses = await db.procedure.findMany({
@@ -954,11 +982,13 @@ export interface SweepSummary {
   made: { sessions: number; missed: number; unbooked: number; lapsed: number };
   synced: number;
   woken: number;
+  /** Ended as unreachable, long past their window (endForgotten). */
+  ended: number;
 }
 
 /** One pass over every active clinic (the `recalls-sweep` job), or one clinic. */
 export async function sweepRecalls(now: Date = new Date(), opts: { tenantId?: string } = {}): Promise<SweepSummary> {
-  const summary: SweepSummary = { tenants: 0, made: { sessions: 0, missed: 0, unbooked: 0, lapsed: 0 }, synced: 0, woken: 0 };
+  const summary: SweepSummary = { tenants: 0, made: { sessions: 0, missed: 0, unbooked: 0, lapsed: 0 }, synced: 0, woken: 0, ended: 0 };
   const tenants = await db.tenant.findMany({ where: { status: "ACTIVE", deletedAt: null, ...(opts.tenantId ? { id: opts.tenantId } : {}) }, select: { id: true } });
   for (const tenant of tenants) {
     summary.tenants += 1;
@@ -968,6 +998,8 @@ export async function sweepRecalls(now: Date = new Date(), opts: { tenantId?: st
       await syncPatientRecalls(tenant.id, patientId, now, tz);
       summary.synced += 1;
     }
+    // After the sync, so a recall a visit served is done, not ended.
+    summary.ended += await endForgotten(tenant.id, now);
     summary.made.sessions += await recallCourses(tenant.id, now, tz);
     summary.made.missed += await recallMissedVisits(tenant.id, now, tz);
     summary.made.unbooked += await recallUnbookedPlans(tenant.id, now, tz);

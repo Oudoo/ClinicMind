@@ -1,3 +1,4 @@
+import type { VisitRecallDTO } from "@/modules/recalls/dto";
 import type { AppointmentKind, AppointmentNoteKind, AppointmentStatus, WorkingHours } from "./transitions";
 
 /**
@@ -85,6 +86,8 @@ export interface NextAppointmentDTO {
   hours: WorkingHours;
   /** Server clock at the time of the answer, for the client's countdown. */
   now: string;
+  /** The patient's recalls for `appointment`: what it is booked for, then what is due by then (recalls/service.ts). */
+  recalls?: VisitRecallDTO[];
 }
 
 /** One cell of the free-slot grid (`GET /api/appointments/free-slots`). */

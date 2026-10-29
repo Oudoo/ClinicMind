@@ -22,6 +22,7 @@ import { MedicalHistoryEditor } from "@/components/clinicmind/patient-history-ed
 import { PatientTimeline } from "@/components/clinicmind/patient-timeline";
 import { PatientVisitsTable, type VisitRow } from "@/components/clinicmind/patient-visits-table";
 import { PatientNextAppointment } from "@/components/clinicmind/patient-next-appointment";
+import { PatientRecalls } from "@/components/clinicmind/patient-recalls";
 import { PatientConciergeCard } from "@/components/clinicmind/patient-concierge-card";
 import { PatientFinanceCard } from "@/components/clinicmind/patient-finance-card";
 import { PatientLeadCard } from "@/components/clinicmind/patient-lead-card";
@@ -302,6 +303,7 @@ export default async function PatientPage({ params, searchParams }: { params: Pr
 
               <div className="space-y-4">
                 <PatientNextAppointment tenantId={ctx.tenantId} userId={ctx.userId} role={ctx.role} patientId={patient.id} canWrite={canWrite && !archived} />
+                <PatientRecalls tenantId={ctx.tenantId} role={ctx.role} patientId={patient.id} archived={archived} />
                 <Card className="space-y-3">
                   <SectionTitle title="Upcoming appointments" />
                   {patient.upcomingAppointments.length ? (

@@ -30,6 +30,7 @@ import {
   medicationStartDays,
 } from "../../prisma/seed/clinical";
 import { accountPosition } from "@/modules/finance/ledger";
+import { END_AFTER_SILENT_DAYS, END_AFTER_WINDOW_DAYS } from "@/modules/recalls/constants";
 import { addDays, dateKeyInTz } from "@/lib/time";
 import { adjustmentsReport, balancesReport, branchReport, dayCloseReport, incomeReport, productionReport, providersReport, reportScope } from "@/modules/finance/reports";
 
@@ -392,5 +393,22 @@ describe("the seeded demo database (when DATABASE_URL points at one)", () => {
     // Every kind is on the list somewhere, so the demo shows each.
     const kinds = new Set((await db.recall.findMany({ where: { tenantId }, select: { kind: true }, distinct: ["kind"] })).map((r) => r.kind));
     expect([...kinds].sort()).toEqual(["LAPSED", "MISSED", "NEXT_SESSION", "REVIEW", "UNBOOKED"]);
+  });
+
+  it("ends every recall: none still waits long after its window with nothing done on it (as seeded)", async (ctx) => {
+    if (!demo) return ctx.skip();
+    const now = Date.now();
+    const forgotten = await db.recall.findMany({
+      where: {
+        tenantId: demo.id,
+        status: { in: ["OPEN", "CONTACTED"] },
+        windowEndAt: { lt: new Date(now - END_AFTER_WINDOW_DAYS * 86_400_000) },
+        activities: { none: { at: { gt: new Date(now - END_AFTER_SILENT_DAYS * 86_400_000) } } },
+      },
+      select: { dedupeKey: true },
+    });
+    expect(forgotten.map((r) => r.dedupeKey)).toEqual([]);
+    // And some were ended that way, so the demo shows it.
+    expect(await db.recall.count({ where: { tenantId: demo.id, status: "UNREACHABLE", closedById: null } })).toBeGreaterThan(0);
   });
 });

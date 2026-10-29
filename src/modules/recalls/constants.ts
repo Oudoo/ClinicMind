@@ -95,6 +95,10 @@ export const UNBOOKED_AFTER_DAYS = 3;
 export const LAPSED_MONTHS = [12, 18] as const;
 /** Patients last seen longer ago than this are left to campaigns, not to the recall list. */
 export const LAPSED_HORIZON_MONTHS = 24;
+/** A recall still waiting this many days after its window ended… */
+export const END_AFTER_WINDOW_DAYS = 60;
+/** …with nothing done on it for this many days is ended as unreachable by the system (every recall ends). */
+export const END_AFTER_SILENT_DAYS = 30;
 
 export const RECALL_CHANNELS = ["WHATSAPP", "VOICE", "SMS"] as const satisfies readonly ChannelType[];
 export const CHANNEL_LABEL: Record<(typeof RECALL_CHANNELS)[number], string> = { WHATSAPP: "WhatsApp", VOICE: "Phone call", SMS: "SMS" };

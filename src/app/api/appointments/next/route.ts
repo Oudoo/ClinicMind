@@ -4,6 +4,7 @@ import { handleApiError, ok, unauthorized } from "@/lib/api";
 import { requireTenantPatient } from "@/lib/tenant-scope";
 import { getNextAppointment, NextAppointmentQuery } from "@/modules/appointments/service";
 import { nextWithBalances } from "@/modules/finance/ledger";
+import { nextWithRecalls } from "@/modules/recalls/service";
 
 export const dynamic = "force-dynamic";
 
@@ -16,7 +17,8 @@ export const dynamic = "force-dynamic";
  * clinic's when they have none); reception, nurses and assistants get the
  * clinic's. `patientId` (proven to belong to the tenant) returns that
  * patient's next booking and their following ones instead. For the roles that
- * take payments, each appointment carries its patient's balance.
+ * take payments, each appointment carries its patient's balance; with it come
+ * the recalls of the next one's visit (what it is booked for, what else is due).
  */
 export async function GET(req: Request) {
   try {
@@ -26,7 +28,7 @@ export async function GET(req: Request) {
     const q = NextAppointmentQuery.parse(Object.fromEntries(new URL(req.url).searchParams));
     if (q.patientId) await requireTenantPatient(ctx.tenantId, q.patientId);
     const next = await getNextAppointment(ctx.tenantId, { userId: ctx.userId, role: ctx.role, scope: q.scope, patientId: q.patientId });
-    return ok(await nextWithBalances(ctx.tenantId, ctx.role, next));
+    return ok(await nextWithRecalls(ctx.tenantId, ctx.role, await nextWithBalances(ctx.tenantId, ctx.role, next)));
   } catch (err) {
     return handleApiError(err);
   }

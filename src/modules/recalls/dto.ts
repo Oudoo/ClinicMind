@@ -91,3 +91,15 @@ export interface RecallListDTO {
   pageSize: number;
   counts: { today: number; soon: number; booked: number };
 }
+
+/** A recall shown with a visit (the next-appointment card): the one the visit is booked for, or one due by then. */
+export interface VisitRecallDTO {
+  id: string;
+  label: string;
+  kindLabel: string;
+  dueAt: string;
+  band: RecallBand;
+  bandLabel: string;
+  /** The visit is the one booked for it. */
+  thisVisit: boolean;
+}

@@ -26,6 +26,7 @@ import { addDays, dateKeyInTz, formatTimeInTz } from "@/lib/time";
 import { cn } from "@/lib/utils";
 import { describeCountdown, isRunningLate, type CountdownTone } from "@/modules/appointments/countdown";
 import type { AppointmentDTO, NextAppointmentDTO } from "@/modules/appointments/dto";
+import type { VisitRecallDTO } from "@/modules/recalls/dto";
 import { availableTransitions, transitionTimeBlock } from "@/modules/appointments/rules";
 import { isReschedulable, KIND_LABEL, STATUS_LABEL, type AppointmentStatus } from "@/modules/appointments/transitions";
 import { NewAppointmentDialog } from "./appointment-new-dialog";
@@ -344,6 +345,7 @@ export function NextAppointmentCard({ initial, timezone, variant, patientId, pat
               {a.reason ?? "No reason given"} · {a.doctor?.fullName ?? "No doctor"}
               {a.room ? ` · ${a.room}` : ""}
             </p>
+            {data.recalls?.length ? <VisitRecalls recalls={data.recalls} patientId={a.patientId} /> : null}
           </div>
 
           <div className={cn("flex flex-col gap-2", hero && "lg:w-64")}>
@@ -463,5 +465,35 @@ export function NextAppointmentCard({ initial, timezone, variant, patientId, pat
       </Card>
       {dialogs}
     </>
+  );
+}
+
+/** The visit's recalls: what it is booked for, then what else is due by then (to do at the same visit). */
+function VisitRecalls({ recalls, patientId }: { recalls: VisitRecallDTO[]; patientId: string }) {
+  const due = recalls.filter((r) => !r.thisVisit);
+  return (
+    <div className="space-y-1 text-sm" data-testid="next-appointment-recalls">
+      {recalls
+        .filter((r) => r.thisVisit)
+        .map((r) => (
+          <p key={r.id} className="flex min-w-0 items-center gap-2">
+            <Badge tone="success">Recall</Badge>
+            <span className="truncate">{r.label}</span>
+          </p>
+        ))}
+      {due.length ? (
+        <p className="flex flex-wrap items-center gap-x-2 gap-y-1">
+          <Badge tone="warning">Also due</Badge>
+          {due.map((r) => (
+            <span key={r.id} className="text-muted-foreground">
+              {r.label} <span className="whitespace-nowrap">({r.bandLabel.toLowerCase()})</span>
+            </span>
+          ))}
+          <Link href={`/dashboard/patients/${patientId}?tab=overview#recalls`} className="text-xs font-medium text-accent hover:underline">
+            Recalls
+          </Link>
+        </p>
+      ) : null}
+    </div>
   );
 }

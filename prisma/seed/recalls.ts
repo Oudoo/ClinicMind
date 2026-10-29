@@ -1,6 +1,7 @@
 import type { Prisma } from "@prisma/client";
 import type { SeedContext, SeedUser } from "./index";
-import { createAppointment, findFreeSlots } from "../../src/modules/appointments/service";
+import { addDays, endOfDayInTz, formatDateInTz, startOfDayInTz } from "../../src/lib/time";
+import { createAppointment, findFreeSlots, getTenantTimezone } from "../../src/modules/appointments/service";
 import { ensureDefaultRecallRules } from "../../src/modules/recalls/rules";
 import { addRecall } from "../../src/modules/recalls/service";
 import { recallsOnConsultationSigned, recallsOnProcedureSigned, sweepRecalls } from "../../src/modules/recalls/engine";
@@ -18,9 +19,11 @@ import { recallsOnConsultationSigned, recallsOnProcedureSigned, sweepRecalls } f
  * and state on today's list: transplant reviews due and overdue, a laser
  * course's next session, an acne review, a missed procedure, planned botox
  * not booked, two patients not seen for over a year, sessions and reviews
- * due soon, a phone-call recall, a booking made from a recall; and the
- * desk's work of the last days on some of them (a call with no answer, a
- * WhatsApp message, a decline, an unreachable patient, a snooze).
+ * due soon, a phone-call recall, a booking made from a recall, a laser
+ * course left after one session (ended by the sweep long after its window),
+ * a patient not seen for a year who came back after a call (won back); and
+ * the desk's work of the last days on some of them (a call with no
+ * answer, a WhatsApp message, a decline, an unreachable patient, a snooze).
  */
 
 const DAY = 86_400_000;
@@ -42,7 +45,7 @@ export async function seedRecalls(ctx: SeedContext): Promise<void> {
   const counts = await db.recall.groupBy({ by: ["status"], where: { tenantId }, _count: { _all: true } });
   const by = Object.fromEntries(counts.map((c) => [c.status, c._count._all]));
   console.log(
-    `     recalls: ${replayed} made replaying the signed work, ${swept.made.missed + swept.made.unbooked + swept.made.lapsed + swept.made.sessions} by the sweep; ${Object.entries(by)
+    `     recalls: ${replayed} made replaying the signed work, ${swept.made.missed + swept.made.unbooked + swept.made.lapsed + swept.made.sessions} by the sweep, ${swept.ended} ended long past their window; ${Object.entries(by)
       .map(([k, v]) => `${v} ${k.toLowerCase()}`)
       .join(", ")}.`,
   );
@@ -219,6 +222,62 @@ async function seedQuietPatients(ctx: SeedContext): Promise<Curated> {
   await addRecall(tenantId, { patientId: mai, label: "Melasma · 8-week review", dueOn: dayKey(ctx, 0), windowDays: 14 }, { id: doctor("derm").id }, at(-10, 10));
   const ola = await patient("Ola Hamed", "FEMALE", { registeredDaysAgo: 85, diagnosis: "Alopecia areata" });
   await addRecall(tenantId, { patientId: ola, label: "Alopecia areata · injection in 4 weeks", dueOn: dayKey(ctx, 0), windowDays: 7 }, { id: doctor("hair").id }, at(-10, 10));
+
+  // One laser session 160 days ago and never seen since: the sweep below ends his next session as unreachable.
+  const fady = await patient("Fady Mourad", "MALE", { registeredDaysAgo: 170, diagnosis: "Pseudofolliculitis barbae" });
+  await signed(fady, "laser-hair-removal", { day: -160, price: 1_800, doctor: "derm" });
+
+  // Not seen for a year: recalled 40 days ago (as the sweep made it that morning), phoned two weeks ago, back
+  // six days ago. The sweep below ends it as done: a lapsed patient won back.
+  const samar = await patient("Samar Wahba", "FEMALE", { registeredDaysAgo: 900, diagnosis: "Melasma" });
+  const tz = await getTenantTimezone(tenantId);
+  /** The last day the clinic was open (not a Friday) at least `n` days ago, as an offset. */
+  const openDaysAgo = (n: number) => {
+    for (let d = n; d < n + 7; d += 1) if (ctx.calendarDay(-d).weekday !== 5) return -d;
+    return -n;
+  };
+  const called = at(openDaysAgo(14), 11.5);
+  /** The doctor's first free half hour that day (the clinic's own bookings are already in). */
+  const freeAt = async (offset: number, kind: "derm" | "hair") => {
+    for (let h = 10; h < 20; h += 0.5) {
+      const start = at(offset, h);
+      const end = new Date(start.getTime() + 30 * MIN);
+      const clash = await db.appointment.findFirst({
+        where: { tenantId, doctorId: doctor(kind).id, deletedAt: null, status: { notIn: ["CANCELLED", "NO_SHOW", "WAITLISTED"] }, startsAt: { lt: end }, endsAt: { gt: start } },
+        select: { id: true },
+      });
+      if (!clash) return start;
+    }
+    return at(offset, 20);
+  };
+  const lastSeen = new Date(at(0, 12).getTime() - 405 * DAY);
+  await visit(samar, lastSeen, "COMPLETED", "FOLLOW_UP", "derm", "Melasma review");
+  const madeAt = at(-40, 9.2);
+  const since = formatDateInTz(lastSeen, tz, { day: "numeric", month: "short", year: "numeric" });
+  const lapsed = await db.recall.create({
+    data: {
+      tenantId,
+      patientId: samar,
+      kind: "LAPSED",
+      label: `No visit since ${since} (12 months)`,
+      dueAt: startOfDayInTz(madeAt, tz),
+      windowEndAt: endOfDayInTz(addDays(madeAt, 30, tz), tz),
+      dedupeKey: `lapsed:${samar}:12:${startOfDayInTz(lastSeen, tz).toISOString().slice(0, 10)}`,
+      status: "CONTACTED",
+      attempts: 1,
+      lastContactAt: called,
+      nextContactAt: new Date(called.getTime() + 3 * DAY),
+      createdAt: madeAt,
+    },
+    select: { id: true },
+  });
+  await db.recallActivity.createMany({
+    data: [
+      { tenantId, recallId: lapsed.id, kind: "STATUS", outcome: "OPEN", note: `Last seen on ${since}: no visit for 12 months and nothing booked.`, at: madeAt },
+      { tenantId, recallId: lapsed.id, kind: "CALL", outcome: "will_book", note: "Back from abroad, will come in next week", byId: reception.id, at: called },
+    ],
+  });
+  await visit(samar, await freeAt(openDaysAgo(6), "derm"), "COMPLETED", "FOLLOW_UP", "derm", "Melasma review after a year away");
 
   return { hoda, wael, hassan, mai, ola };
 }

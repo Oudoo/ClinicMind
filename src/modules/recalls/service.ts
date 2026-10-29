@@ -6,6 +6,8 @@ import { audit } from "@/lib/audit";
 import { requireTenantPatient, TenantScopeError } from "@/lib/tenant-scope";
 import { addDays, endOfDayInTz, formatDateInTz, formatTimeInTz, fromDateKey, startOfDayInTz } from "@/lib/time";
 import { zDateTime, zOptionalText, zText } from "@/lib/validation";
+import { can } from "@/lib/auth/rbac";
+import type { NextAppointmentDTO } from "@/modules/appointments/dto";
 import { createAppointment, getTenantTimezone } from "@/modules/appointments/service";
 import { readReminderSettings } from "@/modules/messaging/reminder-settings";
 import {
@@ -31,7 +33,7 @@ import {
 } from "./constants";
 import { closeRecall, moveRecall, syncPatientRecalls } from "./engine";
 import { deliverRecallMessage, recallForMessage, renderRecallMessage } from "./messages";
-import type { RecallActivityDTO, RecallDetailDTO, RecallDTO, RecallListDTO } from "./dto";
+import type { RecallActivityDTO, RecallDetailDTO, RecallDTO, RecallListDTO, VisitRecallDTO } from "./dto";
 
 /**
  * The recall record and reception's worklist.
@@ -330,6 +332,38 @@ export async function getRecall(tenantId: string, id: string, now: Date = new Da
   const activities = await db.recallActivity.findMany({ where: { tenantId, recallId: id }, orderBy: [{ at: "asc" }, { id: "asc" }] });
   const who = await names(tenantId, activities.map((a) => a.byId));
   return { ...dto!, activities: activities.map((a) => activityDTO(a, who, row.createdAt)) };
+}
+
+/**
+ * The recalls to see with a visit: the ones it is booked for, then the
+ * patient's others due by two weeks after it (to do at the same visit, or
+ * book for the same day).
+ */
+export async function visitRecalls(tenantId: string, visit: { id: string; patientId: string; startsAt: string | Date }, tz: string, now: Date = new Date()): Promise<VisitRecallDTO[]> {
+  const startsAt = new Date(visit.startsAt);
+  const rows = await db.recall.findMany({
+    where: {
+      tenantId,
+      patientId: visit.patientId,
+      OR: [{ status: "BOOKED", bookedAppointmentId: visit.id }, { status: { in: [...WAITING] }, dueAt: { lte: endOfDayInTz(addDays(startsAt, DUE_SOON_DAYS, tz), tz) } }],
+    },
+    orderBy: [{ dueAt: "asc" }, { id: "asc" }],
+    take: 6,
+    select: { id: true, kind: true, label: true, dueAt: true, windowEndAt: true, status: true, bookedAppointmentId: true },
+  });
+  const today = startOfDayInTz(now, tz);
+  return rows
+    .map((r) => {
+      const band = recallBand(r, today);
+      return { id: r.id, label: r.label, kindLabel: RECALL_KIND_LABEL[r.kind], dueAt: r.dueAt.toISOString(), band: band.band, bandLabel: bandLabel(band), thisVisit: r.bookedAppointmentId === visit.id };
+    })
+    .sort((a, b) => Number(b.thisVisit) - Number(a.thisVisit));
+}
+
+/** The next-appointment card's answer with the recalls of its visit, for the roles that read recalls. */
+export async function nextWithRecalls(tenantId: string, role: UserRole, next: NextAppointmentDTO, now: Date = new Date()): Promise<NextAppointmentDTO> {
+  if (!next.appointment || !can(role, "recalls:read")) return next;
+  return { ...next, recalls: await visitRecalls(tenantId, next.appointment, next.timezone, now) };
 }
 
 /** A patient's recalls for their page: everything still being worked (the upcoming too), then the last closed. */
