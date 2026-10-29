@@ -62,6 +62,8 @@ export async function PatientFinanceCard({ tenantId, role, patientId, canWrite }
     zeroChargeReason: p.zeroChargeReason,
     notes: p.notes,
     cancelReason: p.cancelReason,
+    undated: p.undated,
+    quoteNumber: p.quoteItem?.quote.number ?? null,
   }));
   const paymentItems: PaymentItem[] | null = payments
     ? payments.payments.map((p) => ({

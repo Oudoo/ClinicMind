@@ -151,6 +151,8 @@ const procedureInclude = {
   priceItem: { select: { id: true, code: true, name: true, unit: true, unitLabel: true, sessions: true } },
   payments: { where: { deletedAt: null }, select: { id: true, kind: true, amount: true, method: true, paidAt: true, reference: true, note: true } },
   charges: { select: { amount: true, stage: true, reversalOfId: true } },
+  /** Accepted from a treatment plan: which one. */
+  quoteItem: { select: { quote: { select: { id: true, number: true } } } },
 } as const;
 
 /** What charging a procedure reads. */
@@ -452,6 +454,8 @@ export async function updateProcedure(tenantId: string, id: string, rawInput: un
         doctorId: input.doctorId,
         appointmentId: input.appointmentId,
         performedAt: input.performedAt,
+        // Given a day, a procedure accepted from a quote is dated from now on.
+        ...(input.performedAt ? { undated: false } : {}),
         price,
         discount,
         discountReason,
@@ -514,6 +518,8 @@ async function signInTx(tx: Client, tenantId: string, before: Chargeable, actor:
   const { charged, stagesDone } = summarizeCharges(before.charges);
   const label = procedureLabel(before);
   const left = net - charged;
+  // Accepted from a quote and never given a day: done the day it is signed.
+  const performedAt = before.undated ? now : before.performedAt;
   if (left !== 0 || before.charges.length === 0) {
     const staged = before.stages > 1;
     await postCharge(tx, {
@@ -524,7 +530,7 @@ async function signInTx(tx: Client, tenantId: string, before: Chargeable, actor:
       amount: left,
       description: staged ? `${label} · ${stagePhrase(stagesDone + 1, before.stages, before.stages)}` : net === 0 ? `${label} · no charge: ${before.zeroChargeReason}` : label,
       // Work done at once is charged on its day; what was left of staged work, the day it is signed.
-      chargedAt: staged ? now : before.performedAt,
+      chargedAt: staged ? now : performedAt,
       doctorId,
       clinicId: await clinicOf(tx, tenantId, before.appointmentId),
       createdById: actor.id ?? null,
@@ -532,7 +538,7 @@ async function signInTx(tx: Client, tenantId: string, before: Chargeable, actor:
   }
   const after = await tx.procedure.update({
     where: { id: before.id, tenantId },
-    data: { status: "SIGNED", signedAt: now, signedById: actor.id ?? null, doctorId },
+    data: { status: "SIGNED", signedAt: now, signedById: actor.id ?? null, doctorId, ...(before.undated ? { performedAt, undated: false } : {}) },
     include: procedureInclude,
   });
   await tx.timelineEvent.create({
@@ -543,7 +549,7 @@ async function signInTx(tx: Client, tenantId: string, before: Chargeable, actor:
       title: doctorName ? `${before.treatment.name} performed by Dr ${doctorName.replace(/^Dr\.?\s+/i, "")}` : `${before.treatment.name} performed`,
       body: `${net.toLocaleString("en-US")} EGP${before.notes ? ` · ${before.notes}` : ""}`,
       refId: before.id,
-      occurredAt: before.stages > 1 ? now : before.performedAt,
+      occurredAt: before.stages > 1 ? now : performedAt,
     },
   });
   return { after, doctorName, from: before.status };
@@ -609,7 +615,7 @@ export async function startProcedure(tenantId: string, id: string, rawInput: unk
     }
     const after = await tx.procedure.update({
       where: { id, tenantId },
-      data: { status: "STARTED", startedAt, startedById: actor.id ?? null },
+      data: { status: "STARTED", startedAt, startedById: actor.id ?? null, ...(before.undated ? { performedAt: startedAt, undated: false } : {}) },
       include: procedureInclude,
     });
     await tx.timelineEvent.create({

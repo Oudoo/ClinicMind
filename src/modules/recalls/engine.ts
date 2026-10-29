@@ -864,12 +864,14 @@ async function recallMissedVisits(tenantId: string, now: Date, tz: string): Prom
 async function recallUnbookedPlans(tenantId: string, now: Date, tz: string): Promise<number> {
   const before = new Date(now.getTime() - UNBOOKED_AFTER_DAYS * DAY_MS);
   const since = new Date(now.getTime() - 180 * DAY_MS);
-  const rows = await db.$queryRaw<{ id: string; patientId: string; treatmentId: string; price: number; discount: number; createdAt: Date; name: string }[]>`
-    SELECT pr.id, pr."patientId", pr."treatmentId", pr.price, pr.discount, pr."createdAt", COALESCE(i.name, t.name) AS name
+  const rows = await db.$queryRaw<{ id: string; patientId: string; treatmentId: string; price: number; discount: number; createdAt: Date; name: string; quoteNumber: string | null }[]>`
+    SELECT pr.id, pr."patientId", pr."treatmentId", pr.price, pr.discount, pr."createdAt", COALESCE(i.name, t.name) AS name, q.number AS "quoteNumber"
     FROM "procedures" pr
     JOIN "patients" p ON p.id = pr."patientId"
     JOIN "treatments" t ON t.id = pr."treatmentId"
     LEFT JOIN "price_items" i ON i.id = pr."priceItemId"
+    LEFT JOIN "quote_items" qi ON qi."procedureId" = pr.id
+    LEFT JOIN "quotes" q ON q.id = qi."quoteId"
     WHERE pr."tenantId" = ${tenantId} AND pr."deletedAt" IS NULL AND p."deletedAt" IS NULL AND pr.status = 'PLANNED'
       AND pr."createdAt" <= ${utc(before)} AND pr."createdAt" >= ${utc(since)}
       AND NOT EXISTS (SELECT 1 FROM "recalls" r WHERE r."tenantId" = pr."tenantId" AND r."dedupeKey" = 'plan:' || pr.id)
@@ -889,19 +891,21 @@ async function recallUnbookedPlans(tenantId: string, now: Date, tz: string): Pro
   for (const p of rows) {
     if (seen.has(p.patientId)) continue;
     seen.add(p.patientId);
+    // Accepted in a treatment plan: the plan says so.
+    const planned = p.quoteNumber ? `accepted in treatment plan ${p.quoteNumber} on ${day(p.createdAt, tz)}` : `planned on ${day(p.createdAt, tz)}`;
     const id = await makeRecall(
       tenantId,
       {
         patientId: p.patientId,
         kind: "UNBOOKED",
-        label: `${p.name} planned ${day(p.createdAt, tz)}, not booked`,
+        label: p.quoteNumber ? `${p.name} accepted ${day(p.createdAt, tz)} (${p.quoteNumber}), not booked` : `${p.name} planned ${day(p.createdAt, tz)}, not booked`,
         due: now,
         windowDays: 14,
         dedupeKey: `plan:${p.id}`,
         treatmentId: p.treatmentId,
         procedureId: p.id,
         value: net(p),
-        why: `${p.name} was planned on ${day(p.createdAt, tz)} and nothing is booked for it ${UNBOOKED_AFTER_DAYS} days later.`,
+        why: `${p.name} was ${planned} and nothing is booked for it ${UNBOOKED_AFTER_DAYS} days later.`,
       },
       tz,
       now,

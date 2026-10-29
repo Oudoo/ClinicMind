@@ -123,7 +123,8 @@ export async function listUnbilled(tenantId: string, rawQuery: unknown = {}, now
         })
       : [],
     db.procedure.findMany({
-      where: { tenantId, ...notDeleted, status: "PLANNED", performedAt: { gte: from, lt: done } },
+      // Planned for that day; one accepted from a quote has no day yet.
+      where: { tenantId, ...notDeleted, status: "PLANNED", undated: false, performedAt: { gte: from, lt: done } },
       select: {
         id: true,
         patientId: true,

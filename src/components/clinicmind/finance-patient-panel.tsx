@@ -172,7 +172,7 @@ export function FinancePatientPanel({
         {procedures.length ? (
           <ul className="space-y-2">
             {shownProcedures.map((p) => {
-              const label = `${p.treatmentName} on ${date(p.performedAt)}`;
+              const label = p.undated ? `${p.treatmentName} (accepted ${date(p.performedAt)})` : `${p.treatmentName} on ${date(p.performedAt)}`;
               const net = p.price - p.discount;
               return (
                 <li key={p.id} className="rounded-md border border-border p-3">
@@ -183,7 +183,14 @@ export function FinancePatientPanel({
                         <Badge tone={STATUS_TONE[p.status]}>{PROCEDURE_STATUS_LABELS[p.status]}</Badge>
                       </div>
                       <p className="mt-0.5 text-xs text-muted-foreground">
-                        <span className="font-mono">{date(p.performedAt)}</span>
+                        {p.undated ? (
+                          <span>
+                            Accepted <span className="font-mono">{date(p.performedAt)}</span>
+                            {p.quoteNumber ? <span className="font-mono"> · {p.quoteNumber}</span> : null} · no day yet
+                          </span>
+                        ) : (
+                          <span className="font-mono">{date(p.performedAt)}</span>
+                        )}
                         {p.doctorName ? ` · ${p.doctorName}` : ""}
                       </p>
                       {p.stages > 1 && (p.status === "PLANNED" || p.status === "STARTED") ? (

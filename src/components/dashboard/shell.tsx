@@ -29,6 +29,7 @@ import {
   FileSpreadsheet,
   PhoneCall,
   BookOpenCheck,
+  ClipboardList,
 } from "lucide-react";
 import { BRAND } from "@/lib/brand";
 import { onAuthChange } from "@/lib/auth/browser-session";
@@ -61,6 +62,7 @@ const NAV: NavItem[] = [
   { href: "/dashboard/conversations", label: "Conversations", icon: MessagesSquare },
   { href: "/dashboard/consultations", label: "Consultations", icon: Stethoscope },
   { href: "/dashboard/concierge", label: "Concierge", icon: HeartPulse, permission: "concierge:read" },
+  { href: "/dashboard/quotes", label: "Treatment plans", icon: ClipboardList, permission: "quotes:read" },
   { href: "/dashboard/finance", label: "Finance", icon: Banknote, permission: "finance:read" },
   { href: "/dashboard/finance/invoices", label: "Invoices", icon: FileText, permission: "payments:write" },
   { href: "/dashboard/finance/prices", label: "Price list", icon: Tags, permission: "patients:write" },

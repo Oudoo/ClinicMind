@@ -33,7 +33,8 @@ export type TenantScopedEntity =
   | "recall"
   | "recall_rule"
   | "evidence_source"
-  | "ai_run";
+  | "ai_run"
+  | "quote";
 
 /**
  * Thrown when a referenced row does not belong to the acting tenant (or does

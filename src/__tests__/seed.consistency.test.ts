@@ -36,6 +36,7 @@ import { adjustmentsReport, balancesReport, branchReport, dayCloseReport, income
 import { checkPrescribing } from "@/modules/consultations/safety/engine";
 import { answerablePassages } from "@/modules/evidence/answer";
 import { pregnancyKnown } from "@/modules/patients/pregnancy";
+import { cleanSignature, quoteState } from "@/modules/quotes/constants";
 
 const FEMALE_ONLY = /\b(PCOS|polycystic|hirsutism|melasma)\b/i;
 
@@ -451,5 +452,46 @@ describe("the seeded demo database (when DATABASE_URL points at one)", () => {
     expect(cited("ينفع دوكسيسيكلين مع روكيوتان؟").length).toBeGreaterThan(0);
     expect(cited("التقشير مع الحمل")).toEqual(expect.arrayContaining([expect.stringMatching(/التقشير الكيميائي.* · الحمل والرضاعة$/)]));
     expect(cited("What dose of tranexamic acid for melasma?")).toEqual([]);
+  });
+
+  it("has treatment plans in every state, adding up, numbered in the order they were given; accepted treatments planned at the quoted prices, the unbooked ones on the recall list", async (ctx) => {
+    if (!demo) return ctx.skip();
+    const tz = "Africa/Cairo";
+    const today = dateKeyInTz(new Date(), tz);
+    const quotes = await db.quote.findMany({ where: { tenantId: demo.id }, include: { items: { include: { procedure: true } } } });
+    const states = new Set(quotes.map((q) => quoteState(q.status, dateKeyInTz(q.validUntil, tz), today)));
+    for (const s of ["DRAFT", "SENT", "EXPIRED", "ACCEPTED", "DECLINED", "WITHDRAWN"] as const) expect(states.has(s), s).toBe(true);
+    for (const q of quotes) {
+      expect(q.total, q.number ?? "draft").toBe(q.items.reduce((sum, i) => sum + i.price - i.discount, 0));
+      for (const i of q.items) expect(i.price).toBe(i.unitPrice * i.quantity);
+      if (q.status === "ACCEPTED") {
+        const accepted = q.items.filter((i) => i.accepted);
+        expect(accepted.length).toBeGreaterThan(0);
+        expect(q.acceptedTotal).toBe(accepted.reduce((sum, i) => sum + i.price - i.discount, 0));
+        for (const i of q.items) {
+          if (i.accepted) expect(i.procedure).toMatchObject({ patientId: q.patientId, priceItemId: i.priceItemId, price: i.price, discount: i.discount, quantity: i.quantity, stages: i.stages });
+          else expect(i.procedureId).toBeNull();
+        }
+        expect(cleanSignature(q.signature)).toBe(q.signature);
+      } else {
+        expect(q.items.every((i) => i.accepted === null && i.procedureId === null)).toBe(true);
+      }
+    }
+    // Numbered when given, in the order they were given: no gaps, no repeats.
+    const given = quotes.filter((q) => q.sentAt).sort((a, b) => a.sentAt!.getTime() - b.sentAt!.getTime());
+    expect(given.map((q) => q.sequence)).toEqual(given.map((_, i) => i + 1));
+    // Every link sent went out in the patient's conversation, the day it was sent.
+    for (const q of quotes.filter((x) => x.linkSentAt)) {
+      const message = await db.message.findFirst({ where: { tenantId: demo.id, templateKey: "quote:send", meta: { path: ["quoteId"], equals: q.id } }, orderBy: { createdAt: "desc" } });
+      expect(message, q.number ?? "").not.toBeNull();
+      expect(dateKeyInTz(message!.createdAt, tz)).toBe(dateKeyInTz(q.linkSentAt!, tz));
+    }
+    // A revision replaced the plan it revised.
+    const replaced = quotes.filter((q) => q.status === "WITHDRAWN" && q.withdrawnReason?.startsWith("Replaced by "));
+    expect(replaced.length).toBeGreaterThan(0);
+    // Accepted and never booked: the recall list has it, naming the plan.
+    const unbooked = await db.recall.findMany({ where: { tenantId: demo.id, kind: "UNBOOKED", procedure: { quoteItem: { isNot: null } } }, select: { label: true } });
+    expect(unbooked.length).toBeGreaterThan(0);
+    expect(unbooked.every((r) => /\(ZAM-QT-\d{6}\), not booked$/.test(r.label))).toBe(true);
   });
 });

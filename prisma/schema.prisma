@@ -201,6 +201,8 @@ model Tenant {
   evidenceSources         EvidenceSource[]
   evidencePassages        EvidencePassage[]
   aiFeedback              AiFeedback[]
+  quotes                  Quote[]
+  quoteItems              QuoteItem[]
 
   @@index([status])
   @@map("tenants")
@@ -254,6 +256,7 @@ model Clinic {
   invoices     Invoice[]
   cashShifts   CashShift[]
   dayCloses    DayClose[]
+  quotes       Quote[]
 
   @@unique([tenantId, code])
   @@index([tenantId])
@@ -426,6 +429,7 @@ model Patient {
   householdMembers Patient[]            @relation("Household")
   writeOffs        WriteOff[]
   recalls          Recall[]
+  quotes           Quote[]
 
   @@index([tenantId])
   @@index([tenantId, householdHeadId])
@@ -973,6 +977,7 @@ enum NotificationKind {
   WEEKLY_BRIEF
   SAFETY_OVERRIDE
   AI_REVIEW
+  QUOTE_ANSWERED
   SYSTEM
 }
 
@@ -1046,6 +1051,7 @@ model Treatment {
   priceItems  PriceItem[]
   recallRules RecallRule[]
   recalls     Recall[]
+  quoteItems  QuoteItem[]
 
   @@unique([tenantId, key])
   @@index([tenantId])
@@ -1239,6 +1245,9 @@ model Procedure {
   startedById      String?
   /// Why it is charged nothing; required when price − discount is 0.
   zeroChargeReason String?
+  /// Accepted from a quote with no day yet: `performedAt` is the day it was accepted until it is started,
+  /// signed or given a day, and work done at once is then dated (and charged) the day it is signed.
+  undated          Boolean         @default(false)
   signedAt         DateTime?
   signedById       String?
   cancelledAt      DateTime?
@@ -1253,6 +1262,7 @@ model Procedure {
   charges   Charge[]
   enrolment ConciergeEnrolment?
   recalls   Recall[]
+  quoteItem QuoteItem?
 
   @@index([tenantId, performedAt])
   @@index([tenantId, patientId])
@@ -1966,6 +1976,7 @@ model PriceItem {
 
   prices     PriceItemPrice[]
   procedures Procedure[]
+  quoteItems QuoteItem[]
 
   @@unique([tenantId, code])
   @@index([tenantId, category])
@@ -2213,4 +2224,123 @@ model EvidencePassage {
   @@unique([sourceId, index])
   @@index([tenantId])
   @@map("evidence_passages")
+}
+
+// ── Treatment plans and quotes ───────────────────────────────────────────────
+
+/// DRAFT (no number, changes freely, priced from today's list) → SENT (given to the patient, printed or on
+/// WhatsApp: numbered, its prices hold until it expires) → ACCEPTED (signed, all of it or some items) or
+/// DECLINED; WITHDRAWN when the clinic takes it back or a revision replaces it. A SENT quote past its last
+/// valid day is expired: it can no longer be accepted until its validity is extended.
+enum QuoteStatus {
+  DRAFT
+  SENT
+  ACCEPTED
+  DECLINED
+  WITHDRAWN
+}
+
+/// A treatment plan with its prices, as given to the patient: phases of price-list items with their sessions,
+/// quoted price and discount, valid until a day, in Arabic or English. Accepted items become planned
+/// procedures at the quoted prices.
+model Quote {
+  id              String      @id @default(cuid())
+  tenantId        String
+  tenant          Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  /// The branch it is priced and numbered at.
+  clinicId        String
+  clinic          Clinic      @relation(fields: [clinicId], references: [id], onDelete: NoAction)
+  patientId       String
+  patient         Patient     @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  /// The doctor who proposes the plan: the procedures accepted from it are theirs.
+  doctorId        String?
+  status          QuoteStatus @default(DRAFT)
+  /// Set when it is first given: the branch's running quote number and how it prints.
+  sequence        Int?
+  number          String?
+  /// "ar" | "en": the language it is printed and sent in.
+  language        String      @default("en")
+  /// Its heading on the page ("Hair restoration plan"); the default heading in its language when not set.
+  title           String?
+  /// The phases' headings, in order; each item belongs to one.
+  phases          String[]
+  note            String?
+  /// The last day it can be accepted (that day's start on the clinic clock).
+  validUntil      DateTime
+  /// What the items come to after their discounts.
+  total           Int         @default(0)
+  /// When it was first given to the patient (printed, sent or signed in the clinic), and by whom.
+  sentAt          DateTime?
+  sentById        String?
+  /// The patient's copy online, behind a token (stored hashed) that the WhatsApp message links to; the
+  /// latest link sent is the one that works.
+  shareTokenHash  String?     @unique
+  linkSentAt      DateTime?
+  acceptedAt      DateTime?
+  /// The name the patient signed with, and the signature (an SVG path drawn on a 600 × 200 pad).
+  acceptedName    String?
+  signature       String?
+  /// "clinic" (signed on the clinic's screen, recorded by `acceptedById`) | "link" (on the patient's own phone).
+  acceptedVia     String?
+  acceptedById    String?
+  /// What the accepted items come to.
+  acceptedTotal   Int?
+  declinedAt      DateTime?
+  declineReason   String?
+  withdrawnAt     DateTime?
+  withdrawnReason String?
+  /// The quote this one revises: once this one is given, that one is withdrawn (if still open).
+  revisionOfId    String?
+  createdById     String?
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  items QuoteItem[]
+
+  @@unique([tenantId, clinicId, sequence])
+  @@unique([tenantId, number])
+  @@index([tenantId, patientId])
+  @@index([tenantId, status, sentAt])
+  @@map("quotes")
+}
+
+/// One price-list item of a quote, in one of its phases, as quoted: how many, in how many sessions, where,
+/// at what price and discount. Fixed once the quote is given; on acceptance, whether it was accepted and
+/// the planned procedure it became.
+model QuoteItem {
+  id             String     @id @default(cuid())
+  tenantId       String
+  tenant         Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  quoteId        String
+  quote          Quote      @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  /// The phase it belongs to (0-based, into the quote's phases) and its place in the quote.
+  phase          Int        @default(0)
+  position       Int
+  /// NoAction: checked at the end of the statement, so removing a whole tenant (which cascades to both) works.
+  priceItemId    String
+  priceItem      PriceItem  @relation(fields: [priceItemId], references: [id], onDelete: NoAction)
+  treatmentId    String
+  treatment      Treatment  @relation(fields: [treatmentId], references: [id], onDelete: NoAction)
+  /// The item's name as quoted.
+  description    String
+  /// Where: the area treated ("crown", "both cheeks").
+  site           String?
+  quantity       Int        @default(1)
+  /// The sessions it is done in (a course's, so many of a per-session item).
+  stages         Int        @default(1)
+  unitPrice      Int
+  /// unitPrice × quantity.
+  price          Int
+  discount       Int        @default(0)
+  /// Why a discount was given (a key of the fixed list) and, for another reason, its words; who gave it.
+  discountReason String?
+  discountNote   String?
+  discountById   String?
+  /// Set when the quote is accepted.
+  accepted       Boolean?
+  procedureId    String?    @unique
+  procedure      Procedure? @relation(fields: [procedureId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, quoteId])
+  @@map("quote_items")
 }

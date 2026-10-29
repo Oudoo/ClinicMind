@@ -64,6 +64,9 @@ export interface ProcedureItem {
   zeroChargeReason: string | null;
   notes: string | null;
   cancelReason: string | null;
+  /** Accepted from a treatment plan and given no day yet: `performedAt` is the day it was accepted. */
+  undated?: boolean;
+  quoteNumber?: string | null;
 }
 
 export interface PaymentItem {

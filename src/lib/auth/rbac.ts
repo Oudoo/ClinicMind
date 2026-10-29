@@ -44,7 +44,9 @@ export type Permission =
   | "evidence:read" // the clinic's evidence library
   | "evidence:write" // add and edit sources (an edited approved source waits for approval again)
   | "evidence:approve" // approve and retire sources: what the evidence panel may quote (clinicians only, see canApproveEvidence)
-  | "evidence:ask"; // ask the evidence panel (clinicians only, see canAskEvidence)
+  | "evidence:ask" // ask the evidence panel (clinicians only, see canAskEvidence)
+  | "quotes:read" // treatment plans and quotes, and how many are accepted
+  | "quotes:write"; // make, give, send and record the answer to a treatment plan
 
 const ALL: Permission[] = [
   "platform:manage",
@@ -79,6 +81,8 @@ const ALL: Permission[] = [
   "evidence:write",
   "evidence:approve",
   "evidence:ask",
+  "quotes:read",
+  "quotes:write",
 ];
 
 const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
@@ -118,6 +122,8 @@ const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
     "evidence:write",
     "evidence:approve",
     "evidence:ask",
+    "quotes:read",
+    "quotes:write",
   ],
   DOCTOR: [
     "patients:read",
@@ -139,6 +145,8 @@ const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
     "evidence:read",
     "evidence:write",
     "evidence:ask",
+    "quotes:read",
+    "quotes:write",
   ],
   NURSE: [
     "patients:read",
@@ -155,6 +163,8 @@ const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
     "concierge:write",
     "recalls:read",
     "recalls:write",
+    "quotes:read",
+    "quotes:write",
   ],
   RECEPTIONIST: [
     "patients:read",
@@ -169,6 +179,8 @@ const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
     "concierge:read",
     "recalls:read",
     "recalls:write",
+    "quotes:read",
+    "quotes:write",
   ],
   ASSISTANT: ["patients:read", "appointments:read", "conversations:read", "leads:read", "recalls:read"],
 };
