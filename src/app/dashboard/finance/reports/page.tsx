@@ -10,14 +10,18 @@ import {
   ADJUSTMENT_LABELS,
   ADJUSTMENT_TYPES,
   AGING,
-  FINANCE_REPORTS,
+  DAILY_REPORTS,
   FINANCE_REPORT_LABELS,
+  MONTH_WINDOWS,
+  MONTHLY_REPORTS,
   adjustmentsReport,
   balancesReport,
   branchReport,
   dayCloseReport,
   incomeReport,
   isFinanceReport,
+  isMonthlyReport,
+  monthWindow,
   productionReport,
   proceduresReport,
   providersReport,
@@ -37,6 +41,8 @@ import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/table";
 import { PeriodPicker } from "@/components/clinicmind/report-period-picker";
 import { CsvLink, NotForRole } from "@/components/clinicmind/report-shared";
 import { DentaloreCompare } from "@/components/clinicmind/dentalore-compare";
+import { Acceptance, Collection, InstalmentsDue, OwedByAge, ProfitAndLoss, Sources } from "@/components/clinicmind/monthly-reports";
+import { INSTALMENT_MONTHS_AHEAD } from "@/modules/finance/monthly-reports";
 import { Input } from "@/components/ui/input";
 
 export const dynamic = "force-dynamic";
@@ -58,6 +64,12 @@ const DESCRIPTIONS: Record<FinanceReportKey, string> = {
   balances: "What every patient owes now, what is due on invoices by age, and the invoices issued in the period.",
   procedures: "The procedures of the period and every course still under way: how far along, charged and invoiced.",
   providers: "Each doctor's production, the money collected for their work and what was written off on it.",
+  pnl: "Month by month: the work done less what was written off, the expenses and the doctors' pay, and the profit left; beside it, the money that came in and went out.",
+  owed: "What the clinic is owed now, by age: patients on their invoices and each insurer and company on its claims, and who owes the most.",
+  collection: "Of the invoices issued each month, how much has been collected since (from patients and from payers), written off, and is still owed.",
+  acceptance: "The treatment plans given each month and what became of them (accepted, declined, expired or still waiting), by count and by value, and by doctor.",
+  instalments: "What instalment plans have falling due each month, paid and still owed, to six months ahead; who is late, and who falls due in the next 30 days.",
+  sources: "The work and the money each marketing source brings (new patients, work done, money in, what its campaigns cost), and each campaign's.",
 };
 
 /**
@@ -86,7 +98,9 @@ export default async function FinanceReportsPage({ searchParams }: { searchParam
   });
   const period = scope.period;
   const tz = scope.timezone;
-  const keep: Record<string, string> = { ...periodQuery(period), ...(scope.clinicId ? { clinicId: scope.clinicId } : {}) };
+  const monthly = isMonthlyReport(report);
+  const months = monthWindow(scope.filters.months);
+  const keep: Record<string, string> = { ...(monthly ? { months: String(months) } : periodQuery(period)), ...(scope.clinicId ? { clinicId: scope.clinicId } : {}) };
   const href = (entries: Record<string, string | undefined>) => {
     const params = new URLSearchParams();
     for (const [k, v] of Object.entries({ ...keep, report, ...entries })) if (v) params.set(k, v);
@@ -99,26 +113,34 @@ export default async function FinanceReportsPage({ searchParams }: { searchParam
 
   return (
     <div className="space-y-6">
-      <SectionTitle title="Finance reports" description="Dentalore's daily reports on the clinic's books: the money in, the work done, the adjustments and what patients owe." />
+      <SectionTitle title="Finance reports" description="The clinic's books day by day (Dentalore's reports: the money in, the work done, the adjustments and what patients owe) and month by month (profit, what is owed, what is collected, plans accepted, instalments and marketing)." />
 
-      <nav aria-label="Reports" className="-mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0">
-        <ul className="flex w-max gap-1 rounded-lg bg-muted p-1 sm:w-auto sm:flex-wrap">
-          {FINANCE_REPORTS.map((key) => (
-            <li key={key}>
-              <Link
-                href={`/dashboard/finance/reports?${new URLSearchParams({ ...keep, report: key }).toString()}`}
-                scroll={false}
-                aria-current={key === report ? "page" : undefined}
-                className={cn(
-                  "inline-flex h-8 items-center whitespace-nowrap rounded-md px-3 text-sm font-medium transition-colors",
-                  key === report ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground",
-                )}
-              >
-                {FINANCE_REPORT_LABELS[key]}
-              </Link>
-            </li>
-          ))}
-        </ul>
+      <nav aria-label="Reports" className="-mx-4 space-y-2 overflow-x-auto px-4 sm:mx-0 sm:px-0">
+        {[
+          { group: "Day by day", keys: DAILY_REPORTS },
+          { group: "Month by month", keys: MONTHLY_REPORTS },
+        ].map(({ group, keys }) => (
+          <div key={group} className="flex w-max items-center gap-2 sm:w-auto">
+            <span className="data-label hidden w-28 shrink-0 sm:block">{group}</span>
+            <ul className="flex w-max gap-1 rounded-lg bg-muted p-1 sm:w-auto sm:flex-wrap" aria-label={group}>
+              {keys.map((key) => (
+                <li key={key}>
+                  <Link
+                    href={`/dashboard/finance/reports?${new URLSearchParams({ ...(scope.clinicId ? { clinicId: scope.clinicId } : {}), ...(isMonthlyReport(key) === monthly ? keep : {}), report: key }).toString()}`}
+                    scroll={false}
+                    aria-current={key === report ? "page" : undefined}
+                    className={cn(
+                      "inline-flex h-8 items-center whitespace-nowrap rounded-md px-3 text-sm font-medium transition-colors",
+                      key === report ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground",
+                    )}
+                  >
+                    {FINANCE_REPORT_LABELS[key]}
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ))}
       </nav>
 
       <Card className="space-y-3">
@@ -147,13 +169,37 @@ export default async function FinanceReportsPage({ searchParams }: { searchParam
               Show
             </Button>
           </form>
+        ) : report === "owed" ? (
+          <p className="text-sm text-muted-foreground">As it stands now, {formatDateInTz(new Date(), tz, { day: "numeric", month: "long", year: "numeric" })}.</p>
+        ) : monthly ? (
+          <nav aria-label="Months" className="flex flex-wrap items-center gap-2 text-sm">
+            <span className="text-muted-foreground">The last</span>
+            <ul className="flex gap-1 rounded-lg bg-muted p-1">
+              {MONTH_WINDOWS.map((n) => (
+                <li key={n}>
+                  <Link
+                    href={href({ months: String(n) })}
+                    scroll={false}
+                    aria-current={n === months ? "page" : undefined}
+                    className={cn("inline-flex h-8 items-center rounded-md px-3 font-medium", n === months ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground")}
+                  >
+                    {n} months
+                  </Link>
+                </li>
+              ))}
+            </ul>
+            <span className="text-muted-foreground">
+              {day(period.fromKey)} to {day(period.toKey)}
+              {report === "instalments" ? `, and the next ${INSTALMENT_MONTHS_AHEAD} months` : ""}
+            </span>
+          </nav>
         ) : (
           <PeriodPicker basePath="/dashboard/finance/reports" preset={period.preset} fromKey={period.fromKey} toKey={period.toKey} previous={previous} keep={{ report, ...(scope.clinicId ? { clinicId: scope.clinicId } : {}), ...Object.fromEntries(Object.entries(filterEntries).filter((e): e is [string, string] => Boolean(e[1]))) }} />
         )}
         {scope.clinics.length > 1 && report !== "branches" && report !== "day" ? (
           <form method="get" className="flex flex-wrap items-end gap-2" aria-label="Branch">
             <input type="hidden" name="report" value={report} />
-            {Object.entries(periodQuery(period)).map(([k, v]) => (
+            {Object.entries(monthly ? { months: String(months) } : periodQuery(period)).map(([k, v]) => (
               <input key={k} type="hidden" name={k} value={v} />
             ))}
             <Select name="clinicId" defaultValue={scope.clinicId ?? ""} aria-label="Branch" className="w-56">
@@ -180,10 +226,24 @@ export default async function FinanceReportsPage({ searchParams }: { searchParam
       {report === "balances" ? <Balances scope={scope} /> : null}
       {report === "procedures" ? <Procedures scope={scope} href={href} /> : null}
       {report === "providers" ? <Providers scope={scope} /> : null}
+      {report === "pnl" ? <ProfitAndLoss scope={scope} /> : null}
+      {report === "owed" ? <OwedByAge scope={scope} /> : null}
+      {report === "collection" ? <Collection scope={scope} /> : null}
+      {report === "acceptance" ? <Acceptance scope={scope} /> : null}
+      {report === "instalments" ? <InstalmentsDue scope={scope} /> : null}
+      {report === "sources" ? <Sources scope={scope} /> : null}
 
       <Card className="space-y-2 text-sm" aria-label="How these are counted">
         <h2 className="font-display text-base font-semibold tracking-tight">How these are counted</h2>
         <ul className="list-disc space-y-1 ps-5 text-muted-foreground">
+          {monthly ? (
+            <>
+              <li>Revenue is the work done (net production, as below) less what was written off as never to be paid; profit is revenue less the expenses, by the day each was billed, and the doctors&apos; pay as their monthly statements have it (a month not closed yet: as it stands).</li>
+              <li>Money in is what patients paid less refunds, and what insurers and companies paid; money out is the expenses paid and the doctors&apos; statements paid, on the day the money moved.</li>
+              <li>Owed by age: a patient&apos;s invoice from the day it was issued, a payer&apos;s claim from the day it was made. The collection rate is what has been paid since of the invoices issued each month.</li>
+              <li>A treatment plan withdrawn or replaced by a revision is left out; the revision counts. A patient&apos;s source is where they first came from; campaign costs are spread over the days each ran.</li>
+            </>
+          ) : null}
           <li>Production is the work charged to patients, on the day it was done. Gross is its price before any discount; net is gross less discounts and work cancelled, plus consultation fees. It equals what the patients&apos; accounts were charged.</li>
           <li>A course&apos;s own discount is spread over its sessions as its price is. A cancellation is counted on the day it is made; the day the work was done keeps its figures.</li>
           <li>Income is the money that came in (payments, deposits, consultation fees) less refunds, on the day it was taken. Voided payments never count.</li>

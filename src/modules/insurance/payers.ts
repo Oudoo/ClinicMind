@@ -142,9 +142,9 @@ function contractDTO(c: ContractRow, today: string): ContractDTO {
 }
 
 /** What each payer's live claims are owed: their lines' shares less what was paid and refused. */
-async function owedClaims(client: Tx | typeof db, tenantId: string, payerIds?: string[]) {
+async function owedClaims(client: Tx | typeof db, tenantId: string, payerIds?: string[], clinicId?: string | null) {
   const claims = await client.claim.findMany({
-    where: { tenantId, status: { in: ["OPEN", "SENT"] }, ...(payerIds ? { payerId: { in: payerIds } } : {}) },
+    where: { tenantId, status: { in: ["OPEN", "SENT"] }, ...(payerIds ? { payerId: { in: payerIds } } : {}), ...(clinicId ? { clinicId } : {}) },
     select: {
       id: true,
       payerId: true,
@@ -424,8 +424,8 @@ export interface AgingReport {
 const zeroBuckets = (): Record<AgeBucketKey, number> => Object.fromEntries(AGE_BUCKETS.map((b) => [b.key, 0])) as Record<AgeBucketKey, number>;
 
 /** What every payer owes now, by how long ago its claims were made, and what is past its days to pay. */
-export async function owedByPayer(tenantId: string, now: Date = new Date()): Promise<AgingReport> {
-  const [payers, claims] = await Promise.all([db.payer.findMany({ where: { tenantId }, select: { id: true, name: true, kind: true, paymentDays: true } }), owedClaims(db, tenantId)]);
+export async function owedByPayer(tenantId: string, now: Date = new Date(), opts: { clinicId?: string | null } = {}): Promise<AgingReport> {
+  const [payers, claims] = await Promise.all([db.payer.findMany({ where: { tenantId }, select: { id: true, name: true, kind: true, paymentDays: true } }), owedClaims(db, tenantId, undefined, opts.clinicId)]);
   const rows = new Map<string, AgingRow>();
   const totals: AgingReport["totals"] = { notSent: 0, buckets: zeroBuckets(), total: 0, overdue: 0, claims: 0 };
   for (const c of claims) {

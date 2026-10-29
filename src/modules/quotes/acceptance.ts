@@ -14,7 +14,19 @@ import type { AcceptanceRow, CaseAcceptance } from "./dto";
 
 export const ACCEPTANCE_PERIODS = [30, 90, 365] as const;
 
-const empty = (): AcceptanceRow => ({ presented: 0, presentedValue: 0, accepted: 0, acceptedValue: 0, declined: 0, expired: 0, open: 0 });
+export const emptyAcceptance = (): AcceptanceRow => ({ presented: 0, presentedValue: 0, accepted: 0, acceptedValue: 0, declined: 0, expired: 0, open: 0 });
+
+/** One plan given, counted into a row: accepted (in part counts in part), declined, past its last day while still waiting (expired), or open. */
+export function tallyQuote(row: AcceptanceRow, q: { status: string; total: number; acceptedTotal: number | null; validUntil: Date }, today: Date): void {
+  row.presented += 1;
+  row.presentedValue += q.total;
+  if (q.status === "ACCEPTED") {
+    row.accepted += 1;
+    row.acceptedValue += q.acceptedTotal ?? 0;
+  } else if (q.status === "DECLINED") row.declined += 1;
+  else if (q.validUntil.getTime() < today.getTime()) row.expired += 1;
+  else row.open += 1;
+}
 
 export async function caseAcceptance(tenantId: string, opts: { days?: number; byDoctor?: boolean; now?: Date } = {}): Promise<CaseAcceptance> {
   const days = opts.days && opts.days > 0 ? Math.min(opts.days, 730) : 90;
@@ -38,26 +50,17 @@ export async function caseAcceptance(tenantId: string, opts: { days?: number; by
     db.quote.findMany({ where: { tenantId, status: "SENT", validUntil: { gte: today, lte: weekOut } }, select: { total: true } }),
   ]);
 
-  const overall = empty();
+  const overall = emptyAcceptance();
   const doctors = new Map<string | null, AcceptanceRow>();
   const treatments = new Map<string, { treatmentId: string; name: string; presentedValue: number; acceptedValue: number; presented: number; accepted: number }>();
   for (const q of quotes) {
     const rows = [overall];
     if (opts.byDoctor) {
-      const row = doctors.get(q.doctorId) ?? empty();
+      const row = doctors.get(q.doctorId) ?? emptyAcceptance();
       doctors.set(q.doctorId, row);
       rows.push(row);
     }
-    for (const row of rows) {
-      row.presented += 1;
-      row.presentedValue += q.total;
-      if (q.status === "ACCEPTED") {
-        row.accepted += 1;
-        row.acceptedValue += q.acceptedTotal ?? 0;
-      } else if (q.status === "DECLINED") row.declined += 1;
-      else if (q.validUntil.getTime() < today.getTime()) row.expired += 1;
-      else row.open += 1;
-    }
+    for (const row of rows) tallyQuote(row, q, today);
     for (const item of q.items) {
       const t = treatments.get(item.treatmentId) ?? { treatmentId: item.treatmentId, name: item.treatment.name, presentedValue: 0, acceptedValue: 0, presented: 0, accepted: 0 };
       treatments.set(item.treatmentId, t);

@@ -43,8 +43,12 @@ import { payerMoneyIn } from "@/modules/insurance/money";
  * the day the work was done keeps its figures. Voided payments never count.
  */
 
-export const FINANCE_REPORTS = ["day", "income", "production", "branches", "adjustments", "balances", "procedures", "providers"] as const;
+/** Dentalore's daily set, then the month-by-month reports (modules/finance/monthly-reports.ts). */
+export const DAILY_REPORTS = ["day", "income", "production", "branches", "adjustments", "balances", "procedures", "providers"] as const;
+export const MONTHLY_REPORTS = ["pnl", "owed", "collection", "acceptance", "instalments", "sources"] as const;
+export const FINANCE_REPORTS = [...DAILY_REPORTS, ...MONTHLY_REPORTS] as const;
 export type FinanceReportKey = (typeof FINANCE_REPORTS)[number];
+export type MonthlyReportKey = (typeof MONTHLY_REPORTS)[number];
 
 export const FINANCE_REPORT_LABELS: Record<FinanceReportKey, string> = {
   day: "Day close",
@@ -55,7 +59,18 @@ export const FINANCE_REPORT_LABELS: Record<FinanceReportKey, string> = {
   balances: "Balances & invoices",
   procedures: "Procedures tracking",
   providers: "Provider financials",
+  pnl: "Profit and loss",
+  owed: "Owed by age",
+  collection: "Collection rate",
+  acceptance: "Case acceptance",
+  instalments: "Instalments due",
+  sources: "Revenue by source",
 };
+
+/** The month-by-month reports cover the last 3, 6 or 12 months, this one to today. */
+export const MONTH_WINDOWS = [3, 6, 12] as const;
+export const DEFAULT_MONTH_WINDOW = 12;
+export const isMonthlyReport = (key: unknown): key is MonthlyReportKey => typeof key === "string" && (MONTHLY_REPORTS as readonly string[]).includes(key);
 
 export const ADJUSTMENT_TYPES = ["DISCOUNT", "WRITE_OFF", "CANCELLED", "REFUND", "VOID", "CREDIT_NOTE"] as const;
 export type AdjustmentType = (typeof ADJUSTMENT_TYPES)[number];
@@ -82,6 +97,8 @@ export const ReportFilters = z.object({
   doctorId: zOptionalText(64),
   /** Adjustments: one type. */
   type: z.enum(ADJUSTMENT_TYPES).optional().catch(undefined),
+  /** The month-by-month reports: how many months back (3, 6 or 12). */
+  months: zOptionalText(3),
 });
 export type ReportFilters = z.infer<typeof ReportFilters>;
 
@@ -105,10 +122,26 @@ export async function reportScope(tenantId: string, raw: Record<string, string |
     db.clinic.findMany({ where: { tenantId, ...notDeleted }, orderBy: [{ createdAt: "asc" }, { id: "asc" }], select: { id: true, name: true } }),
   ]);
   if (filters.clinicId && !clinics.some((c) => c.id === filters.clinicId)) throw new TenantScopeError("clinic", filters.clinicId);
-  // The day close covers one day; the other reports a period.
+  // The day close covers one day; the month-by-month reports whole months to today; the others a period.
   const day = filters.date && /^\d{4}-\d{2}-\d{2}$/.test(filters.date) && fromDateKey(filters.date, timezone) ? filters.date : null;
-  const period = raw.report === "day" ? resolvePeriod({ period: "custom", from: day ?? dateKeyInTz(now, timezone), to: day ?? dateKeyInTz(now, timezone) }, timezone, now) : resolvePeriod({ period: filters.period, from: filters.from, to: filters.to }, timezone, now);
+  const today = dateKeyInTz(now, timezone);
+  const period =
+    raw.report === "day"
+      ? resolvePeriod({ period: "custom", from: day ?? today, to: day ?? today }, timezone, now)
+      : isMonthlyReport(raw.report)
+        ? resolvePeriod({ period: "custom", from: `${monthsBack(today.slice(0, 7), monthWindow(filters.months) - 1)}-01`, to: today }, timezone, now)
+        : resolvePeriod({ period: filters.period, from: filters.from, to: filters.to }, timezone, now);
   return { tenantId, timezone, period, clinicId: filters.clinicId ?? null, clinics, defaultClinicId: clinics[0]?.id ?? null, filters };
+}
+
+/** The months back a month-by-month report covers (12 unless 3 or 6 is asked for). */
+export const monthWindow = (raw: string | undefined) => MONTH_WINDOWS.find((m) => String(m) === raw) ?? DEFAULT_MONTH_WINDOW;
+
+/** YYYY-MM, `n` months before. */
+function monthsBack(key: string, n: number): string {
+  const [y, m] = key.split("-").map(Number) as [number, number];
+  const at = y * 12 + (m - 1) - n;
+  return `${Math.floor(at / 12)}-${String((at % 12) + 1).padStart(2, "0")}`;
 }
 
 /** Every branch over a period already resolved (the finance dashboard's). */
@@ -1126,6 +1159,8 @@ const productionCells = (p: ProductionTotals): CsvCell[] => [p.gross, p.discount
 
 /** A report as CSV (every row, the filters applied), with its file name. */
 export async function financeReportCsv(scope: ReportScope, key: FinanceReportKey): Promise<{ filename: string; csv: string }> {
+  // Loaded when asked for: the month-by-month reports build on this module's.
+  if (isMonthlyReport(key)) return (await import("./monthly-reports")).monthlyReportCsv(scope, key);
   const filename = `${key}-${scope.period.fromKey}-to-${scope.period.toKey}.csv`;
   const date = (iso: string) => formatDateInTz(new Date(iso), scope.timezone);
   if (key === "day") {
@@ -1213,6 +1248,7 @@ export async function financeReportCsv(scope: ReportScope, key: FinanceReportKey
 /** One report with the period and branch it covers (the API's JSON). */
 export async function financeReport(scope: ReportScope, key: FinanceReportKey) {
   const base = { report: key, period: { preset: scope.period.preset, from: scope.period.fromKey, to: scope.period.toKey }, clinicId: scope.clinicId, timezone: scope.timezone };
+  if (isMonthlyReport(key)) return { ...base, ...(await (await import("./monthly-reports")).monthlyReport(scope, key)) };
   switch (key) {
     case "day":
       return { ...base, ...(await dayCloseReport(scope)) };

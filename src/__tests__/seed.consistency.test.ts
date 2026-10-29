@@ -32,6 +32,7 @@ import {
 import { accountPosition } from "@/modules/finance/ledger";
 import { claimedOn, claimsSettling } from "@/modules/finance/allocations";
 import { splitInvoice } from "@/modules/insurance/claims";
+import { acceptanceReport, collectionReport, instalmentsDueReport, owedByAgeReport, profitAndLossReport, sourcesReport } from "@/modules/finance/monthly-reports";
 import { END_AFTER_SILENT_DAYS, END_AFTER_WINDOW_DAYS } from "@/modules/recalls/constants";
 import { addDays, dateKeyInTz } from "@/lib/time";
 import { adjustmentsReport, balancesReport, branchReport, dayCloseReport, incomeReport, productionReport, providersReport, reportScope } from "@/modules/finance/reports";
@@ -373,6 +374,39 @@ describe("the seeded demo database (when DATABASE_URL points at one)", () => {
     expect(balances.rows.filter((r) => r.balance !== r.dueOnInvoices + r.notInvoiced - r.credit).map((r) => r.patientName)).toEqual([]);
     expect(balances.rows.reduce((s, r) => s + Math.max(0, r.balance), 0)).toBe(balances.totals.owed);
     expect(balances.rows.reduce((s, r) => s + r.aging.reduce((x, y) => x + y, 0), 0)).toBe(balances.totals.dueOnInvoices);
+  });
+
+  it("adds the month-by-month reports up: profit and loss on the daily reports, sources on the work done, collections and what is owed", async (ctx) => {
+    if (!demo) return ctx.skip();
+    const scope = await reportScope(demo.id, { report: "pnl" });
+    const [pnl, production, income, owed, balances, collection, sources, acceptance, instalments] = await Promise.all([
+      profitAndLossReport(scope),
+      productionReport(scope),
+      incomeReport(scope),
+      owedByAgeReport(scope),
+      balancesReport(scope),
+      collectionReport(scope),
+      sourcesReport(scope),
+      acceptanceReport(scope),
+      instalmentsDueReport(scope),
+    ]);
+    expect(pnl.months).toHaveLength(12);
+    expect(pnl.totals.production).toBe(production.totals.net);
+    expect(pnl.totals.moneyIn).toBe(income.totals.net);
+    expect(pnl.totals.expenses).toBeGreaterThan(0);
+    expect(pnl.totals.doctorPay).toBeGreaterThan(0);
+    for (const m of pnl.months) expect(m.profit).toBe(m.production - m.writtenOff - m.expenses - m.doctorPay);
+    expect(sources.totals.production).toBe(production.totals.net);
+    expect(sources.rows.some((s) => s.cost > 0)).toBe(true);
+    for (const m of collection.months) expect(m.billed).toBe(m.collected + m.writtenOff + m.payersOwe + m.patientsOwe);
+    expect(collection.totals.fromPayers).toBeGreaterThan(0);
+    expect(owed.rows[0]!.total).toBe(balances.totals.dueOnInvoices);
+    expect(owed.rows.length).toBeGreaterThanOrEqual(2);
+    const a = acceptance.totals;
+    expect(a.presented).toBeGreaterThan(0);
+    expect(a.presented).toBe(a.accepted + a.declined + a.expired + a.open);
+    expect(instalments.activePlans).toBeGreaterThan(0);
+    expect(instalments.late.length + instalments.next.length).toBeGreaterThan(0);
   });
 
   it("closes every day of the last fortnight the same way: the drawer agrees with the books, every receipt traced", async (ctx) => {
