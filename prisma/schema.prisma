@@ -205,6 +205,10 @@ model Tenant {
   quoteItems              QuoteItem[]
   instalmentPlans         InstalmentPlan[]
   instalments             Instalment[]
+  doctorPayRules          DoctorPayRule[]
+  procedureCosts          ProcedureCost[]
+  doctorStatements        DoctorStatement[]
+  doctorStatementLines    DoctorStatementLine[]
 
   @@index([status])
   @@map("tenants")
@@ -305,6 +309,8 @@ model User {
   safetyOverrides        SafetyOverride[]
   aiFeedback             AiFeedback[]
   cashShifts             CashShift[]
+  payRules               DoctorPayRule[]         @relation("DoctorPayRules")
+  payStatements          DoctorStatement[]       @relation("DoctorStatements")
 
   @@unique([tenantId, email])
   @@index([tenantId, role])
@@ -1267,6 +1273,7 @@ model Procedure {
   enrolment ConciergeEnrolment?
   recalls   Recall[]
   quoteItem QuoteItem?
+  costs     ProcedureCost[]
 
   @@index([tenantId, performedAt])
   @@index([tenantId, patientId])
@@ -1979,6 +1986,8 @@ model PriceItem {
   packages      PriceItem[] @relation("PackageSessions")
   active        Boolean     @default(true)
   sortOrder     Int         @default(0)
+  /// Materials used for one unit of it (a session, an area, a graft, a package…), in EGP: taken off the work before a doctor's share.
+  materialCost  Int         @default(0)
   createdAt     DateTime    @default(now())
   updatedAt     DateTime    @updatedAt
 
@@ -2421,4 +2430,156 @@ model Instalment {
   @@unique([planId, number])
   @@index([tenantId, dueAt])
   @@map("instalments")
+}
+
+// ── Doctor pay ───────────────────────────────────────────────────────────────
+
+/// How a doctor is paid for a kind of work: a share of what is billed for it, a share of what is collected for it, or a fixed fee for each session done.
+enum PayBasis {
+  BILLED
+  COLLECTED
+  FIXED
+}
+
+/// A cost of a procedure the clinic pays: a lab's bill, or materials used beyond the price list's own.
+enum ProcedureCostKind {
+  LAB
+  MATERIAL
+}
+
+/// A month's statement once the owner closes it, and once it is paid.
+enum DoctorStatementStatus {
+  CLOSED
+  PAID
+}
+
+/// A doctor's pay for a category of the price list ("hair", "laser"…), for consultation fees ("consultation"), or for everything else ("*").
+model DoctorPayRule {
+  id          String   @id @default(cuid())
+  tenantId    String
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  doctorId    String
+  doctor      User     @relation("DoctorPayRules", fields: [doctorId], references: [id], onDelete: Cascade)
+  category    String   @default("*")
+  basis       PayBasis
+  /// A share, in hundredths of a percent (3750 is 37.5%).
+  rate        Int?
+  /// A fixed fee: EGP for each session done.
+  amount      Int?
+  /// Lab and material costs come off the work before the share.
+  deductCosts Boolean  @default(true)
+  note        String?
+  createdById String?
+  createdAt   DateTime @default(now())
+  updatedById String?
+  updatedAt   DateTime @updatedAt
+
+  @@unique([tenantId, doctorId, category])
+  @@index([tenantId, doctorId])
+  @@map("doctor_pay_rules")
+}
+
+/// A cost of a procedure: the lab's bill for it, or materials used. Never deleted: voided with a reason.
+model ProcedureCost {
+  id          String            @id @default(cuid())
+  tenantId    String
+  tenant      Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  procedureId String
+  procedure   Procedure         @relation(fields: [procedureId], references: [id], onDelete: Cascade)
+  kind        ProcedureCostKind
+  description String
+  amount      Int
+  incurredAt  DateTime
+  createdById String?
+  createdAt   DateTime          @default(now())
+  voidedAt    DateTime?
+  voidedById  String?
+  voidReason  String?
+
+  @@index([tenantId, procedureId])
+  @@map("procedure_costs")
+}
+
+/// A doctor's pay for a month, closed by the owner: what each piece of work had earned by the month's end, less what
+/// earlier statements paid for it. Closed, it never changes but to be marked paid.
+model DoctorStatement {
+  id             String                @id @default(cuid())
+  tenantId       String
+  tenant         Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  doctorId       String
+  doctor         User                  @relation("DoctorStatements", fields: [doctorId], references: [id], onDelete: Cascade)
+  /// YYYY-MM on the clinic clock.
+  month          String
+  /// What it covers: from the end of the statement before (or the day the doctor's pay starts) to the month's end.
+  periodStart    DateTime
+  /// The month's end: the work and the money before it count.
+  periodEnd      DateTime
+  status         DoctorStatementStatus @default(CLOSED)
+  /// The month's work: billed, collected and the costs that came in, in the month.
+  billed         Int
+  collected      Int
+  costs          Int
+  /// Earned in the month: the lines' sum (less than zero when work paid for before was cancelled or refunded).
+  earned         Int
+  /// Owed back from the statement before (zero or less).
+  broughtForward Int                   @default(0)
+  /// What the clinic pays the doctor (zero or more).
+  payable        Int
+  /// Owed back, taken off the next statement (zero or less).
+  carriedForward Int                   @default(0)
+  closedAt       DateTime
+  closedById     String?
+  paidAt         DateTime?
+  paidById       String?
+  paidMethod     PaymentMethod?
+  paidReference  String?
+  note           String?
+
+  lines DoctorStatementLine[]
+
+  @@unique([tenantId, doctorId, month])
+  @@index([tenantId, month])
+  @@map("doctor_statements")
+}
+
+/// One piece of work on a closed statement, as it stood at the month's end.
+model DoctorStatementLine {
+  id               String          @id @default(cuid())
+  tenantId         String
+  tenant           Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  statementId      String
+  statement        DoctorStatement @relation(fields: [statementId], references: [id], onDelete: Cascade)
+  /// The work: a procedure, or a consultation fee (its payment).
+  procedureId      String?
+  feeId            String?
+  patientId        String
+  patientName      String
+  description      String
+  category         String
+  workAt           DateTime
+  /// The rule it was paid under (none when no rule covered it).
+  basis            PayBasis?
+  rate             Int?
+  amount           Int?
+  deductCosts      Boolean         @default(false)
+  /// In the month.
+  billedInMonth    Int             @default(0)
+  collectedInMonth Int             @default(0)
+  costsInMonth     Int             @default(0)
+  /// Up to the month's end.
+  billedToDate     Int
+  collectedToDate  Int
+  costsToDate      Int
+  sessionsToDate   Int
+  earnedToDate     Int
+  /// Paid for it by earlier statements.
+  paidBefore       Int
+  /// What this statement pays for it: earned to date less paid before.
+  due              Int
+  position         Int
+
+  @@index([tenantId, statementId])
+  @@index([tenantId, procedureId])
+  @@index([tenantId, feeId])
+  @@map("doctor_statement_lines")
 }

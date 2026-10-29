@@ -40,6 +40,8 @@ import { cleanSignature, quoteState } from "@/modules/quotes/constants";
 import { coverInstalments, planPosition } from "@/modules/finance/instalment-schedule";
 import { netPaid } from "@/modules/finance/constants";
 import { DEFAULT_REMINDER_SETTINGS, isQuiet } from "@/modules/messaging/reminder-settings";
+import { statementFor } from "@/modules/finance/doctor-pay";
+import { monthOfKey, settle, shiftMonth } from "@/modules/finance/doctor-pay-calc";
 
 const FEMALE_ONLY = /\b(PCOS|polycystic|hirsutism|melasma)\b/i;
 
@@ -568,5 +570,51 @@ describe("the seeded demo database (when DATABASE_URL points at one)", () => {
       expect(isQuiet(m.createdAt, tz, DEFAULT_REMINDER_SETTINGS)).toBe(false);
     }
     expect(await db.notification.count({ where: { tenantId, kind: "INSTALMENT_OVERDUE" } })).toBeGreaterThan(0);
+  });
+
+  it("pays two doctors under their rules: statements closed in order, each line what the work earned less what was paid before; last month open to close", async (ctx) => {
+    if (!demo) return ctx.skip();
+    const tenantId = demo.id;
+    const tz = "Africa/Cairo";
+    const rules = await db.doctorPayRule.findMany({ where: { tenantId }, select: { doctorId: true, category: true } });
+    const doctorIds = [...new Set(rules.map((r) => r.doctorId))];
+    expect(doctorIds).toHaveLength(2);
+    for (const d of doctorIds) expect(rules.some((r) => r.doctorId === d && r.category === "*")).toBe(true);
+    const statements = await db.doctorStatement.findMany({ where: { tenantId }, orderBy: [{ doctorId: "asc" }, { month: "asc" }], include: { lines: true } });
+    const thisMonth = monthOfKey(dateKeyInTz(new Date(), tz));
+    for (const d of doctorIds) {
+      const mine = statements.filter((s) => s.doctorId === d);
+      // Three months back closed (and paid when anything was due), two months back closed and not paid.
+      expect(mine.map((s) => s.month)).toEqual([shiftMonth(thisMonth, -3), shiftMonth(thisMonth, -2)]);
+      expect(mine[0]!.status).toBe(mine[0]!.payable > 0 ? "PAID" : "CLOSED");
+      expect(mine[1]!.status).toBe("CLOSED");
+      const paid = new Map<string, number>();
+      let carried = 0;
+      for (const [i, s] of mine.entries()) {
+        if (i > 0) expect(s.month).toBe(shiftMonth(mine[i - 1]!.month, 1));
+        expect(s.broughtForward).toBe(carried);
+        expect(s.earned).toBe(s.lines.reduce((sum, l) => sum + l.due, 0));
+        expect({ payable: s.payable, carriedForward: s.carriedForward }).toEqual(settle(s.earned, s.broughtForward));
+        expect(s.status === "PAID").toBe(Boolean(s.paidAt));
+        for (const l of s.lines) {
+          const key = l.procedureId ?? `f:${l.feeId}`;
+          expect(l.paidBefore, `${s.month} ${l.description}`).toBe(paid.get(key) ?? 0);
+          expect(l.due).toBe(l.earnedToDate - l.paidBefore);
+          paid.set(key, (paid.get(key) ?? 0) + l.due);
+        }
+        carried = s.carriedForward;
+      }
+      // Last month is over and open: the owner closes it.
+      const last = shiftMonth(monthOfKey(dateKeyInTz(new Date(), tz)), -1);
+      const open = await statementFor(tenantId, d, last);
+      expect(open).toMatchObject({ status: "OPEN", ended: true, broughtForward: carried });
+      expect(open.lines.length).toBeGreaterThan(0);
+      expect(open.earned).toBe(open.lines.reduce((sum, l) => sum + l.due, 0));
+    }
+    // Costs on the work: materials and lab bills, one voided with its reason.
+    const costs = await db.procedureCost.findMany({ where: { tenantId }, select: { kind: true, voidedAt: true, voidReason: true } });
+    expect(costs.some((c) => c.kind === "LAB")).toBe(true);
+    expect(costs.filter((c) => c.voidedAt).every((c) => c.voidReason)).toBe(true);
+    expect(costs.some((c) => c.voidedAt)).toBe(true);
   });
 });

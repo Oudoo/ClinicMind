@@ -78,6 +78,8 @@ export const PriceItemInput = z
     sessionItemId: z.preprocess(blank, zOptionalText(64)),
     /** The first price, clinic-wide. */
     price: zMoney,
+    /** Materials used for one unit of it, in EGP: taken off the work before a doctor's share. */
+    materialCost: z.preprocess(blank, zMoney.optional()),
     /** From this day on the clinic clock (today when left out). */
     effectiveFrom: z.preprocess(blank, zDateKey.optional()),
     sortOrder: z.preprocess(blank, z.coerce.number().int().min(0).max(100_000).optional()),
@@ -95,6 +97,7 @@ export const PriceItemUpdateInput = z
     sessionItemId: zClearable(64),
     active: z.boolean().optional(),
     sortOrder: z.coerce.number().int().min(0).max(100_000).optional(),
+    materialCost: z.preprocess(blank, zMoney.optional()),
   })
   .superRefine(checkUnitFields);
 
@@ -168,6 +171,8 @@ export interface PriceItemDTO {
   sessionItem: { id: string; code: string; name: string } | null;
   active: boolean;
   sortOrder: number;
+  /** Materials used for one unit, in EGP. */
+  materialCost: number;
   /** In force on the day asked for (for the branch asked for), or null. */
   price: number | null;
   priceSince: string | null;
@@ -210,6 +215,7 @@ function toDTO(row: ItemRow, at: Date, clinicId: string | null, timezone: string
     sessionItem: row.sessionItem,
     active: row.active,
     sortOrder: row.sortOrder,
+    materialCost: row.materialCost,
     price: current?.amount ?? null,
     priceSince: current ? dateKeyInTz(current.effectiveFrom, timezone) : null,
     branchPrice: Boolean(current?.clinicId),
@@ -316,8 +322,8 @@ async function dayFrom(tenantId: string, key: string | undefined): Promise<Date>
   return day;
 }
 
-function itemSnapshot(row: { code: string; name: string; category: string; unit: PriceUnit; unitLabel: string | null; treatmentId: string; sessions: number | null; sessionItemId: string | null; active: boolean }) {
-  return { code: row.code, name: row.name, category: row.category, unit: row.unit, unitLabel: row.unitLabel, treatmentId: row.treatmentId, sessions: row.sessions, sessionItemId: row.sessionItemId, active: row.active };
+function itemSnapshot(row: { code: string; name: string; category: string; unit: PriceUnit; unitLabel: string | null; treatmentId: string; sessions: number | null; sessionItemId: string | null; active: boolean; materialCost: number }) {
+  return { code: row.code, name: row.name, category: row.category, unit: row.unit, unitLabel: row.unitLabel, treatmentId: row.treatmentId, sessions: row.sessions, sessionItemId: row.sessionItemId, active: row.active, materialCost: row.materialCost };
 }
 
 export async function createPriceItem(tenantId: string, rawInput: unknown, actor: Actor = {}): Promise<PriceItemDTO & { history: PriceHistoryEntry[] }> {
@@ -340,6 +346,7 @@ export async function createPriceItem(tenantId: string, rawInput: unknown, actor
           sessions: input.unit === "PACKAGE" ? (input.sessions ?? null) : null,
           sessionItemId: input.unit === "PACKAGE" ? (input.sessionItemId ?? null) : null,
           sortOrder: input.sortOrder ?? 0,
+          materialCost: input.materialCost ?? 0,
         },
         select: { id: true },
       });
@@ -390,6 +397,7 @@ export async function updatePriceItem(tenantId: string, id: string, rawInput: un
       sessionItemId: unit === "PACKAGE" ? sessionItemId : null,
       active: input.active,
       sortOrder: input.sortOrder,
+      materialCost: input.materialCost,
     },
   });
   await audit({

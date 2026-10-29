@@ -64,6 +64,8 @@ const FEE_METHODS: readonly (readonly [PaymentMethod, number])[] = [
 const KIND_WORD: Record<PaymentKind, string> = { DEPOSIT: "Deposit", PAYMENT: "Payment", REFUND: "Refund", CONSULTATION_FEE: "Consultation fee" };
 const METHOD_WORD: Record<PaymentMethod, string> = { CASH: "cash", CARD: "card", BANK_TRANSFER: "bank transfer", WALLET: "wallet", POS: "pos", INSTAPAY: "InstaPay", CHEQUE: "cheque", OTHER: "other" };
 const REFUND_NOTES = ["Session shortened — partial refund agreed", "Goodwill refund after a scheduling mix-up", "Package downgraded at the patient's request", "Duplicate card charge reversed"];
+/** The family account (households.ts): Sherif's transplant is always done and part-paid, and his father pays some of the rest. */
+const PART_PAID = new Set(["Sherif Hany"]);
 
 /** A cuid-shaped id, so the rows can reference each other inside one createMany. */
 const newId = () => `c${randomBytes(12).toString("hex")}`;
@@ -248,8 +250,8 @@ export async function seedFinance(ctx: SeedContext): Promise<void> {
     return { id, net: price - discount };
   };
 
-  /** Deposit days before (transplant, PRP, pigmentation), then the balance: on the day mostly, sometimes in two parts, sometimes left owing. */
-  const payFor = (p: SeedPatient, t: TreatmentInfo, proc: { id: string; net: number }, o: { performedAt: Date; endsAt: Date; appointmentId?: string | null; owing?: number; partial?: number }) => {
+  /** Deposit days before (transplant, PRP, pigmentation), then the balance: on the day mostly, sometimes in two parts, sometimes left owing. Returns what was paid. */
+  const payFor = (p: SeedPatient, t: TreatmentInfo, proc: { id: string; net: number }, o: { performedAt: Date; endsAt: Date; appointmentId?: string | null; owing?: number; partial?: number }): number => {
     let paid = 0;
     if (t.depositAmount > 0 && r.chance(t.key === "pigmentation" ? 0.5 : 0.92)) {
       const method = r.weighted(DEPOSIT_METHODS);
@@ -258,11 +260,13 @@ export async function seedFinance(ctx: SeedContext): Promise<void> {
       paid += dep;
     }
     const balance = proc.net - paid;
-    if (balance <= 0) return;
-    const roll = r.rand();
+    if (balance <= 0) return paid;
     const owing = o.owing ?? 0.09;
     const partial = o.partial ?? 0.12;
-    if (roll < owing) return; // nothing paid yet beyond the deposit
+    const drawn = r.rand();
+    // The family's transplant is part-paid, whatever the draw.
+    const roll = PART_PAID.has(p.fullName) && t.key === "hair-transplant" ? owing : drawn;
+    if (roll < owing) return paid; // nothing paid yet beyond the deposit
     const dayOf = o.endsAt.getTime() + r.between(5, 40) * MIN;
     if (roll < owing + partial) {
       const part = Math.round((balance * r.between(40, 80)) / 100 / 100) * 100;
@@ -270,7 +274,7 @@ export async function seedFinance(ctx: SeedContext): Promise<void> {
         const method = r.weighted(PAY_METHODS);
         addPayment({ patientId: p.id, kind: "PAYMENT", method, amount: part, paidAt: clamp(dayOf), procedureId: proc.id, reference: ref(method), note: "First instalment", towards: t.name });
       }
-      return;
+      return paid + Math.max(0, part);
     }
     const method = r.weighted(PAY_METHODS);
     if (t.key === "hair-transplant" && r.chance(0.35)) {
@@ -280,10 +284,12 @@ export async function seedFinance(ctx: SeedContext): Promise<void> {
       if (secondAt < nowMs) {
         const m2 = r.weighted(PAY_METHODS);
         addPayment({ patientId: p.id, kind: "PAYMENT", method: m2, amount: balance - first, paidAt: new Date(secondAt), procedureId: proc.id, reference: ref(m2), note: "Second instalment", towards: t.name });
+        return paid + balance;
       }
-      return;
+      return paid + first;
     }
     addPayment({ patientId: p.id, kind: "PAYMENT", method, amount: balance, paidAt: clamp(dayOf), procedureId: proc.id, reference: ref(method), towards: t.name });
+    return paid + balance;
   };
 
   // ── M10 cohorts: who had their first paid visit 12–15 months ago, and who came back ──
@@ -391,10 +397,11 @@ export async function seedFinance(ctx: SeedContext): Promise<void> {
   const procedureAppointments = completed.filter((a) => a.kind === "PROCEDURE");
   const followUps = completed.filter((a) => a.kind === "FOLLOW_UP" && patients.get(a.patientId)?.tag !== "hair-transplant");
   const consultations = completed.filter((a) => a.kind === "CONSULTATION");
-  const signedRecent = [
-    ...sample(procedureAppointments, 0.7, (a) => !blocked(a), r),
-    ...sample(followUps, 0.22, (a) => !blocked(a), r),
-  ].sort((a, b) => a.startsAt.getTime() - b.startsAt.getTime());
+  const sampledProcedures = sample(procedureAppointments, 0.7, (a) => !blocked(a), r);
+  const sampledFollowUps = sample(followUps, 0.22, (a) => !blocked(a), r);
+  // The family's transplant is always done (its first procedure booking).
+  const family = procedureAppointments.find((a) => PART_PAID.has(patients.get(a.patientId)?.fullName ?? "") && !blocked(a));
+  const signedRecent = [...sampledProcedures, ...(family && !sampledProcedures.includes(family) ? [family] : []), ...sampledFollowUps].sort((a, b) => a.startsAt.getTime() - b.startsAt.getTime());
 
   let refunds = 0;
   const hadTransplant = new Set<string>();
@@ -407,13 +414,18 @@ export async function seedFinance(ctx: SeedContext): Promise<void> {
       else hadTransplant.add(p.id);
     }
     const proc = addSigned(p, t, { performedAt: a.startsAt, signedAt: a.endsAt, doctorId: a.doctorId, appointmentId: a.id });
-    payFor(p, t, proc, { performedAt: a.startsAt, endsAt: a.endsAt, appointmentId: a.id });
+    const paid = payFor(p, t, proc, { performedAt: a.startsAt, endsAt: a.endsAt, appointmentId: a.id });
     if (refunds < 4 && r.chance(0.05)) {
       const refundAt = a.endsAt.getTime() + r.between(1, 6) * DAY;
       if (refundAt < nowMs) {
-        refunds += 1;
         const amount = t.key === "hair-transplant" ? 2_500 : Math.max(100, Math.round((proc.net * r.between(10, 30)) / 100 / 50) * 50);
-        addPayment({ patientId: p.id, kind: "REFUND", method: r.pick(["CASH", "CARD", "WALLET"] as const), amount, paidAt: new Date(refundAt), procedureId: proc.id, note: r.pick(REFUND_NOTES), towards: t.name });
+        const method = r.pick(["CASH", "CARD", "WALLET"] as const);
+        const note = r.pick(REFUND_NOTES);
+        // Only money that was paid goes back.
+        if (amount <= paid) {
+          refunds += 1;
+          addPayment({ patientId: p.id, kind: "REFUND", method, amount, paidAt: new Date(refundAt), procedureId: proc.id, note, towards: t.name });
+        }
       }
     }
   }

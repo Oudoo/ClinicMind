@@ -67,6 +67,20 @@ export interface ProcedureItem {
   /** Accepted from a treatment plan and given no day yet: `performedAt` is the day it was accepted. */
   undated?: boolean;
   quoteNumber?: string | null;
+  /** For the roles that see payments: the price list's materials for it, and the costs entered on it. */
+  materials?: number;
+  costs?: ProcedureCostItem[];
+}
+
+/** A lab's bill or materials entered on a procedure. */
+export interface ProcedureCostItem {
+  id: string;
+  kind: "LAB" | "MATERIAL";
+  description: string;
+  amount: number;
+  incurredAt: string;
+  voidedAt: string | null;
+  voidReason: string | null;
 }
 
 export interface PaymentItem {

@@ -15,6 +15,7 @@ import { ProcedureCancelButton, ProcedureSignButton, ProcedureStageButton, Proce
 import { stageShare } from "@/modules/finance/charges";
 import { PaymentVoidButton } from "./payment-void-button";
 import { CreateInvoiceButton } from "./invoice-actions";
+import { ProcedureCosts } from "./procedure-costs";
 import {
   KIND_LABELS,
   KIND_TONE,
@@ -232,6 +233,9 @@ export function FinancePatientPanel({
                     <p className="mt-1 text-xs text-muted-foreground">Cancelled: {p.cancelReason}</p>
                   ) : null}
                   {p.notes ? <p className="mt-1 text-xs text-muted-foreground">{p.notes}</p> : null}
+                  {p.costs ? (
+                    <ProcedureCosts procedureId={p.id} label={label} materials={p.materials ?? 0} costs={p.costs} timezone={timezone} canAdd={canPay && p.status !== "CANCELLED"} canVoid={canVoid} />
+                  ) : null}
                   {p.status !== "CANCELLED" && (canSign || canRecordProcedure || canPay) ? (
                     <div className="mt-2 flex flex-wrap gap-1.5">
                       {p.status === "PLANNED" && p.stages > 1 && canRecordProcedure ? <ProcedureStartButton procedureId={p.id} label={label} stages={p.stages} timezone={timezone} /> : null}

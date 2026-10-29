@@ -31,6 +31,7 @@ import {
   BookOpenCheck,
   ClipboardList,
   CalendarClock,
+  HandCoins,
 } from "lucide-react";
 import { BRAND } from "@/lib/brand";
 import { onAuthChange } from "@/lib/auth/browser-session";
@@ -50,6 +51,8 @@ interface NavItem {
   badge?: string;
   /** Shown only to roles holding this permission. */
   permission?: Permission;
+  /** Shown only to these roles. */
+  roles?: UserRole[];
   /** Shown only to clinicians (clinical questions to the AI). */
   clinician?: boolean;
 }
@@ -70,6 +73,8 @@ const NAV: NavItem[] = [
   { href: "/dashboard/finance/prices", label: "Price list", icon: Tags, permission: "patients:write" },
   { href: "/dashboard/finance/unbilled", label: "Not billed", icon: ClipboardCheck, permission: "payments:write" },
   { href: "/dashboard/finance/cash", label: "Cash drawer", icon: Wallet, permission: "payments:write" },
+  { href: "/dashboard/finance/doctor-pay", label: "Doctor pay", icon: HandCoins, permission: "finance:read" },
+  { href: "/dashboard/finance/doctor-pay/me", label: "My pay", icon: HandCoins, roles: ["DOCTOR", "NURSE"] },
   { href: "/dashboard/finance/reports", label: "Finance reports", icon: FileSpreadsheet, permission: "finance:read" },
   { href: "/dashboard/reports", label: "Reports", icon: ChartColumn, permission: "reports:read" },
   { href: "/dashboard/assistant", label: "AI Assistant", icon: Sparkles, badge: "RAG", permission: "ai:assistant", clinician: true },
@@ -83,6 +88,7 @@ const NAV: NavItem[] = [
 const PAGE_TITLES: [prefix: string, title: string][] = [
   ["/dashboard/safety", "Safety overrides"],
   ["/dashboard/notifications", "Notifications"],
+  ["/dashboard/finance/doctor-pay", "Pay statement"],
 ];
 
 /** Shown to platform administrators (SUPER_ADMIN) above the clinic sections. */
@@ -115,7 +121,7 @@ export function DashboardShell({
   user: ShellUser;
 }) {
   const pathname = usePathname() ?? "/dashboard";
-  const visible = NAV.filter((n) => (!n.permission || can(user.role as UserRole, n.permission)) && (!n.clinician || user.isClinician));
+  const visible = NAV.filter((n) => (!n.permission || can(user.role as UserRole, n.permission)) && (!n.roles || n.roles.includes(user.role as UserRole)) && (!n.clinician || user.isClinician));
   const items = platform ? [PLATFORM_NAV, ...visible] : visible;
   // The most specific match wins (the price list sits under Finance).
   const current = items.filter((n) => isActive(pathname, n.href)).sort((a, b) => b.href.length - a.href.length)[0];

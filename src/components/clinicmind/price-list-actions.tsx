@@ -35,6 +35,7 @@ interface ItemDetail {
   sessions: number | null;
   sessionItem: { id: string; code: string; name: string } | null;
   active: boolean;
+  materialCost: number;
   price: number | null;
   history: { id: string; clinicId: string | null; amount: number; effectiveFrom: string; createdBy: string | null; scheduled: boolean }[];
 }
@@ -53,7 +54,7 @@ function ItemFields({
   idPrefix: string;
   options: PriceFormOptions;
   issues: Record<string, string>;
-  value: { name: string; category: PriceCategoryValue; unit: PriceUnitValue; unitLabel: string; treatmentId: string; sessions: string; sessionItemId: string };
+  value: { name: string; category: PriceCategoryValue; unit: PriceUnitValue; unitLabel: string; treatmentId: string; sessions: string; sessionItemId: string; materialCost: string };
   onChange: (patch: Partial<typeof value>) => void;
   selfId?: string;
 }) {
@@ -99,6 +100,9 @@ function ItemFields({
           </Field>
         ) : null}
       </div>
+      <Field label="Materials per unit (EGP)" htmlFor={`${idPrefix}-material`} hint={hint("materialCost", "What one unit uses (kit, syringe, consumables): taken off before a doctor's share")}>
+        <Input id={`${idPrefix}-material`} inputMode="numeric" value={value.materialCost} onChange={(e) => onChange({ materialCost: e.target.value })} className="sm:w-40" />
+      </Field>
       {value.unit === "PACKAGE" ? (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-[7rem_1fr]">
           <Field label="Sessions" htmlFor={`${idPrefix}-sessions`} hint={hint("sessions")}>
@@ -125,7 +129,7 @@ function ItemFields({
 function blankItem(options: PriceFormOptions) {
   const t = options.treatments[0];
   const category = (PRICE_CATEGORIES as readonly string[]).includes(t?.category ?? "") ? (t!.category as PriceCategoryValue) : "general";
-  return { name: "", category, unit: "SESSION" as PriceUnitValue, unitLabel: "", treatmentId: t?.id ?? "", sessions: "", sessionItemId: "" };
+  return { name: "", category, unit: "SESSION" as PriceUnitValue, unitLabel: "", treatmentId: t?.id ?? "", sessions: "", sessionItemId: "", materialCost: "" };
 }
 
 /** "Add item": code, name, unit, treatment, the first price and the day it starts. */
@@ -156,6 +160,7 @@ export function NewPriceItemButton({ options }: { options: PriceFormOptions }) {
           sessions: fields.unit === "PACKAGE" ? fields.sessions : undefined,
           sessionItemId: fields.unit === "PACKAGE" ? fields.sessionItemId : undefined,
           unitLabel: fields.unit === "UNIT" ? fields.unitLabel : undefined,
+          materialCost: fields.materialCost.trim() ? toInt(fields.materialCost) : undefined,
           price: toInt(price),
           effectiveFrom: from,
         },
@@ -255,6 +260,7 @@ function EditPriceItemDialog({ itemId, options, onClose }: { itemId: string; opt
       treatmentId: detail.treatment.id,
       sessions: detail.sessions ? String(detail.sessions) : "",
       sessionItemId: detail.sessionItem?.id ?? "",
+      materialCost: detail.materialCost ? String(detail.materialCost) : "",
     });
     setActive(detail.active);
   }
@@ -301,6 +307,7 @@ function EditPriceItemDialog({ itemId, options, onClose }: { itemId: string; opt
             unitLabel: fields.unit === "UNIT" ? fields.unitLabel : "",
             sessions: fields.unit === "PACKAGE" ? fields.sessions : "",
             sessionItemId: fields.unit === "PACKAGE" ? fields.sessionItemId : "",
+            materialCost: fields.materialCost.trim() ? toInt(fields.materialCost) : 0,
             active,
           },
         }),

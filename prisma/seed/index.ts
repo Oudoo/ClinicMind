@@ -19,6 +19,7 @@ import { seedReminders } from "./reminders";
 import { seedEvidence } from "./evidence";
 import { seedQuotes } from "./quotes";
 import { seedInstalmentReminders, seedInstalments } from "./instalments";
+import { seedDoctorPay } from "./doctor-pay";
 
 /**
  * The second half of the demo seed: everything the PM round-2 modules need
@@ -26,7 +27,7 @@ import { seedInstalmentReminders, seedInstalments } from "./instalments";
  * enrolments, intake links, dictated appointment notes, campaign costs,
  * review snapshots, alert rules, prescribing-safety overrides, the evidence
  * library and recorded pregnancies, treatment plans and quotes and the instalment plans paying for them,
- * notifications, recalls, and the reminders, recall and instalment messages the clinic sent on its own).
+ * notifications, recalls, the reminders, recall and instalment messages the clinic sent on its own, and doctor pay).
  * Runs after the core clinic
  * (staff, patients, appointments, visits) exists; each module reads what it
  * needs from the database and keeps its own deterministic random stream.
@@ -95,6 +96,8 @@ export async function seedRound2(ctx: SeedContext): Promise<void> {
     ["reminders and consents", seedReminders],
     // After the consents: what the instalment reminders said, and to whom.
     ["instalment reminders", seedInstalmentReminders],
+    // Last: the statements are worked out from all the work and money.
+    ["doctor pay", seedDoctorPay],
   ];
   for (const [name, fn] of steps) {
     const started = Date.now();

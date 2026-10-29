@@ -35,7 +35,8 @@ export type TenantScopedEntity =
   | "evidence_source"
   | "ai_run"
   | "quote"
-  | "instalment_plan";
+  | "instalment_plan"
+  | "procedure_cost";
 
 /**
  * Thrown when a referenced row does not belong to the acting tenant (or does

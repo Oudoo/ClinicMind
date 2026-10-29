@@ -148,7 +148,7 @@ export type ProcedureListQuery = z.infer<typeof ProcedureListQuery>;
 const procedureInclude = {
   patient: { select: { id: true, fullName: true } },
   treatment: { select: { id: true, key: true, name: true } },
-  priceItem: { select: { id: true, code: true, name: true, unit: true, unitLabel: true, sessions: true } },
+  priceItem: { select: { id: true, code: true, name: true, unit: true, unitLabel: true, sessions: true, materialCost: true } },
   payments: { where: { deletedAt: null }, select: { id: true, kind: true, amount: true, method: true, paidAt: true, reference: true, note: true } },
   charges: { select: { amount: true, stage: true, reversalOfId: true } },
   /** Accepted from a treatment plan: which one. */

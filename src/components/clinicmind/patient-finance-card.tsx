@@ -10,6 +10,7 @@ import { listPriceList } from "@/modules/finance/prices";
 import { listBillable, listInvoices } from "@/modules/finance/invoices";
 import { accountPosition } from "@/modules/finance/ledger";
 import { discountLimitOf } from "@/modules/finance/discounts";
+import { procedureCosts } from "@/modules/finance/doctor-pay";
 import { FinancePatientPanel } from "./finance-patient-panel";
 import { toPriceOptions, type InvoiceItem, type PaymentItem, type ProcedureItem } from "./finance-shared";
 
@@ -42,6 +43,8 @@ export async function PatientFinanceCard({ tenantId, role, patientId, canWrite }
     canRecordProcedure ? discountLimitOf(tenantId, role) : Promise.resolve(0),
   ]);
   if (!patient) return null;
+  // What each procedure cost the clinic: for the roles that see payments.
+  const costs = seesPayments ? await procedureCosts(tenantId, procedures.procedures.map((p) => p.id)) : null;
 
   const procedureItems: ProcedureItem[] = procedures.procedures.map((p) => ({
     id: p.id,
@@ -64,6 +67,7 @@ export async function PatientFinanceCard({ tenantId, role, patientId, canWrite }
     cancelReason: p.cancelReason,
     undated: p.undated,
     quoteNumber: p.quoteItem?.quote.number ?? null,
+    ...(costs ? { materials: (p.priceItem?.materialCost ?? 0) * Math.max(1, p.quantity), costs: costs.get(p.id) ?? [] } : {}),
   }));
   const paymentItems: PaymentItem[] | null = payments
     ? payments.payments.map((p) => ({
