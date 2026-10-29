@@ -1,0 +1,35 @@
+name: Hostinger
+
+# Does what deploy/hostinger/request.json asks on the Hostinger account in the
+# HOSTINGER_API_TOKEN repository secret, through Hostinger's API server: see
+# scripts/hostinger-api.mjs. A push to main that changes the request file starts
+# it, so it runs whichever branch is the repository's default; "Run workflow"
+# works too once main is the default branch.
+on:
+  push:
+    branches: [main]
+    paths: [deploy/hostinger/request.json]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hostinger
+  cancel-in-progress: false
+
+jobs:
+  request:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Run the request
+        env:
+          HOSTINGER_API_TOKEN: ${{ secrets.HOSTINGER_API_TOKEN }}
+        run: node scripts/hostinger-api.mjs deploy/hostinger/request.json
