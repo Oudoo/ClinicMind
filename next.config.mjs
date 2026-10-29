@@ -7,6 +7,9 @@ const nextConfig = {
   // Emit a self-contained server in .next/standalone so the Docker image ships
   // only the traced production modules instead of the full node_modules tree.
   output: "standalone",
+  // Shared hosting counts every process and thread of the account against a small limit:
+  // scripts/hostinger-build.mjs sets NEXT_BUILD_CPUS so `next build` runs few workers.
+  ...(process.env.NEXT_BUILD_CPUS ? { experimental: { cpus: Math.max(1, Number(process.env.NEXT_BUILD_CPUS) || 1) } } : {}),
   // Static security headers. The Content-Security-Policy (including the
   // per-tenant frame-ancestors for /embed/*) is emitted per request by
   // src/proxy.ts.

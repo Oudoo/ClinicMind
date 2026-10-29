@@ -2,9 +2,12 @@ name: Hostinger
 
 # Does what deploy/hostinger/request.json asks on the Hostinger account in the
 # HOSTINGER_API_TOKEN repository secret, through Hostinger's API server: see
-# scripts/hostinger-api.mjs. A push to main that changes the request file starts
-# it, so it runs whichever branch is the repository's default; "Run workflow"
-# works too once main is the default branch.
+# scripts/hostinger-api.mjs and docs/HOSTINGER.md. A push to main that changes
+# the request file starts it, so it runs whichever branch is the repository's
+# default; "Run workflow" works too once main is the default branch.
+#
+# Secrets: HOSTINGER_API_TOKEN; for "deploy" also DEMO_DATABASE_URL (PostgreSQL
+# outside Hostinger), and optionally GEMINI_API_KEY and SEED_DEMO_PASSWORD.
 on:
   push:
     branches: [main]
@@ -21,7 +24,7 @@ concurrency:
 jobs:
   request:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 75
     steps:
       - uses: actions/checkout@v4
 
@@ -29,7 +32,16 @@ jobs:
         with:
           node-version: 22
 
+      - name: Bundle the app (deploy only)
+        run: |
+          if [ "$(jq -r .action deploy/hostinger/request.json)" = deploy ]; then
+            bash scripts/hostinger-package.sh
+          fi
+
       - name: Run the request
         env:
           HOSTINGER_API_TOKEN: ${{ secrets.HOSTINGER_API_TOKEN }}
+          DEMO_DATABASE_URL: ${{ secrets.DEMO_DATABASE_URL }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          SEED_DEMO_PASSWORD: ${{ secrets.SEED_DEMO_PASSWORD }}
         run: node scripts/hostinger-api.mjs deploy/hostinger/request.json

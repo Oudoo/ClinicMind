@@ -93,6 +93,14 @@ the app starts, a nightly `pg_dump` lands in `./backups`.
 | Health | `https://cm.growcdx.com/api/health` |
 | Later deploys | GitHub → Actions → *Deploy* → *Run workflow* (tag `latest` or a commit sha), after adding the `DEPLOY_HOST`, `DEPLOY_USER` and `DEPLOY_SSH_KEY` repository secrets; or `git pull` and `up -d` on the server |
 
+### Hostinger's Node.js web hosting (demo)
+
+A Business or Cloud web hosting plan can run the app as a Node.js website, with
+PostgreSQL elsewhere (it offers MySQL only): the zip, its build and the
+*Hostinger* workflow that deploys it through the API are in
+[`docs/HOSTINGER.md`](HOSTINGER.md). It suits a demo; production belongs on a
+server of its own, as below.
+
 ### Hostinger in one workflow
 
 ClinicMind runs on a Hostinger **KVM VPS** (any size; shared hosting cannot run

@@ -8,11 +8,22 @@
 // The request file says what to do:
 //   { "action": "inventory", "zones": ["growcdx.com"] }
 //       read only: the plans, websites, VPS, domains and DNS records the account has.
+//   { "action": "deploy", "domain": "cm.growcdx.com", "app": ".hostinger/app" }
+//       the demo on the Node.js web hosting (docs/HOSTINGER.md): creates the website on the
+//       Business or Cloud plan when it is not there, sets its environment variables, uploads
+//       the bundle scripts/hostinger-package.sh made, follows the build and checks the site.
+//       Needs DEMO_DATABASE_URL (PostgreSQL outside Hostinger); the app's database password
+//       and its secrets are derived from it, so they stay the same from one deploy to the next.
+//       "reseed": true rebuilds the demo clinic around today.
+//   { "action": "status", "domain": "cm.growcdx.com" }
+//       read only: the last build, the app's log of the last hour and its health check.
 //
 // The repository is public, so its workflow logs are too: this prints plan names, states and
 // domain names, never account user names, IP addresses, e-mail addresses or secret values.
 import { spawn } from "node:child_process";
+import { createHmac } from "node:crypto";
 import { readFileSync } from "node:fs";
+import path from "node:path";
 import readline from "node:readline";
 
 const PACKAGE = "hostinger-api-mcp@3.22.3";
@@ -96,12 +107,17 @@ class HostingerApi {
   }
 }
 
-/** Text for the public log: hosting user names, e-mail and IP addresses masked. */
+/**
+ * Text for the public log: hosting user names, e-mail and IP addresses masked, and what the
+ * demo seed prints that works as a key (the embed secret, the links patients open).
+ */
 const redact = (text) =>
   String(text)
     .replace(/\bu\d{5,}\b/g, "u…")
     .replace(/[\w.+-]+@[\w-]+(\.[\w-]+)+/g, "…@…")
-    .replace(/\b\d{1,3}(\.\d{1,3}){3}\b/g, "…ip…");
+    .replace(/\b\d{1,3}(\.\d{1,3}){3}\b/g, "…ip…")
+    .replace(/cmembed_[A-Za-z0-9_-]+/g, "cmembed_…")
+    .replace(/\/[A-Za-z0-9_-]{24,}/g, "/…");
 
 /** The rows of a list answer, whether it is a bare array or `{ data: [...] }`. */
 const rowsOf = (answer) => (Array.isArray(answer) ? answer : Array.isArray(answer?.data) ? answer.data : []);
@@ -174,7 +190,199 @@ async function inventory(api, request) {
   }
 }
 
-const ACTIONS = { inventory };
+// ── Deploy ───────────────────────────────────────────────────────────────────
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+// For testing this script: shorter pauses, and the site's address instead of https://<domain>.
+const POLL_MS = Number(process.env.HOSTINGER_POLL_MS) || 15_000;
+const siteUrl = (domain) => process.env.HOSTINGER_SITE_URL || `https://${domain}`;
+/** Keeps a value out of the workflow log (GitHub masks it from here on). */
+const mask = (value) => {
+  if (process.env.GITHUB_ACTIONS && value) console.log(`::add-mask::${value}`);
+  return value;
+};
+
+/** The first value under `key` anywhere in `value`. */
+function find(value, key) {
+  if (!value || typeof value !== "object") return undefined;
+  if (key in value && value[key] !== undefined && value[key] !== null) return value[key];
+  for (const child of Object.values(value)) {
+    const found = find(child, key);
+    if (found !== undefined) return found;
+  }
+  return undefined;
+}
+
+/**
+ * The website's environment, from DEMO_DATABASE_URL: the owner connects as given (pooler host
+ * and channel_binding taken out), the app as clinicmind_app with a password derived from it.
+ */
+function demoEnvironment(domain, reseed) {
+  const raw = process.env.DEMO_DATABASE_URL?.trim();
+  if (!raw) throw new Error("DEMO_DATABASE_URL is not set: add the database's connection string as a repository secret (docs/HOSTINGER.md).");
+  mask(raw);
+  const owner = new URL(raw);
+  if (!/^postgres(ql)?:$/.test(owner.protocol)) throw new Error("DEMO_DATABASE_URL must be a postgresql:// connection string.");
+  mask(decodeURIComponent(owner.password));
+  owner.hostname = owner.hostname.replace("-pooler.", ".");
+  owner.searchParams.delete("channel_binding");
+  if (!owner.searchParams.has("sslmode")) owner.searchParams.set("sslmode", "require");
+  const derive = (label, encoding = "hex", length = 40) => mask(createHmac("sha256", raw).update(`clinicmind:${label}`).digest(encoding).slice(0, length));
+  const app = new URL(owner.toString());
+  app.username = "clinicmind_app";
+  app.password = derive("app-role");
+  owner.searchParams.set("connection_limit", "5");
+  app.searchParams.set("connection_limit", "10");
+  const env = {
+    APP_URL: `https://${domain}`,
+    ROOT_DOMAIN: domain,
+    DATABASE_URL: mask(app.toString()),
+    SYSTEM_DATABASE_URL: mask(owner.toString()),
+    AUTH_SECRET: derive("auth-secret", "base64url", 48),
+    EMBED_SIGNING_SECRET: derive("embed-secret", "base64url", 48),
+    CRON_SECRET: derive("cron-secret", "base64url", 48),
+    SEED_DEMO_PASSWORD: process.env.SEED_DEMO_PASSWORD || "Demo-Clinic-2026!",
+    TOKIO_WORKER_THREADS: "2",
+    NEXT_BUILD_CPUS: "1",
+    ...(process.env.GEMINI_API_KEY ? { GEMINI_API_KEY: process.env.GEMINI_API_KEY } : {}),
+    ...(reseed ? { RESEED_DEMO: "yes" } : {}),
+  };
+  return Object.entries(env).map(([key, value]) => ({ key, value }));
+}
+
+/** The website for `domain` on a Business or Cloud plan, created when it is not there yet. */
+async function website(api, domain, create) {
+  const exact = async () => rowsOf(await api.call("hosting_websites_list", { domain, per_page: 100 })).find((w) => w.domain === domain);
+  const found = await exact();
+  if (found) {
+    console.log(`  ${domain}: there (type=${show(found.website_type)})`);
+    return found;
+  }
+  if (!create) throw new Error(`There is no website ${domain} in the account.`);
+  const orders = rowsOf(await api.call("hosting_orders_list"));
+  const order = orders.find((o) => o.status === "active" && /business|cloud/i.test(String(field(o, "plan.name", "plan") ?? "")));
+  if (!order) throw new Error("No active Business or Cloud hosting plan runs Node.js apps in this account.");
+  console.log(`  ${domain}: creating it on order ${order.id} (${show(field(order, "plan.name", "plan"))})`);
+  await api.call("hosting_websites_start-setup", { order_id: order.id, domain });
+  for (let i = 0; i < 60; i++) {
+    await sleep(POLL_MS);
+    const setup = rowsOf(await api.call("hosting_websites_list-setups", { domain }))[0];
+    const status = field(setup ?? {}, "status");
+    console.log(`  setup: ${show(status)}`);
+    if (status === "completed") break;
+    if (status === "failed") throw new Error(`Setting up ${domain} failed: ${redact(JSON.stringify(setup))}`);
+  }
+  const created = await exact();
+  if (!created) throw new Error(`${domain} did not appear in the websites list.`);
+  return created;
+}
+
+/** The text of a build log (the `logs` of hosting_get-deployment), colour codes taken out. */
+function logText(answer) {
+  const logs = answer?.logs;
+  const raw = typeof logs === "string" ? logs : (logs?.content ?? logs?.log ?? logs?.output ?? logs?.data ?? logs?.logs ?? "");
+  const text = Array.isArray(raw) ? raw.map((l) => (typeof l === "string" ? l : (l?.message ?? l?.line ?? l?.content ?? JSON.stringify(l)))).join("\n") : String(raw ?? "");
+  return text.replace(/\x1b\[[0-9;?]*[A-Za-z]/g, "");
+}
+
+const printAnalysis = (analysis) => {
+  if (analysis) console.log(`\nHostinger's analysis:\n${redact(typeof analysis === "string" ? analysis : JSON.stringify(analysis, null, 2))}`);
+};
+
+/** Follows a build until it is completed or failed, printing its log as it grows. */
+async function followBuild(api, domain, buildUuid) {
+  let fromLine = 0;
+  let printed = 0;
+  let state = "";
+  let shownFields = false;
+  const started = Date.now();
+  while (Date.now() - started < 50 * 60_000) {
+    const answer = await api.call("hosting_get-deployment", { domain, ...(buildUuid ? { buildUuid } : {}), fromLine });
+    if (!shownFields && answer?.logs && typeof answer.logs === "object") {
+      console.log(`  (log fields: ${Object.keys(answer.logs).join(", ")})`);
+      shownFields = true;
+    }
+    const text = logText(answer);
+    if (Number.isInteger(answer?.logs?.lines)) {
+      // Each answer holds only the lines after fromLine.
+      if (text.trim()) console.log(redact(text.replace(/\n+$/, "")));
+      fromLine = answer.logs.lines;
+    } else if (text.length > printed) {
+      console.log(redact(text.slice(printed).replace(/\n+$/, "")));
+      printed = text.length;
+    }
+    state = String(answer?.build?.state ?? "");
+    if (/^(completed|failed|error|cancel)/i.test(state)) {
+      printAnalysis(answer.analysis);
+      return state;
+    }
+    await sleep(POLL_MS);
+  }
+  return state || "unknown (still running after 50 minutes)";
+}
+
+async function health(domain) {
+  for (let i = 0; i < 20; i++) {
+    try {
+      const res = await fetch(`${siteUrl(domain)}/api/health`, { headers: { "cache-control": "no-store" } });
+      const body = await res.text();
+      if (res.ok && body.includes('"service":"clinicmind"')) return `${res.status} ${body}`;
+      console.log(`  https://${domain}/api/health → ${res.status}; trying again`);
+    } catch (err) {
+      console.log(`  https://${domain}/api/health → ${err instanceof Error ? err.cause?.code ?? err.message : err}; trying again`);
+    }
+    await sleep(POLL_MS);
+  }
+  return "no healthy answer after five minutes";
+}
+
+async function runtimeLogs(api, username, domain) {
+  const answer = await api.call("hosting_nodejs_runtime-logs", { username, domain, period: "1h", limit: 80 });
+  const logs = Array.isArray(answer?.logs) ? answer.logs : [];
+  if (!logs.length) return console.log("  (empty)");
+  for (const l of logs) console.log(`  ${show(l.timestamp)} ${show(l.level)} ${redact(String(l.message ?? "")).slice(0, 400)}`);
+}
+
+async function deploy(api, request) {
+  const domain = request.domain;
+  if (!domain) throw new Error('The request needs "domain".');
+  const appDir = path.resolve(request.app ?? ".hostinger/app");
+  const envVars = demoEnvironment(domain, Boolean(request.reseed));
+  console.log("\n▶ Website");
+  const site = await website(api, domain, request.create !== false);
+  const username = site.username;
+  console.log(`\n▶ Environment variables (${envVars.map((e) => e.key).join(", ")})`);
+  await api.call("hosting_nodejs_replace-environment-variables", { username, domain, env_vars: envVars });
+  console.log("\n▶ Upload and build");
+  const started = await api.call("hosting_deploy", { domain, path: appDir, type: "nodejs", appType: "next", nodeVersion: request.nodeVersion ?? 22, buildScript: "build", outputDirectory: ".next" }, 20 * 60_000);
+  const buildUuid = find(started, "buildUuid") ?? find(started, "build_uuid") ?? find(started, "uuid");
+  console.log(`  build ${show(buildUuid)} started`);
+  const state = await followBuild(api, domain, buildUuid);
+  console.log(`\n▶ Build: ${state}`);
+  if (!/^completed/i.test(state)) {
+    process.exitCode = 1;
+    return;
+  }
+  console.log("\n▶ Health check");
+  console.log(`  ${await health(domain)}`);
+  console.log("\n▶ The app's log (last hour)");
+  await runtimeLogs(api, username, domain).catch((err) => console.log(`  could not read: ${redact(err.message)}`));
+}
+
+async function status(api, request) {
+  const domain = request.domain;
+  if (!domain) throw new Error('The request needs "domain".');
+  const site = await website(api, domain, false);
+  await section("Last build", async () => {
+    const answer = await api.call("hosting_get-deployment", { domain });
+    console.log(`  state=${show(answer?.build?.state)}  settings=${redact(JSON.stringify(answer?.buildSettings ?? null))}`);
+    console.log(redact(logText(answer).split("\n").slice(-80).join("\n")));
+    printAnalysis(answer?.analysis);
+  });
+  await section("The app's log (last hour)", () => runtimeLogs(api, site.username, domain));
+  await section("Health check", async () => console.log(`  ${await health(domain)}`));
+}
+
+const ACTIONS = { inventory, deploy, status };
 
 async function main() {
   const file = process.argv[2] ?? "deploy/hostinger/request.json";

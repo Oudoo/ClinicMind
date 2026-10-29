@@ -300,6 +300,11 @@ up a Hostinger KVM VPS and its DNS records in one run. Configuration, the cm.gro
 checklist, upgrades, backups, secret rotation, monitoring and troubleshooting
 are in [`docs/RUNBOOK.md`](docs/RUNBOOK.md).
 
+For a demo on Hostinger's Node.js web hosting (Business or Cloud plans, with
+PostgreSQL elsewhere), `scripts/hostinger-package.sh` makes the zip to upload and
+the *Hostinger* workflow deploys it through the Hostinger API: see
+[`docs/HOSTINGER.md`](docs/HOSTINGER.md).
+
 ---
 
 ## Scripts

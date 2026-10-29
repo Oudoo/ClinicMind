@@ -54,3 +54,6 @@ prisma/migrations/dev.db*
 
 # Per-engineer dev build dirs (NEXT_DIST_DIR)
 .next-*/
+
+# Hostinger bundle (scripts/hostinger-package.sh)
+/.hostinger/
