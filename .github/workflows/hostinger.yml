@@ -32,11 +32,18 @@ jobs:
         with:
           node-version: 22
 
-      - name: Bundle the app (deploy only)
+      - name: Read the request
+        id: request
         run: |
-          if [ "$(jq -r .action deploy/hostinger/request.json)" = deploy ]; then
-            bash scripts/hostinger-package.sh
-          fi
+          action=$(jq -r .action deploy/hostinger/request.json)
+          domain=$(jq -r '.domain // empty' deploy/hostinger/request.json)
+          echo "action=$action" >> "$GITHUB_OUTPUT"
+          echo "domain=$domain" >> "$GITHUB_OUTPUT"
+          if [ -n "$domain" ] && { [ "$action" = deploy ] || [ "$action" = status ]; }; then echo "live=true" >> "$GITHUB_OUTPUT"; fi
+
+      - name: Bundle the app (deploy only)
+        if: steps.request.outputs.action == 'deploy'
+        run: bash scripts/hostinger-package.sh
 
       - name: Run the request
         env:
@@ -45,3 +52,17 @@ jobs:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           SEED_DEMO_PASSWORD: ${{ secrets.SEED_DEMO_PASSWORD }}
         run: node scripts/hostinger-api.mjs deploy/hostinger/request.json
+
+      # The end-to-end suite against the live site (read only, apart from one
+      # question to the assistant): every account's pages, sign-in and out, a
+      # patient's account, the phone layout. Its traces stay on the runner: they
+      # hold the demo accounts' session cookies, and this repository is public.
+      - name: Check the live site
+        if: steps.request.outputs.live == 'true'
+        env:
+          E2E_BASE_URL: https://${{ steps.request.outputs.domain }}
+          E2E_PASSWORD: ${{ secrets.SEED_DEMO_PASSWORD || 'Demo-Clinic-2026!' }}
+        run: |
+          npm ci --no-audit --no-fund
+          npx playwright install --with-deps chromium
+          npx playwright test

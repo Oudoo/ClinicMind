@@ -10,8 +10,8 @@
  *      their clinic as a startup option, which the database must accept;
  *   4. the demo clinic, once: when SEED_DEMO_PASSWORD is set and there is no demo clinic yet,
  *      or on every build while RESEED_DEMO=yes (it rebuilds the demo clinic around today);
- *   5. next build, with one worker and few threads: the hosting counts every process and
- *      thread of the account against a small limit;
+ *   5. next build with webpack, one worker and few threads: the hosting counts every process
+ *      and thread of the account against a small limit;
  *   6. the static files and public/ next to the standalone server.
  *
  * The values come from the website's environment variables in hPanel; nothing here prints them.
@@ -131,7 +131,9 @@ await (async () => {
 })();
 
 // ── 5-6. The application ─────────────────────────────────────────────────────
-step("Next.js build", () => exec(bin("next"), ["build"]));
+// webpack, not Turbopack: on Hostinger's build servers Turbopack's PostCSS loader runs in a
+// Node process it starts and connects to, and that process exits before it connects.
+step("Next.js build (webpack)", () => exec(bin("next"), ["build", "--webpack"]));
 step("Static files next to the standalone server", () => {
   const standalone = path.join(root, ".next", "standalone");
   if (!existsSync(standalone)) fail(".next/standalone is missing: next.config.mjs must keep output: \"standalone\".");
