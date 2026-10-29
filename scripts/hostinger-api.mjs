@@ -137,10 +137,28 @@ async function inventory(api, request) {
     for (const w of rows) console.log(`  ${show(field(w, "domain"))}  type=${show(field(w, "website_type"))}  enabled=${show(field(w, "is_enabled"))}  order=${show(field(w, "order_id"))}`);
     if (rows[0]) console.log(`  (fields: ${Object.keys(rows[0]).join(", ")})`);
   });
+  const vms = [];
   await section("VPS", async () => {
     const rows = rowsOf(await api.call("vps_virtual-machines_list"));
     if (!rows.length) console.log("  none");
-    for (const v of rows) console.log(`  VM ${show(v.id)}  ${show(field(v, "plan"))}  state=${show(field(v, "state"))}  cpus=${show(field(v, "cpus"))}  memory=${show(field(v, "memory"))}  os=${show(field(v, "template.name"))}`);
+    for (const v of rows) console.log(`  VM ${show(v.id)}  ${show(field(v, "plan"))}  state=${show(field(v, "state"))}  cpus=${show(field(v, "cpus"))}  memory=${show(field(v, "memory"))}  disk=${show(field(v, "disk"))}  os=${show(field(v, "template.name"))}  data_center=${show(field(v, "data_center_id"))}`);
+    vms.push(...rows);
+  });
+  for (const vm of vms) {
+    await section(`VPS ${vm.id}: Docker projects (Hostinger's Docker Manager)`, async () => {
+      const projects = rowsOf(await api.call("vps_docker_list", { virtualMachineId: vm.id }));
+      if (!projects.length) console.log("  none");
+      for (const p of projects) {
+        console.log(`  ${show(field(p, "name"))}  status=${show(field(p, "status", "state"))}`);
+        for (const c of field(p, "containers") ?? []) console.log(`    ${show(field(c, "name"))}  ${show(field(c, "image"))}  ${show(field(c, "status", "state"))}  ports=${redact(JSON.stringify(field(c, "ports") ?? []))}`);
+      }
+      if (projects[0]) console.log(`  (fields: ${Object.keys(projects[0]).join(", ")})`);
+    });
+  }
+  await section("VPS firewalls", async () => {
+    const rows = rowsOf(await api.call("vps_firewall_list"));
+    if (!rows.length) console.log("  none");
+    for (const f of rows) console.log(`  ${show(field(f, "name"))}  synced=${show(field(f, "is_synced"))}  rules=${(field(f, "rules") ?? []).map((r) => `${show(r.action)} ${show(r.protocol)} ${show(r.port)}`).join(", ") || "-"}`);
   });
   await section("Domains", async () => {
     const rows = rowsOf(await api.call("domains_portfolio_list"));
