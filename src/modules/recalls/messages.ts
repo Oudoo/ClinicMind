@@ -99,7 +99,9 @@ export async function renderRecallMessage(tenantId: string, r: RecallForMessage,
     date: datePhrase(r, ctx.timezone, language, ctx.now),
     link: (env.PUBLIC_URL ?? env.APP_URL).replace(/\/$/, ""),
   });
-  return { body: rendered.trim(), templateKey, language, unfilled: unfilledPlaceholders(rendered) };
+  // Any {{…}} left holds the message back: a placeholder a recall cannot fill, or one no template should carry.
+  const left = [...rendered.matchAll(/\{\{\s*([^{}]*?)\s*\}\}/g)].map((m) => m[1]!.toLowerCase());
+  return { body: rendered.trim(), templateKey, language, unfilled: [...new Set([...unfilledPlaceholders(rendered), ...left])] };
 }
 
 /** Load what a recall's message needs. */
@@ -117,7 +119,7 @@ export async function recallForMessage(tenantId: string, recallId: string) {
       treatment: { select: { key: true, name: true } },
       procedure: { select: { stages: true } },
       rule: { select: { sessions: true } },
-      patient: { select: { fullName: true, language: true, phone: true, whatsapp: true, deletedAt: true } },
+      patient: { select: { fullName: true, language: true, phone: true, whatsapp: true, deletedAt: true, reminderConsent: true, marketingConsent: true } },
     },
   });
   if (!r) return null;

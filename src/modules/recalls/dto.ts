@@ -64,7 +64,7 @@ export interface RecallDTO {
   outcomeNote: string | null;
   closedAt: string | null;
   booked: { appointmentId: string; startsAt: string; doctorName: string | null } | null;
-  patient: { id: string; fullName: string; phone: string | null; whatsapp: string | null; language: string };
+  patient: { id: string; fullName: string; phone: string | null; whatsapp: string | null; language: string; reminderConsent: boolean; marketingConsent: boolean };
   treatment: { id: string; name: string } | null;
   procedureId: string | null;
   stage: number | null;

@@ -357,33 +357,39 @@ model AuthToken {
 // ── Patients & clinical records ──────────────────────────────────────────────
 
 model Patient {
-  id                String      @id @default(cuid())
-  tenantId          String
-  tenant            Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  fullName          String
-  gender            Gender      @default(UNDISCLOSED)
-  dateOfBirth       DateTime?
-  phone             String?
-  whatsapp          String?
-  email             String?
-  emergencyContact  String?
-  address           String?
+  id                 String      @id @default(cuid())
+  tenantId           String
+  tenant             Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  fullName           String
+  gender             Gender      @default(UNDISCLOSED)
+  dateOfBirth        DateTime?
+  phone              String?
+  whatsapp           String?
+  email              String?
+  emergencyContact   String?
+  address            String?
   /// Preferred language for communication: "ar" | "en".
-  language          String      @default("ar")
-  tags              String[]    @default([])
-  notes             String?
+  language           String      @default("ar")
+  tags               String[]    @default([])
+  notes              String?
   /// National ID or passport number, for the front desk's exact lookup.
-  nationalId        String?
-  city              String?
+  nationalId         String?
+  city               String?
   /// First-touch source when the patient came through the CRM.
-  source            LeadSource?
-  referredBy        String?
+  source             LeadSource?
+  referredBy         String?
   /// The family member who pays for this patient: their payments go towards this patient's invoices too.
   /// One level only (a head has no head of their own and a member heads no one; a trigger enforces it).
-  householdHeadId   String?
-  householdHead     Patient?    @relation("Household", fields: [householdHeadId], references: [id], onDelete: SetNull)
+  householdHeadId    String?
+  householdHead      Patient?    @relation("Household", fields: [householdHeadId], references: [id], onDelete: SetNull)
   /// How the patient is related to the head: SPOUSE, CHILD, PARENT, SIBLING or OTHER.
-  householdRelation String?
+  householdRelation  String?
+  /// Treatment reminders on WhatsApp (appointment reminders, recall messages): on unless the patient says no (a STOP reply, or the desk).
+  reminderConsent    Boolean     @default(true)
+  reminderConsentAt  DateTime?
+  /// Offers and news, and asking a patient not seen for a year to come back: off unless the patient says yes.
+  marketingConsent   Boolean     @default(false)
+  marketingConsentAt DateTime?
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -491,7 +497,14 @@ model Appointment {
   /// When the patient was last asked to confirm a moved time (WhatsApp, reply 1 or 2); cleared once they answer or the booking changes status.
   confirmationRequestedAt DateTime?
   checkedInAt             DateTime?
+  /// The reminder 48 hours before went (appointments/reminders.ts).
   reminderSentAt          DateTime?
+  /// The reminder 2 hours before went.
+  finalReminderSentAt     DateTime?
+  /// Still unconfirmed the day before: flagged for reception to call.
+  confirmCallFlaggedAt    DateTime?
+  /// The patient answered 2 (another time) to a reminder or a moved time: reception calls to rebook it.
+  rescheduleRequestedAt   DateTime?
   /// Set once when reception was told the patient has not checked in (appointments-late-flag job).
   lateFlaggedAt           DateTime?
 
@@ -914,6 +927,7 @@ enum NotificationKind {
   BOOKING_CREATED
   BOOKING_CANCELLED
   BOOKING_CONFLICT
+  BOOKING_UNCONFIRMED
   NO_SHOW
   REVIEW_PENDING
   ESCALATION

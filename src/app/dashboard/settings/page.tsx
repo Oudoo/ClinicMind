@@ -14,6 +14,9 @@ import { NotificationPreferences } from "@/components/clinicmind/notification-pr
 import { MessagingIntegrationCard } from "@/components/clinicmind/messaging-integration-card";
 import { DiscountLimitsCard } from "@/components/clinicmind/discount-limits";
 import { discountLimits } from "@/modules/finance/discounts";
+import { ReminderSettingsCard } from "@/components/clinicmind/reminder-settings-card";
+import { readReminderSettings } from "@/modules/messaging/reminder-settings";
+import { getTenantTimezone } from "@/modules/appointments/service";
 
 const STATUS_TONE: Record<string, "default" | "success" | "warning" | "danger"> = {
   ACTIVE: "success",
@@ -103,6 +106,9 @@ export default async function SettingsPage() {
 
       <NotificationPreferences tenantId={ctx.tenantId} userId={ctx.userId} role={ctx.role} />
       <MessagingIntegrationCard tenantId={ctx.tenantId} userId={ctx.userId} role={ctx.role} />
+      {can(ctx.role, "appointments:read") ? (
+        <ReminderSettingsCard initial={await readReminderSettings(ctx.tenantId)} canEdit={can(ctx.role, "tenant:manage")} timezone={await getTenantTimezone(ctx.tenantId)} />
+      ) : null}
 
       {canManageUsers ? (
         <Card className="space-y-4">

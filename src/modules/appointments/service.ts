@@ -1031,6 +1031,8 @@ async function applyReschedule(
       confirmedAt: status !== before.status && status === "SCHEDULED" ? null : undefined,
       // Nor does a request to confirm the old time.
       confirmationRequestedAt: timeChanged ? null : undefined,
+      // The new time gets its own reminders and day-before call; a request for another time is answered.
+      ...(timeChanged ? { reminderSentAt: null, finalReminderSentAt: null, confirmCallFlaggedAt: null, rescheduleRequestedAt: null } : {}),
     },
     include: appointmentInclude,
   });
@@ -1108,8 +1110,9 @@ export async function transitionAppointment(
           statusChangedAt: now,
           cancelReason: keepsReason ? (input.reason ?? null) : null,
           confirmedAt: input.status === "CONFIRMED" ? now : input.status === "SCHEDULED" ? null : undefined,
-          // Any change of status settles a pending request to confirm a new time.
+          // Any change of status settles a pending request to confirm a new time, or for another one.
           confirmationRequestedAt: null,
+          rescheduleRequestedAt: null,
           checkedInAt: input.status === "CHECKED_IN" ? now : input.status === "SCHEDULED" ? null : undefined,
         },
         include: appointmentInclude,

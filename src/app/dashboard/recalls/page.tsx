@@ -16,6 +16,8 @@ import { Card, EmptyState, SectionTitle } from "@/components/ui/primitives";
 import { Pagination } from "@/components/ui/pagination";
 import { RecallList } from "@/components/clinicmind/recall-list";
 import { RecallRules } from "@/components/clinicmind/recall-rules";
+import { ConfirmCalls } from "@/components/clinicmind/confirm-calls";
+import { listToConfirm } from "@/modules/appointments/reminders";
 
 export const dynamic = "force-dynamic";
 
@@ -138,6 +140,7 @@ export default async function RecallsPage({ searchParams }: { searchParams: Prom
         <RulesTab tenantId={ctx.tenantId} canManage={can(ctx.role, "recalls:manage")} />
       ) : (
         <>
+          {tab === "today" && can(ctx.role, "appointments:read") ? <BookingCalls tenantId={ctx.tenantId} timezone={timezone} canWrite={can(ctx.role, "appointments:write")} /> : null}
           <form method="get" className="flex flex-wrap items-end gap-2" role="search" aria-label="Filter recalls">
             {tab !== "today" ? <input type="hidden" name="tab" value={tab} /> : null}
             <label className="min-w-[12rem] flex-1 sm:max-w-xs">
@@ -192,6 +195,12 @@ export default async function RecallsPage({ searchParams }: { searchParams: Prom
       )}
     </div>
   );
+}
+
+/** The next open day's unconfirmed visits and the patients who asked for another time: calls about bookings, above the recalls. */
+async function BookingCalls({ tenantId, timezone, canWrite }: { tenantId: string; timezone: string; canWrite: boolean }) {
+  const rows = await listToConfirm(tenantId);
+  return rows.length ? <ConfirmCalls rows={rows} timezone={timezone} canWrite={canWrite} /> : null;
 }
 
 async function RulesTab({ tenantId, canManage }: { tenantId: string; canManage: boolean }) {

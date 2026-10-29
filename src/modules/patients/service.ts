@@ -102,6 +102,10 @@ export const PatientInput = z.object({
   language: z.enum(LANGUAGES).default("ar"),
   tags: zTags.default([]),
   notes: zOptionalText(2000),
+  /** Treatment reminders on WhatsApp (appointments, recalls): on unless the patient says no. */
+  reminderConsent: z.boolean().default(true),
+  /** Offers and news (and asking a patient not seen for a year to come back): off unless the patient says yes. */
+  marketingConsent: z.boolean().default(false),
   /** Save even though the phone, WhatsApp or national id already belongs to another patient (409 otherwise). */
   confirmDuplicate: z.boolean().default(false),
 });
@@ -121,6 +125,8 @@ export const PatientUpdateInput = z.object({
   language: z.enum(LANGUAGES).optional(),
   tags: zTags.optional(),
   notes: clearable(zText(2000)),
+  reminderConsent: z.boolean().optional(),
+  marketingConsent: z.boolean().optional(),
   /** Save even though a changed phone, WhatsApp or national id belongs to another patient (409 otherwise). */
   confirmDuplicate: z.boolean().optional(),
 });
@@ -167,6 +173,8 @@ const PROFILE_KEYS = [
   "language",
   "tags",
   "notes",
+  "reminderConsent",
+  "marketingConsent",
 ] as const;
 type ProfileKey = (typeof PROFILE_KEYS)[number];
 
@@ -805,6 +813,10 @@ export async function createPatient(tenantId: string, input: unknown, actor: Act
       language: data.language,
       tags: data.tags,
       notes: data.notes ?? null,
+      reminderConsent: data.reminderConsent,
+      reminderConsentAt: new Date(),
+      marketingConsent: data.marketingConsent,
+      marketingConsentAt: new Date(),
       medicalHistory: { create: { tenantId } },
     },
     include: { medicalHistory: true },
@@ -847,9 +859,16 @@ export async function updatePatient(tenantId: string, id: string, input: unknown
     id,
   );
 
+  // A consent that changes records when (the audit row says who).
+  const now = new Date();
+  const consentAt = {
+    ...(patch.reminderConsent !== undefined && patch.reminderConsent !== existing.reminderConsent ? { reminderConsentAt: now } : {}),
+    ...(patch.marketingConsent !== undefined && patch.marketingConsent !== existing.marketingConsent ? { marketingConsentAt: now } : {}),
+  };
+
   let patient;
   try {
-    patient = await db.patient.update({ where: { id, tenantId, ...notDeleted }, data: patch });
+    patient = await db.patient.update({ where: { id, tenantId, ...notDeleted }, data: { ...patch, ...consentAt } });
   } catch (err) {
     if (isNotFound(err)) return null;
     throw err;

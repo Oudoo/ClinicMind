@@ -956,10 +956,10 @@ export interface SweepSummary {
   woken: number;
 }
 
-/** One pass over every active clinic (the `recalls-sweep` job). */
-export async function sweepRecalls(now: Date = new Date()): Promise<SweepSummary> {
+/** One pass over every active clinic (the `recalls-sweep` job), or one clinic. */
+export async function sweepRecalls(now: Date = new Date(), opts: { tenantId?: string } = {}): Promise<SweepSummary> {
   const summary: SweepSummary = { tenants: 0, made: { sessions: 0, missed: 0, unbooked: 0, lapsed: 0 }, synced: 0, woken: 0 };
-  const tenants = await db.tenant.findMany({ where: { status: "ACTIVE", deletedAt: null }, select: { id: true } });
+  const tenants = await db.tenant.findMany({ where: { status: "ACTIVE", deletedAt: null, ...(opts.tenantId ? { id: opts.tenantId } : {}) }, select: { id: true } });
   for (const tenant of tenants) {
     summary.tenants += 1;
     const tz = await getTenantTimezone(tenant.id);

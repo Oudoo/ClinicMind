@@ -445,8 +445,11 @@ describe.skipIf(!dbTestsEnabled)("free slots, double-booking protection, next ap
   });
 
   describe("late flag job", () => {
-    it(`is registered as "${LATE_FLAG_JOB}" every 5 minutes`, () => {
-      expect(jobs.map((j) => [j.name, j.everyMinutes])).toEqual([[LATE_FLAG_JOB, 5]]);
+    it(`is registered as "${LATE_FLAG_JOB}" every 5 minutes, beside the reminders`, () => {
+      expect(jobs.map((j) => [j.name, j.everyMinutes])).toEqual([
+        [LATE_FLAG_JOB, 5],
+        ["appointments-reminders", 5],
+      ]);
     });
 
     it("notifies reception and the doctor once when a booking is 20+ minutes past its start without a check-in", async () => {

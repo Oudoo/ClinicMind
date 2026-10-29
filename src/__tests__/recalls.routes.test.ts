@@ -208,8 +208,8 @@ describe.skipIf(!dbTestsEnabled)("recall routes", () => {
       expect(log?.note).toContain("the 1-month review");
 
       // The sweep and a repeated hook find nothing new.
-      await sweepRecalls();
-      await sweepRecalls();
+      await sweepRecalls(new Date(), { tenantId: a });
+      await sweepRecalls(new Date(), { tenantId: a });
       recalls = await recallsOf(patient);
       expect(recalls).toHaveLength(4);
     });
@@ -358,7 +358,7 @@ describe.skipIf(!dbTestsEnabled)("recall routes", () => {
       const ancient = await newPatient("Ancient Patient");
       await visit(ancient, new Date(Date.now() - 3 * 365 * DAY), "COMPLETED");
 
-      const first = await sweepRecalls();
+      const first = await sweepRecalls(new Date(), { tenantId: a });
       expect(first.made.unbooked).toBeGreaterThanOrEqual(1);
       expect((await recallsOf(planned)).map((r) => [r.kind, r.value, r.procedureId])).toEqual([["UNBOOKED", 4_000, plan]]);
       expect((await recallsOf(missed)).map((r) => [r.kind, r.appointmentId, r.label])).toEqual([["MISSED", noShow.id, `Missed the consultation on ${new Intl.DateTimeFormat("en-GB", { timeZone: TZ, day: "numeric", month: "short", year: "numeric" }).format(onDay(-3))}`]]);
@@ -366,18 +366,18 @@ describe.skipIf(!dbTestsEnabled)("recall routes", () => {
       expect((await recallsOf(lapsed)).map((r) => [r.kind, r.label.endsWith("(12 months)")])).toEqual([["LAPSED", true]]);
       expect(await recallsOf(ancient)).toEqual([]);
 
-      await sweepRecalls();
+      await sweepRecalls(new Date(), { tenantId: a });
       expect(await db.recall.count({ where: { tenantId: a, patientId: { in: [planned, missed, lapsed] } } })).toBe(3);
 
       // Starting the planned work ends its recall; the lapsed patient coming back ends theirs.
       const started = await db.recall.findFirstOrThrow({ where: { tenantId: a, patientId: planned } });
       await db.procedure.update({ where: { id: plan }, data: { status: "SIGNED", signedAt: new Date() } });
-      await sweepRecalls();
+      await sweepRecalls(new Date(), { tenantId: a });
       expect(await db.recall.findUniqueOrThrow({ where: { id: started.id } })).toMatchObject({ status: "DONE" });
       const visitId = await bookVisit(lapsed, openDay(3));
       expect((await recallsOf(lapsed))[0]).toMatchObject({ status: "BOOKED", bookedAppointmentId: visitId });
       await db.appointment.update({ where: { id: visitId }, data: { status: "COMPLETED", startsAt: new Date(Date.now() - 3_600_000), endsAt: new Date(Date.now() - 1_800_000) } });
-      await sweepRecalls();
+      await sweepRecalls(new Date(), { tenantId: a });
       expect((await recallsOf(lapsed))[0]).toMatchObject({ status: "DONE", doneAppointmentId: visitId });
     });
   });

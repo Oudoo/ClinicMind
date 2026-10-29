@@ -4,6 +4,7 @@ import { dateKeyInTz, formatTimeInTz } from "@/lib/time";
 import { notify } from "@/modules/notifications/service";
 import { getTenantTimezone } from "./service";
 import { NO_SHOW_FLAG_AFTER_MINUTES } from "./transitions";
+import { sendAppointmentReminders } from "./reminders";
 
 /**
  * Background jobs of the appointments module. Registered in modules/jobs/registry.ts;
@@ -98,6 +99,15 @@ export const jobs: Job[] = [
     async run({ now }) {
       const result = await flagLateAppointments(now);
       return `${result.flagged} late appointment(s) flagged across ${result.tenants} tenant(s)`;
+    },
+  },
+  {
+    // The WhatsApp reminders 48 and 2 hours before, and tomorrow's unconfirmed visits flagged for a call (reminders.ts).
+    name: "appointments-reminders",
+    everyMinutes: 5,
+    async run({ now }) {
+      const r = await sendAppointmentReminders(now);
+      return `${r.sent} reminder(s) sent, ${r.failed} failed, ${r.flagged} unconfirmed visit(s) flagged across ${r.tenants} tenant(s)`;
     },
   },
 ];

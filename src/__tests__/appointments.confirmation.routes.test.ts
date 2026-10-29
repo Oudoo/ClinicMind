@@ -245,7 +245,7 @@ describe.skipIf(!dbTestsEnabled)("rescheduling asks the patient to confirm", () 
     expect(messages[messages.length - 1]).toMatchObject({ author: "SYSTEM", templateKey: "appointment:another-time-thanks", body: "شكراً إنك بلغتنا يا Hala. فريقنا هيتواصل معاك قريب علشان نختار ميعاد يناسبك." });
     const notice = (await inboundNotices()).pop()!;
     expect(notice.title).toBe("Hala Mansour can't make the new time");
-    expect(notice.body).toBe(`${patientWhen(after.startsAt, TZ, "en")}: asked for another time on WhatsApp`);
+    expect(notice.body).toBe(`${patientWhen(after.startsAt, TZ, "en")}: asked for another time on WhatsApp. Call to rebook (Recalls → Contact today).`);
     expect((await db.conversation.findFirstOrThrow({ where: { tenantId: tenant.id, patientId: hala.id } })).status).toBe("WAITING_ON_CLINIC");
     expect(await db.auditLog.count({ where: { tenantId: tenant.id, action: "appointment.confirmation.decline", entityId: appointment.id } })).toBe(1);
   });

@@ -197,6 +197,8 @@ export interface ClaimedReply {
   startsAt: Date;
   /** The booking the reply answered: false when it had moved on (nothing changed). */
   applied: boolean;
+  /** What asked: a reminder (appointments/reminders.ts) or a moved time. */
+  via: "reminder" | "move";
 }
 
 /**
@@ -210,29 +212,33 @@ export async function claimConfirmationReply(tx: Client, tenantId: string, patie
   const pending = await tx.appointment.findFirst({
     where: { tenantId, patientId, ...notDeleted, status: "SCHEDULED", confirmationRequestedAt: { lte: at }, startsAt: { gt: at } },
     orderBy: { confirmationRequestedAt: "desc" },
-    select: { id: true, startsAt: true },
+    select: { id: true, startsAt: true, confirmationRequestedAt: true, reminderSentAt: true, finalReminderSentAt: true },
   });
   if (!pending) return null;
+  // A reminder stamps its time and the request together.
+  const asked = pending.confirmationRequestedAt?.getTime();
+  const via = asked !== undefined && (asked === pending.reminderSentAt?.getTime() || asked === pending.finalReminderSentAt?.getTime()) ? "reminder" : "move";
   // Conditional on the state just read, so a reply racing a move or a manual confirmation changes nothing.
   const changed = await tx.appointment.updateMany({
     where: { id: pending.id, tenantId, status: "SCHEDULED", startsAt: pending.startsAt, confirmationRequestedAt: { not: null } },
     data:
       answer === "confirm"
-        ? { status: "CONFIRMED", confirmedAt: at, statusChangedAt: at, confirmationRequestedAt: null }
-        : { confirmationRequestedAt: null },
+        ? { status: "CONFIRMED", confirmedAt: at, statusChangedAt: at, confirmationRequestedAt: null, rescheduleRequestedAt: null }
+        : { confirmationRequestedAt: null, rescheduleRequestedAt: at },
   });
-  if (changed.count === 0) return { answer, appointmentId: pending.id, patientId, startsAt: pending.startsAt, applied: false };
+  if (changed.count === 0) return { answer, appointmentId: pending.id, patientId, startsAt: pending.startsAt, applied: false, via };
+  const what = via === "reminder" ? "appointment" : "new appointment time";
   await tx.timelineEvent.create({
     data: {
       tenantId,
       patientId,
       kind: "APPOINTMENT",
-      title: answer === "confirm" ? "Confirmed the new appointment time on WhatsApp" : "Asked for another appointment time on WhatsApp",
+      title: answer === "confirm" ? `Confirmed the ${what} on WhatsApp` : "Asked for another appointment time on WhatsApp",
       refId: pending.id,
       occurredAt: at,
     },
   });
-  return { answer, appointmentId: pending.id, patientId, startsAt: pending.startsAt, applied: true };
+  return { answer, appointmentId: pending.id, patientId, startsAt: pending.startsAt, applied: true, via };
 }
 
 /**
@@ -271,7 +277,7 @@ export async function finishConfirmationReply(
   }
   if (claimed.answer === "confirm") return null;
   return {
-    title: `${name} can't make the new time`,
-    body: `${patientWhen(claimed.startsAt, ctx.timezone, "en")}: asked for another time on WhatsApp`,
+    title: claimed.via === "reminder" ? `${name} asks for another time` : `${name} can't make the new time`,
+    body: `${patientWhen(claimed.startsAt, ctx.timezone, "en")}: ${claimed.via === "reminder" ? "answered 2 to the reminder" : "asked for another time on WhatsApp"}. Call to rebook (Recalls → Contact today).`,
   };
 }

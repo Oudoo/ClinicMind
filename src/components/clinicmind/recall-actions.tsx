@@ -72,7 +72,7 @@ export function RecallActions({ recall, timezone, className }: { recall: RecallD
     <div className={cn("flex flex-wrap items-center gap-1.5", className)}>
       {waiting ? (
         <>
-          <Button size="sm" variant="outline" onClick={() => void sendTemplate()} disabled={sending || !recall.canMessage} aria-label={`Send the WhatsApp template to ${who}`} title={recall.canMessage ? "Send the recall message on WhatsApp" : "No WhatsApp number or phone"}>
+          <Button size="sm" variant="outline" onClick={() => void sendTemplate()} disabled={sending || !recall.canMessage} aria-label={`Send the WhatsApp template to ${who}`} title={recall.canMessage ? "Send the recall message on WhatsApp" : recall.patient.whatsapp || recall.patient.phone ? "The patient has not agreed to these messages on WhatsApp" : "No WhatsApp number or phone"}>
             <MessageCircle className="h-4 w-4" aria-hidden="true" />
             {sending ? "Sending…" : "WhatsApp"}
           </Button>

@@ -7,6 +7,7 @@ import { notify } from "@/modules/notifications/service";
 import { createLead } from "@/modules/crm/service";
 import { CHANNELS, channelToSource, normalisePhone, type LeadSourceKey } from "@/modules/crm/shared";
 import { claimConfirmationReply, finishConfirmationReply } from "@/modules/appointments/confirmation";
+import { claimConsentReply, finishConsentReply } from "./consent";
 import { getTenantTimezone } from "@/modules/appointments/service";
 import { tagObjections } from "./tagger";
 
@@ -212,8 +213,10 @@ export async function handleInbound(tenantId: string, msg: InboundMessage): Prom
     // "1" or "2" to a request to confirm a moved appointment (appointments/confirmation.ts).
     const patientId = conversation.patientId ?? patient?.id ?? null;
     const reply = patientId ? await claimConfirmationReply(tx, tenantId, patientId, msg.body, now) : null;
-    // A confirmation answers itself: the thread keeps the turn it had.
-    const settled = reply?.applied === true && reply.answer === "confirm";
+    // "STOP" / "START" about the clinic's automatic messages (messaging/consent.ts).
+    const consent = patientId && !reply ? await claimConsentReply(tx, tenantId, patientId, msg.body, now) : null;
+    // A confirmation, or a STOP / START, answers itself: the thread keeps the turn it had.
+    const settled = (reply?.applied === true && reply.answer === "confirm") || consent !== null;
 
     const updated = await tx.conversation.update({
       where: { id: conversation.id },
@@ -230,11 +233,11 @@ export async function handleInbound(tenantId: string, msg: InboundMessage): Prom
         updatedAt: now,
       },
     });
-    return { duplicate: false as const, conversation: updated, messageId: message.id, patient, lead, createdConversation, objections, reply };
+    return { duplicate: false as const, conversation: updated, messageId: message.id, patient, lead, createdConversation, objections, reply, consent };
   });
 
   if (stored.duplicate) return stored.result;
-  const { conversation, messageId, patient, lead, createdConversation, objections, reply } = stored;
+  const { conversation, messageId, patient, lead, createdConversation, objections, reply, consent } = stored;
 
   // Unknown contact: a lead opens itself so nobody falls through the cracks.
   let leadId = conversation.leadId;
@@ -263,13 +266,21 @@ export async function handleInbound(tenantId: string, msg: InboundMessage): Prom
 
   // The answer to a confirmation request: audited and the patient thanked. A
   // confirmation needs nobody; a request for another time tells reception.
-  const settled = reply?.applied === true && reply.answer === "confirm";
+  const settled = (reply?.applied === true && reply.answer === "confirm") || Boolean(consent);
   let replyNotice: { title: string; body: string } | null = null;
   if (reply?.applied) {
     try {
       replyNotice = await finishConfirmationReply(tenantId, reply, { messageId, conversationId: conversation.id, timezone: await getTenantTimezone(tenantId) });
     } catch (err) {
       console.error("[messaging] could not finish a confirmation reply", err);
+    }
+  }
+
+  if (consent) {
+    try {
+      await finishConsentReply(tenantId, consent, { messageId, conversationId: conversation.id, language: patient?.language ?? null });
+    } catch (err) {
+      console.error("[messaging] could not finish a consent reply", err);
     }
   }
 

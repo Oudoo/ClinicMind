@@ -15,13 +15,14 @@ import { seedReporting } from "./reporting";
 import { seedNotifications } from "./notifications";
 import { seedSafety } from "./safety";
 import { seedRecalls } from "./recalls";
+import { seedReminders } from "./reminders";
 
 /**
  * The second half of the demo seed: everything the PM round-2 modules need
  * (the price list, CRM leads and conversations, procedures and payments, concierge
  * enrolments, intake links, dictated appointment notes, campaign costs,
  * review snapshots, alert rules, prescribing-safety overrides, notifications,
- * recalls).
+ * recalls, and the reminders and recall messages the clinic sent on its own).
  * Runs after the core clinic
  * (staff, patients, appointments, visits) exists; each module reads what it
  * needs from the database and keeps its own deterministic random stream.
@@ -80,6 +81,8 @@ export async function seedRound2(ctx: SeedContext): Promise<void> {
     ["notifications", seedNotifications],
     // Last: replays every signed procedure and consultation, then sweeps up to today.
     ["recalls", seedRecalls],
+    // After the recalls: their automatic messages, beside the appointment reminders and the consents.
+    ["reminders and consents", seedReminders],
   ];
   for (const [name, fn] of steps) {
     const started = Date.now();

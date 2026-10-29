@@ -10,6 +10,7 @@ const RECALL_ERRORS: Record<string, string> = {
   already_booked: "A visit is already booked for this recall.",
   state_changed: "This recall changed a moment ago. The list is refreshed.",
   no_phone: "The patient has no WhatsApp number or phone on record.",
+  no_consent: "The patient has not agreed to these messages on WhatsApp: call instead.",
   conflict: "That slot is already taken. Pick another one.",
   patient_conflict: "The patient already has an appointment at that time.",
   done: "A done recall stays done.",

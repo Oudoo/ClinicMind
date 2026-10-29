@@ -48,6 +48,10 @@ export interface PatientFormValues {
   address: string;
   tags: string[];
   notes: string;
+  /** Treatment reminders on WhatsApp (appointments, recalls). */
+  reminderConsent: boolean;
+  /** Offers and news, and the message after a year without a visit. */
+  marketingConsent: boolean;
 }
 
 export const EMPTY_PATIENT_FORM: PatientFormValues = {
@@ -64,6 +68,8 @@ export const EMPTY_PATIENT_FORM: PatientFormValues = {
   address: "",
   tags: [],
   notes: "",
+  reminderConsent: true,
+  marketingConsent: false,
 };
 
 export interface HistoryFormValues {
@@ -88,6 +94,8 @@ export function patientFormValues(patient: {
   address: string | null;
   tags: string[];
   notes: string | null;
+  reminderConsent?: boolean;
+  marketingConsent?: boolean;
 }): PatientFormValues {
   return {
     fullName: patient.fullName,
@@ -103,6 +111,8 @@ export function patientFormValues(patient: {
     address: patient.address ?? "",
     tags: patient.tags,
     notes: patient.notes ?? "",
+    reminderConsent: patient.reminderConsent ?? true,
+    marketingConsent: patient.marketingConsent ?? false,
   };
 }
 

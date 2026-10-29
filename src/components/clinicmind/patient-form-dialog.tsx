@@ -7,7 +7,7 @@ import { Loader2, UserPlus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter } from "@/components/ui/dialog";
 import { Alert, Field } from "@/components/ui/field";
-import { Input, Select, Textarea } from "@/components/ui/input";
+import { Checkbox, Input, Select, Textarea } from "@/components/ui/input";
 import { DictationField } from "@/components/clinicmind/dictate-field";
 import { useToast } from "@/components/ui/toast";
 import { apiFetch, fieldErrors } from "@/lib/http";
@@ -422,6 +422,24 @@ function PatientForm({
             </DictationField>
           </FormField>
         </div>
+
+        <fieldset className="space-y-2 sm:col-span-2">
+          <legend className="data-label">WhatsApp messages the patient agreed to</legend>
+          <label className="flex items-start gap-2 text-sm">
+            <Checkbox checked={values.reminderConsent} onChange={(e) => set("reminderConsent", e.target.checked)} className="mt-0.5" />
+            <span>
+              Treatment reminders
+              <span className="block text-xs text-muted-foreground">Appointment reminders and recalls (reviews, the next session). On unless the patient says no.</span>
+            </span>
+          </label>
+          <label className="flex items-start gap-2 text-sm">
+            <Checkbox checked={values.marketingConsent} onChange={(e) => set("marketingConsent", e.target.checked)} className="mt-0.5" />
+            <span>
+              Offers and news
+              <span className="block text-xs text-muted-foreground">Including a message after a year without a visit. Only when the patient says yes.</span>
+            </span>
+          </label>
+        </fieldset>
       </div>
 
       <DialogFooter>

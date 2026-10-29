@@ -341,6 +341,14 @@ export default async function PatientPage({ params, searchParams }: { params: Pr
                   <DetailRow label="Emergency contact" value={patient.emergencyContact} />
                   <DetailRow label="Address" value={patient.address} />
                   <DetailRow label="Language" value={languageLabel(patient.language)} />
+                  <DetailRow
+                    label="WhatsApp reminders"
+                    value={patient.reminderConsent ? "Yes" : `No${patient.reminderConsentAt ? ` (since ${formatDate(patient.reminderConsentAt)})` : ""}`}
+                  />
+                  <DetailRow
+                    label="Offers and news"
+                    value={patient.marketingConsent ? `Yes${patient.marketingConsentAt ? ` (since ${formatDate(patient.marketingConsentAt)})` : ""}` : "No"}
+                  />
                   <DetailRow label="Registered" value={formatDate(patient.createdAt)} />
                 </Card>
 

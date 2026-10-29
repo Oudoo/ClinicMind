@@ -7,6 +7,7 @@ import { requireTenantPatient, TenantScopeError } from "@/lib/tenant-scope";
 import { addDays, endOfDayInTz, formatDateInTz, formatTimeInTz, fromDateKey, startOfDayInTz } from "@/lib/time";
 import { zDateTime, zOptionalText, zText } from "@/lib/validation";
 import { createAppointment, getTenantTimezone } from "@/modules/appointments/service";
+import { readReminderSettings } from "@/modules/messaging/reminder-settings";
 import {
   ACTIVE_RECALL_STATUSES,
   bandLabel,
@@ -96,14 +97,25 @@ const recallSelect = {
   procedureId: true,
   stage: true,
   createdAt: true,
-  patient: { select: { id: true, fullName: true, phone: true, whatsapp: true, language: true } },
+  patient: { select: { id: true, fullName: true, phone: true, whatsapp: true, language: true, reminderConsent: true, marketingConsent: true } },
   treatment: { select: { id: true, name: true } },
 } satisfies Prisma.RecallSelect;
 
 type RecallRow = Prisma.RecallGetPayload<{ select: typeof recallSelect }>;
 
-/** No automatic message reaches it: reception calls (a phone-call recall, or no number to write to). */
-const unreachableByMessage = (r: { channel: ChannelType; patient: { phone: string | null; whatsapp: string | null } }) => r.channel === "VOICE" || !(r.patient.whatsapp || r.patient.phone);
+type ConsentPatient = { phone: string | null; whatsapp: string | null; reminderConsent: boolean; marketingConsent: boolean };
+
+/** The patient agreed to this recall's message: offers and news for a lapsed patient (asking them back is marketing), treatment reminders otherwise. */
+const agreed = (r: { kind: string; patient: ConsentPatient }) => (r.kind === "LAPSED" ? r.patient.marketingConsent : r.patient.reminderConsent);
+
+/** Why no automatic message reaches it (reception contacts the patient), or null when one will. */
+function noMessageReason(r: { kind: string; channel: ChannelType; patient: ConsentPatient }, autoMessages: boolean): string | null {
+  if (r.channel === "VOICE") return "A phone-call recall: no automatic message goes.";
+  if (!(r.patient.whatsapp || r.patient.phone)) return "No WhatsApp number: call the patient.";
+  if (!agreed(r)) return r.kind === "LAPSED" ? "No consent to offers and news: call the patient." : "The patient said no to WhatsApp reminders: call.";
+  if (!autoMessages) return "Automatic recall messages are off: contact the patient.";
+  return null;
+}
 
 async function names(tenantId: string, ids: (string | null | undefined)[]): Promise<Map<string, string>> {
   const unique = [...new Set(ids.filter((id): id is string => Boolean(id)))];
@@ -147,7 +159,7 @@ function activityDTO(
   };
 }
 
-async function toDTOs(tenantId: string, rows: RecallRow[], now: Date, tz: string): Promise<RecallDTO[]> {
+async function toDTOs(tenantId: string, rows: RecallRow[], now: Date, tz: string, autoMessages = true): Promise<RecallDTO[]> {
   if (!rows.length) return [];
   const today = startOfDayInTz(now, tz);
   const ids = rows.map((r) => r.id);
@@ -164,13 +176,8 @@ async function toDTOs(tenantId: string, rows: RecallRow[], now: Date, tz: string
     const lastActivity = lastOf.get(r.id);
     const b = r.bookedAppointmentId ? bookedOf.get(r.bookedAppointmentId) : undefined;
     const reopened = r.status === "OPEN" && lastActivity?.kind === "STATUS" && lastActivity.outcome === "OPEN" && lastActivity.byId === null && lastActivity.at.getTime() > r.createdAt.getTime() + 1000 && Boolean(lastActivity.note?.match(/^(The booked visit|Came in on)/));
-    const hint = reopened
-      ? lastActivity!.note
-      : r.status !== "BOOKED" && (band.band === "soon" || band.band === "due") && unreachableByMessage(r)
-        ? r.channel === "VOICE"
-          ? "A phone-call recall: no automatic message goes."
-          : "No WhatsApp number: call the patient."
-        : null;
+    const silent = noMessageReason(r, autoMessages);
+    const hint = reopened ? lastActivity!.note : r.status !== "BOOKED" && (band.band === "soon" || band.band === "due" || band.band === "overdue") && silent ? silent : null;
     return {
       id: r.id,
       kind: r.kind,
@@ -202,7 +209,7 @@ async function toDTOs(tenantId: string, rows: RecallRow[], now: Date, tz: string
       stage: r.stage,
       lastActivity: lastActivity ? activityDTO(lastActivity, who, r.createdAt) : null,
       hint,
-      canMessage: Boolean(r.patient.whatsapp || r.patient.phone),
+      canMessage: Boolean(r.patient.whatsapp || r.patient.phone) && agreed(r),
       suggestUnreachable: r.attempts >= UNREACHABLE_AFTER_TRIES && WAITING.includes(r.status) && lastActivity?.kind === "CALL" && lastActivity.outcome === "no_answer",
       createdAt: r.createdAt.toISOString(),
     };
@@ -247,20 +254,26 @@ function baseWhere(tenantId: string, q: z.infer<typeof RecallListQuery>, viewer:
   return { AND: and };
 }
 
-/** Who to contact today (see the top of the file). */
-function todayWhere(now: Date, tz: string): Prisma.RecallWhereInput {
+/** Who to contact today (see the top of the file); `autoMessages`: the clinic's recall messages are on. */
+function todayWhere(now: Date, tz: string, autoMessages: boolean): Prisma.RecallWhereInput {
   const endToday = endOfDayInTz(now, tz);
   const soonEnd = endOfDayInTz(addDays(now, DUE_SOON_DAYS, tz), tz);
+  // Due within two weeks and no automatic message will reach it: the desk's to contact now.
+  const silent: Prisma.RecallWhereInput = autoMessages
+    ? {
+        OR: [
+          { channel: "VOICE" },
+          { patient: { phone: null, whatsapp: null } },
+          { kind: { not: "LAPSED" }, patient: { reminderConsent: false } },
+          { kind: "LAPSED", patient: { marketingConsent: false } },
+        ],
+      }
+    : {};
   return {
     AND: [
       { OR: [{ status: { in: ["OPEN", "CONTACTED"] } }, { status: "SNOOZED", snoozedUntil: { lte: endToday } }] },
       { OR: [{ nextContactAt: null }, { nextContactAt: { lte: endToday } }] },
-      {
-        OR: [
-          { dueAt: { lte: endToday } },
-          { dueAt: { lte: soonEnd }, OR: [{ channel: "VOICE" }, { patient: { phone: null, whatsapp: null } }] },
-        ],
-      },
+      { OR: [{ dueAt: { lte: endToday } }, { AND: [{ dueAt: { lte: soonEnd } }, silent] }] },
     ],
   };
 }
@@ -273,9 +286,9 @@ const LIST_CAP = 1000;
 
 export async function listRecalls(tenantId: string, raw: RecallListQuery, viewer: Viewer = {}, now: Date = new Date()): Promise<RecallListDTO> {
   const q = RecallListQuery.parse(raw);
-  const tz = await getTenantTimezone(tenantId);
+  const [tz, settings] = await Promise.all([getTenantTimezone(tenantId), readReminderSettings(tenantId)]);
   const base = baseWhere(tenantId, q, viewer);
-  const today = todayWhere(now, tz);
+  const today = todayWhere(now, tz, settings.recallMessages);
   const soon = soonWhere(now, tz);
   const booked: Prisma.RecallWhereInput = { status: "BOOKED" };
   const [countToday, countSoon, countBooked] = await Promise.all([
@@ -294,12 +307,12 @@ export async function listRecalls(tenantId: string, raw: RecallListQuery, viewer
       db.recall.count({ where }),
       db.recall.findMany({ where, orderBy: [{ dueAt: "desc" }, { id: "asc" }], skip, take: q.pageSize, select: recallSelect }),
     ]);
-    return { recalls: await toDTOs(tenantId, rows, now, tz), total, page: q.page, pageSize: q.pageSize, counts };
+    return { recalls: await toDTOs(tenantId, rows, now, tz, settings.recallMessages), total, page: q.page, pageSize: q.pageSize, counts };
   }
 
   const where = { AND: [base, q.tab === "today" ? today : q.tab === "soon" ? soon : booked] };
   const rows = await db.recall.findMany({ where, orderBy: [{ dueAt: "asc" }, { id: "asc" }], take: LIST_CAP, select: recallSelect });
-  const all = await toDTOs(tenantId, rows, now, tz);
+  const all = await toDTOs(tenantId, rows, now, tz, settings.recallMessages);
   if (q.tab === "booked") {
     all.sort((a, b) => (a.booked?.startsAt ?? a.dueAt).localeCompare(b.booked?.startsAt ?? b.dueAt));
   } else {
@@ -312,8 +325,8 @@ export async function listRecalls(tenantId: string, raw: RecallListQuery, viewer
 export async function getRecall(tenantId: string, id: string, now: Date = new Date()): Promise<RecallDetailDTO | null> {
   const row = await db.recall.findFirst({ where: { id, tenantId }, select: recallSelect });
   if (!row) return null;
-  const tz = await getTenantTimezone(tenantId);
-  const [dto] = await toDTOs(tenantId, [row], now, tz);
+  const [tz, settings] = await Promise.all([getTenantTimezone(tenantId), readReminderSettings(tenantId)]);
+  const [dto] = await toDTOs(tenantId, [row], now, tz, settings.recallMessages);
   const activities = await db.recallActivity.findMany({ where: { tenantId, recallId: id }, orderBy: [{ at: "asc" }, { id: "asc" }] });
   const who = await names(tenantId, activities.map((a) => a.byId));
   return { ...dto!, activities: activities.map((a) => activityDTO(a, who, row.createdAt)) };
@@ -321,12 +334,12 @@ export async function getRecall(tenantId: string, id: string, now: Date = new Da
 
 /** A patient's recalls for their page: everything still being worked (the upcoming too), then the last closed. */
 export async function listPatientRecalls(tenantId: string, patientId: string, now: Date = new Date()): Promise<{ active: RecallDTO[]; closed: RecallDTO[] }> {
-  const tz = await getTenantTimezone(tenantId);
+  const [tz, settings] = await Promise.all([getTenantTimezone(tenantId), readReminderSettings(tenantId)]);
   const [active, closed] = await Promise.all([
     db.recall.findMany({ where: { tenantId, patientId, status: { in: [...ACTIVE] } }, orderBy: { dueAt: "asc" }, take: 50, select: recallSelect }),
     db.recall.findMany({ where: { tenantId, patientId, status: { in: [...CLOSED_RECALL_STATUSES] } }, orderBy: { closedAt: "desc" }, take: 5, select: recallSelect }),
   ]);
-  const [a, c] = await Promise.all([toDTOs(tenantId, active, now, tz), toDTOs(tenantId, closed, now, tz)]);
+  const [a, c] = await Promise.all([toDTOs(tenantId, active, now, tz, settings.recallMessages), toDTOs(tenantId, closed, now, tz, settings.recallMessages)]);
   return { active: a, closed: c };
 }
 
@@ -455,6 +468,9 @@ export async function actOnRecall(tenantId: string, id: string, raw: unknown, ac
       if (r.status === "BOOKED") throw new RecallError(409, "booked", "A visit is booked for this recall: nothing to ask the patient.");
       const loaded = await recallForMessage(tenantId, id);
       if (!loaded || !(loaded.patient.whatsapp || loaded.patient.phone)) throw new RecallError(422, "no_phone", "The patient has no WhatsApp number or phone on record.");
+      if (!(loaded.kind === "LAPSED" ? loaded.patient.marketingConsent : loaded.patient.reminderConsent)) {
+        throw new RecallError(409, "no_consent", loaded.kind === "LAPSED" ? "The patient has not agreed to offers and news on WhatsApp: call instead." : "The patient said no to WhatsApp reminders: call instead.");
+      }
       const rendered = await renderRecallMessage(tenantId, loaded, { timezone: tz, now });
       if (!rendered.body || rendered.unfilled.length) {
         throw new RecallError(409, "template_incomplete", `The clinic's "${rendered.templateKey}" template uses ${rendered.unfilled.map((p) => `{{${p}}}`).join(", ") || "nothing"} that a recall cannot fill: edit it in Settings.`);
