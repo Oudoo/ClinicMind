@@ -529,6 +529,10 @@ export async function Sources({ scope }: { scope: ReportScope }) {
                   <TD>
                     {c.name}
                     <Badge className="ms-2 hidden md:inline-flex">{r.rows.find((s) => s.source === c.source)?.label ?? c.source}</Badge>
+                    <span className="block text-xs text-muted-foreground md:hidden">
+                      {formatNumber(c.patients)} patient{c.patients === 1 ? "" : "s"}
+                      {c.cost ? ` · cost ${formatNumber(c.cost)}` : ""}
+                    </span>
                   </TD>
                   <TD className={cn(NUM, "hidden sm:table-cell")}>{formatNumber(c.patients)}</TD>
                   <TD className={cn(NUM, "font-medium")}>{formatNumber(c.production)}</TD>
