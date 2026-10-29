@@ -377,8 +377,10 @@ async function ensureHealthy(api, username, domain) {
 
 /** The app's newest log entries (`limit`) of the last `period`, optionally only some levels. */
 async function runtimeLogs(api, username, domain, { period = "1h", limit = 80, levels } = {}) {
-  const answer = await api.call("hosting_nodejs_runtime-logs", { username, domain, period, limit, ...(levels ? { levels } : {}) });
-  const logs = Array.isArray(answer?.logs) ? answer.logs : [];
+  // Filtered here: Hostinger's own level filter has answered with a server error.
+  const answer = await api.call("hosting_nodejs_runtime-logs", { username, domain, period, limit: levels ? 1000 : limit });
+  let logs = Array.isArray(answer?.logs) ? answer.logs : [];
+  if (levels) logs = logs.filter((l) => levels.includes(String(l.level ?? "").toUpperCase())).slice(-limit);
   if (!logs.length) return console.log("  (empty)");
   for (const l of logs) console.log(`  ${show(l.timestamp)} ${show(l.level)} ${redact(String(l.message ?? "")).slice(0, 400)}`);
 }
