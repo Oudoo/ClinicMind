@@ -209,6 +209,11 @@ model Tenant {
   procedureCosts          ProcedureCost[]
   doctorStatements        DoctorStatement[]
   doctorStatementLines    DoctorStatementLine[]
+  suppliers               Supplier[]
+  expenses                Expense[]
+  expensePayments         ExpensePayment[]
+  expenseFiles            ExpenseFile[]
+  recurringExpenses       RecurringExpense[]
 
   @@index([status])
   @@map("tenants")
@@ -256,13 +261,16 @@ model Clinic {
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
 
-  users        User[]
-  appointments Appointment[]
-  prices       PriceItemPrice[]
-  invoices     Invoice[]
-  cashShifts   CashShift[]
-  dayCloses    DayClose[]
-  quotes       Quote[]
+  users             User[]
+  appointments      Appointment[]
+  prices            PriceItemPrice[]
+  invoices          Invoice[]
+  cashShifts        CashShift[]
+  dayCloses         DayClose[]
+  quotes            Quote[]
+  expenses          Expense[]
+  expensePayments   ExpensePayment[]
+  recurringExpenses RecurringExpense[]
 
   @@unique([tenantId, code])
   @@index([tenantId])
@@ -1496,7 +1504,8 @@ model CashShift {
   note         String?
   createdAt    DateTime        @default(now())
 
-  payments Payment[]
+  payments        Payment[]
+  expensePayments ExpensePayment[]
 
   @@index([tenantId, clinicId, openedAt])
   @@index([tenantId, userId, status])
@@ -1918,6 +1927,8 @@ model FileBlob {
   sizeBytes Int
   bytes     Bytes
   createdAt DateTime @default(now())
+
+  expenseFile ExpenseFile?
 
   @@index([tenantId, patientId])
   @@map("file_blobs")
@@ -2582,4 +2593,179 @@ model DoctorStatementLine {
   @@index([tenantId, procedureId])
   @@index([tenantId, feeId])
   @@map("doctor_statement_lines")
+}
+
+// ── Expenses and suppliers ───────────────────────────────────────────────────
+
+/// What the money goes on: a fixed list, so each month's spending is counted the same way. Salaries are the owner's alone.
+enum ExpenseCategory {
+  RENT
+  SALARIES
+  UTILITIES
+  SUPPLIES
+  LAB
+  EQUIPMENT
+  MAINTENANCE
+  MARKETING
+  FEES
+  LICENCES
+  BANK
+  CLEANING
+  HOSPITALITY
+  TRANSPORT
+  OTHER
+}
+
+/// Who the clinic buys from or pays: a supplier of materials, a lab, the landlord, a utility, an agency, the accountant.
+model Supplier {
+  id          String          @id @default(cuid())
+  tenantId    String
+  tenant      Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name        String
+  /// The category its bills go under unless said otherwise.
+  category    ExpenseCategory @default(OTHER)
+  contactName String?
+  phone       String?
+  email       String?
+  notes       String?
+  /// No longer used: kept with its bills, offered no more.
+  archivedAt  DateTime?
+  createdById String?
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  expenses  Expense[]
+  recurring RecurringExpense[]
+
+  @@unique([tenantId, name])
+  @@index([tenantId])
+  @@map("suppliers")
+}
+
+/// A bill to pay, or money spent: for a branch, under a category, from a supplier or not; paid at once or later, in one
+/// payment or several. Never deleted: voided with the reason (its payments with it).
+model Expense {
+  id          String            @id @default(cuid())
+  tenantId    String
+  tenant      Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  clinicId    String
+  clinic      Clinic            @relation(fields: [clinicId], references: [id], onDelete: NoAction)
+  supplierId  String?
+  supplier    Supplier?         @relation(fields: [supplierId], references: [id], onDelete: NoAction)
+  category    ExpenseCategory
+  description String
+  /// The supplier's bill or receipt number.
+  reference   String?
+  /// The day of the bill, or of the spending (the branch's clock).
+  billedOn    DateTime          @db.Date
+  /// The day it is to be paid by (none: paid when convenient).
+  dueOn       DateTime?         @db.Date
+  amount      Int
+  /// Made by a recurring expense, for one of its months (YYYY-MM).
+  recurringId String?
+  recurring   RecurringExpense? @relation(fields: [recurringId], references: [id], onDelete: NoAction)
+  period      String?
+  note        String?
+  createdById String?
+  createdAt   DateTime          @default(now())
+  updatedById String?
+  updatedAt   DateTime          @updatedAt
+  voidedAt    DateTime?
+  voidedById  String?
+  voidReason  String?
+
+  payments ExpensePayment[]
+  files    ExpenseFile[]
+
+  @@unique([tenantId, recurringId, period])
+  @@index([tenantId, billedOn])
+  @@index([tenantId, supplierId])
+  @@index([tenantId, dueOn])
+  @@map("expenses")
+}
+
+/// Money paid towards an expense: in cash out of a cash drawer (its shift, whose cash expected goes down by it), or
+/// from elsewhere (the bank, the clinic's card, the owner's pocket). Never deleted or changed: voided with the reason.
+model ExpensePayment {
+  id          String        @id @default(cuid())
+  tenantId    String
+  tenant      Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  expenseId   String
+  expense     Expense       @relation(fields: [expenseId], references: [id], onDelete: NoAction)
+  /// The branch whose drawer, or whose day, it is.
+  clinicId    String
+  clinic      Clinic        @relation(fields: [clinicId], references: [id], onDelete: NoAction)
+  amount      Int
+  method      PaymentMethod
+  paidAt      DateTime
+  reference   String?
+  /// Paid out of a cash drawer: the shift it came out of.
+  shiftId     String?
+  shift       CashShift?    @relation(fields: [shiftId], references: [id], onDelete: NoAction)
+  note        String?
+  createdById String?
+  createdAt   DateTime      @default(now())
+  voidedAt    DateTime?
+  voidedById  String?
+  voidReason  String?
+
+  @@index([tenantId, expenseId])
+  @@index([tenantId, shiftId])
+  @@index([tenantId, paidAt])
+  @@map("expense_payments")
+}
+
+/// A photo or a PDF of an expense's bill or receipt (its bytes in a FileBlob).
+model ExpenseFile {
+  id          String   @id @default(cuid())
+  tenantId    String
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  expenseId   String
+  expense     Expense  @relation(fields: [expenseId], references: [id], onDelete: Cascade)
+  blobId      String   @unique
+  blob        FileBlob @relation(fields: [blobId], references: [id], onDelete: Cascade)
+  name        String?
+  mimeType    String
+  sizeBytes   Int
+  createdById String?
+  createdAt   DateTime @default(now())
+
+  @@index([tenantId, expenseId])
+  @@map("expense_files")
+}
+
+/// An expense that comes back every month or every few months (the rent, the internet, a service contract): the
+/// background job makes its bill on its day, at the amount it has then.
+model RecurringExpense {
+  id          String          @id @default(cuid())
+  tenantId    String
+  tenant      Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  clinicId    String
+  clinic      Clinic          @relation(fields: [clinicId], references: [id], onDelete: NoAction)
+  supplierId  String?
+  supplier    Supplier?       @relation(fields: [supplierId], references: [id], onDelete: NoAction)
+  category    ExpenseCategory
+  description String
+  amount      Int
+  /// Every how many months: 1, 2, 3, 6 or 12.
+  everyMonths Int             @default(1)
+  /// The day of the month its bill is made (1 to 28).
+  dayOfMonth  Int
+  /// How many days after that it is to be paid by.
+  dueDays     Int             @default(0)
+  /// Its first month (YYYY-MM).
+  startMonth  String
+  note        String?
+  createdById String?
+  createdAt   DateTime        @default(now())
+  updatedById String?
+  updatedAt   DateTime        @updatedAt
+  stoppedAt   DateTime?
+  stoppedById String?
+  stopReason  String?
+
+  expenses Expense[]
+
+  @@index([tenantId])
+  @@map("recurring_expenses")
 }

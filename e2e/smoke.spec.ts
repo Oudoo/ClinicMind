@@ -83,6 +83,7 @@ test.describe("signed-in clinic owner", () => {
       ["Price list", /price list/i],
       ["Not billed", /not billed/i],
       ["Cash drawer", /cash drawer/i],
+      ["Expenses", /expenses/i],
       ["Doctor pay", /doctor pay/i],
       ["Finance reports", /finance reports/i],
       ["Recalls", /recalls/i],

@@ -42,6 +42,7 @@ import { netPaid } from "@/modules/finance/constants";
 import { DEFAULT_REMINDER_SETTINGS, isQuiet } from "@/modules/messaging/reminder-settings";
 import { statementFor } from "@/modules/finance/doctor-pay";
 import { monthOfKey, settle, shiftMonth } from "@/modules/finance/doctor-pay-calc";
+import { recurringMonths } from "@/modules/finance/expenses";
 
 const FEMALE_ONLY = /\b(PCOS|polycystic|hirsutism|melasma)\b/i;
 
@@ -293,20 +294,31 @@ describe("the seeded demo database (when DATABASE_URL points at one)", () => {
 
     const shifts = await db.cashShift.findMany({
       where: { tenantId },
-      select: { status: true, clinicId: true, openingFloat: true, openedAt: true, counts: true, payments: { where: { deletedAt: null }, select: { kind: true, method: true, amount: true, paidAt: true } } },
+      select: {
+        status: true,
+        clinicId: true,
+        openingFloat: true,
+        openedAt: true,
+        counts: true,
+        payments: { where: { deletedAt: null }, select: { kind: true, method: true, amount: true, paidAt: true } },
+        expensePayments: { where: { voidedAt: null }, select: { method: true, amount: true, paidAt: true } },
+      },
     });
     const days = new Set<string>();
     const wrong: string[] = [];
     for (const s of shifts) {
       const day = dateKeyInTz(s.openedAt, tz);
       days.add(day);
-      if (s.payments.some((p) => dateKeyInTz(p.paidAt, tz) !== day)) wrong.push(`${day}: money from another day`);
+      if ([...s.payments, ...s.expensePayments].some((p) => dateKeyInTz(p.paidAt, tz) !== day)) wrong.push(`${day}: money from another day`);
+      if (s.expensePayments.some((p) => p.method !== "CASH")) wrong.push(`${day}: an expense paid out of the drawer in something else than cash`);
       if (s.status === "OPEN") {
         if (day !== today) wrong.push(`${day}: still open`);
         continue;
       }
       const expected = new Map<string, number>([["CASH", s.openingFloat]]);
       for (const p of s.payments) expected.set(p.method, (expected.get(p.method) ?? 0) + (p.kind === "REFUND" ? -p.amount : p.amount));
+      // Cash paid out of the drawer for expenses.
+      for (const p of s.expensePayments) expected.set("CASH", expected.get("CASH")! - p.amount);
       const counts = (s.counts ?? []) as { method: string; expected: number; counted: number; difference: number; reason: string | null }[];
       for (const [method, amount] of expected) {
         const c = counts.find((x) => x.method === method);
@@ -365,7 +377,7 @@ describe("the seeded demo database (when DATABASE_URL points at one)", () => {
     for (let back = 14; back >= 0; back--) {
       const date = dateKeyInTz(addDays(new Date(), -back, tz), tz);
       const day = await dayCloseReport(await reportScope(tenantId, { report: "day", date }));
-      for (const m of day.drawer) if (m.drawer !== m.books) problems.push(`${date} ${m.method}: drawer ${m.drawer}, payments ${m.books}`);
+      for (const m of day.drawer) if (m.drawer !== m.books - m.paidOut) problems.push(`${date} ${m.method}: drawer ${m.drawer}, payments ${m.books}, paid out ${m.paidOut}`);
       for (const r of day.trace) if (!r.traced) problems.push(`${date} ${r.receiptNumber ?? r.paymentId}: ${r.problem}`);
       if (day.trace.reduce((s, r) => s + r.amount, 0) !== day.income.net) problems.push(`${date}: receipts ${day.trace.length} do not add up to the income`);
     }
@@ -616,5 +628,46 @@ describe("the seeded demo database (when DATABASE_URL points at one)", () => {
     expect(costs.some((c) => c.kind === "LAB")).toBe(true);
     expect(costs.filter((c) => c.voidedAt).every((c) => c.voidReason)).toBe(true);
     expect(costs.some((c) => c.voidedAt)).toBe(true);
+  });
+
+  it("keeps the clinic's expenses: recurring bills once a month, payments never past a bill, a late bill, a part-paid one, one voided, the desk's cash in its shifts", async (ctx) => {
+    if (!demo) return ctx.skip();
+    const tenantId = demo.id;
+    const tz = "Africa/Cairo";
+    const today = dateKeyInTz(new Date(), tz);
+    const expenses = await db.expense.findMany({
+      where: { tenantId },
+      select: { amount: true, category: true, billedOn: true, dueOn: true, voidedAt: true, voidReason: true, recurringId: true, period: true, supplierId: true, payments: { select: { amount: true, voidedAt: true, shiftId: true } }, files: { select: { id: true } } },
+    });
+    expect(await db.supplier.count({ where: { tenantId } })).toBeGreaterThanOrEqual(5);
+    const wrong: string[] = [];
+    let late = 0;
+    let part = 0;
+    for (const e of expenses) {
+      const day = e.billedOn.toISOString().slice(0, 10);
+      const paid = e.payments.filter((p) => !p.voidedAt).reduce((sum, p) => sum + p.amount, 0);
+      if (paid > e.amount) wrong.push(`${day} ${e.category}: ${paid} paid of ${e.amount}`);
+      if (e.voidedAt && (paid || !e.voidReason)) wrong.push(`${day} ${e.category}: voided with money on it or no reason`);
+      if (day > today) wrong.push(`${day} ${e.category}: a day ahead`);
+      if (!e.voidedAt && paid < e.amount && e.dueOn && e.dueOn.toISOString().slice(0, 10) < today) late += 1;
+      if (!e.voidedAt && paid > 0 && paid < e.amount) part += 1;
+    }
+    expect(wrong).toEqual([]);
+    expect(late).toBeGreaterThanOrEqual(1);
+    expect(part).toBeGreaterThanOrEqual(1);
+    expect(expenses.filter((e) => e.voidedAt)).toHaveLength(1);
+    expect(expenses.some((e) => e.category === "SALARIES")).toBe(true);
+    expect(expenses.some((e) => e.files.length > 0)).toBe(true);
+    // Each recurring expense: one bill a month on its day, none missed since its first.
+    const recurring = await db.recurringExpense.findMany({ where: { tenantId }, select: { id: true, startMonth: true, everyMonths: true, dayOfMonth: true } });
+    expect(recurring.length).toBeGreaterThanOrEqual(5);
+    for (const r of recurring) {
+      const periods = expenses.filter((e) => e.recurringId === r.id).map((e) => e.period!).sort();
+      const due = recurringMonths(r, monthOfKey(today)).filter((m) => `${m}-${String(r.dayOfMonth).padStart(2, "0")}` <= today);
+      expect(periods, r.id).toEqual(due);
+    }
+    // The desk's cash paid out today is in today's open shift.
+    const open = await db.cashShift.findFirstOrThrow({ where: { tenantId, status: "OPEN" }, select: { expensePayments: { select: { amount: true } } } });
+    expect(open.expensePayments.length).toBeGreaterThan(0);
   });
 });

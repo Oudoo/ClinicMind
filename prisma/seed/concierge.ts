@@ -1,7 +1,6 @@
-import { crc32, deflateSync } from "node:zlib";
 import type { Prisma } from "@prisma/client";
 import type { SeedContext } from "./index";
-import { makeRandom, type Random } from "./util";
+import { makeRandom, png, type Random } from "./util";
 import { ensureDefaultProtocols, planTasks } from "../../src/modules/concierge/service";
 import { buildStepMessage, dayLabel, parseSteps, pickLanguage, protocolLengthDays, stepHasHighRisk, stepHeading, type ProtocolQuestion, type ProtocolStep } from "../../src/modules/concierge/protocols";
 import { triageAnswers, type TriageFlag, type TriageLevel } from "../../src/modules/concierge/triage";
@@ -35,32 +34,6 @@ const MESSAGES_WITHIN_DAYS = 60;
 const LINK_TTL_MS = 7 * DAY;
 
 // ── Placeholder photos ───────────────────────────────────────────────────────
-
-/** A small RGB PNG drawn pixel by pixel (no image library in the seed). */
-function png(width: number, height: number, pixel: (x: number, y: number) => [number, number, number]): Buffer {
-  const raw = Buffer.alloc((width * 3 + 1) * height);
-  for (let y = 0; y < height; y++) {
-    const row = y * (width * 3 + 1);
-    raw[row] = 0;
-    for (let x = 0; x < width; x++) {
-      const [r, g, b] = pixel(x, y);
-      raw.set([r, g, b], row + 1 + x * 3);
-    }
-  }
-  const chunk = (type: string, data: Buffer) => {
-    const head = Buffer.alloc(4);
-    head.writeUInt32BE(data.length);
-    const body = Buffer.concat([Buffer.from(type, "ascii"), data]);
-    const crc = Buffer.alloc(4);
-    crc.writeUInt32BE(crc32(body) >>> 0);
-    return Buffer.concat([head, body, crc]);
-  };
-  const ihdr = Buffer.alloc(13);
-  ihdr.writeUInt32BE(width, 0);
-  ihdr.writeUInt32BE(height, 4);
-  ihdr.set([8, 2, 0, 0, 0], 8); // 8-bit RGB
-  return Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), chunk("IHDR", ihdr), chunk("IDAT", deflateSync(raw)), chunk("IEND", Buffer.alloc(0))]);
-}
 
 /** A soft scalp-like study per view: skin tone, a darker band of hair where the view would show it. */
 function placeholderPhoto(view: string): Buffer {

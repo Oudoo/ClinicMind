@@ -199,7 +199,8 @@ async function DayClose({ scope }: { scope: ReportScope }) {
   const r = await dayCloseReport(scope);
   const tz = scope.timezone;
   const when = (iso: string) => `${formatDateInTz(new Date(iso), tz, { day: "numeric", month: "short" })}, ${formatTimeInTz(new Date(iso), tz)}`;
-  const agree = r.drawer.every((m) => m.drawer === m.books);
+  const agree = r.drawer.every((m) => m.drawer === m.books - m.paidOut);
+  const paidOut = r.drawer.some((m) => m.paidOut > 0);
   const s = r.summary;
   const figures = [
     { key: "income", label: "Income (net of refunds)", value: r.income.net },
@@ -239,7 +240,10 @@ async function DayClose({ scope }: { scope: ReportScope }) {
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <Card className="min-w-0 space-y-3">
-          <SectionTitle title="The drawer and the books" description="What the drawers hold (their floats aside) and the money entered late, against the day's payments, by method." />
+          <SectionTitle
+            title="The drawer and the books"
+            description={`What the drawers hold (their floats aside) and the money entered late, against the day's payments, by method${paidOut ? ", less the cash the drawers paid out for expenses" : ""}.`}
+          />
           {r.drawer.length ? (
             <div className="overflow-x-auto">
               <table className="w-full text-sm" aria-label="The drawer and the books">
@@ -248,6 +252,7 @@ async function DayClose({ scope }: { scope: ReportScope }) {
                     <th className="py-2 pe-3 text-start font-normal">Method</th>
                     <th className="py-2 pe-3 text-end font-normal">Drawer</th>
                     <th className="py-2 pe-3 text-end font-normal">Payments</th>
+                    {paidOut ? <th className="py-2 pe-3 text-end font-normal">Paid out</th> : null}
                     <th className="py-2 text-end font-normal">
                       <span className="sr-only">Agree</span>
                     </th>
@@ -259,7 +264,8 @@ async function DayClose({ scope }: { scope: ReportScope }) {
                       <td className="py-2 pe-3">{m.label}</td>
                       <td className={cn("py-2 pe-3", NUM)}>{egp(m.drawer)}</td>
                       <td className={cn("py-2 pe-3", NUM)}>{egp(m.books)}</td>
-                      <td className={cn("py-2 text-end text-xs", m.drawer === m.books ? "text-success" : "text-danger")}>{m.drawer === m.books ? "agree" : `off by ${egp(m.drawer - m.books)}`}</td>
+                      {paidOut ? <td className={cn("py-2 pe-3", NUM)}>{m.paidOut ? egp(-m.paidOut) : ""}</td> : null}
+                      <td className={cn("py-2 text-end text-xs", m.drawer === m.books - m.paidOut ? "text-success" : "text-danger")}>{m.drawer === m.books - m.paidOut ? "agree" : `off by ${egp(m.drawer - m.books + m.paidOut)}`}</td>
                     </tr>
                   ))}
                 </tbody>

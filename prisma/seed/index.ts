@@ -20,6 +20,7 @@ import { seedEvidence } from "./evidence";
 import { seedQuotes } from "./quotes";
 import { seedInstalmentReminders, seedInstalments } from "./instalments";
 import { seedDoctorPay } from "./doctor-pay";
+import { seedExpenses } from "./expenses";
 
 /**
  * The second half of the demo seed: everything the PM round-2 modules need
@@ -27,7 +28,8 @@ import { seedDoctorPay } from "./doctor-pay";
  * enrolments, intake links, dictated appointment notes, campaign costs,
  * review snapshots, alert rules, prescribing-safety overrides, the evidence
  * library and recorded pregnancies, treatment plans and quotes and the instalment plans paying for them,
- * notifications, recalls, the reminders, recall and instalment messages the clinic sent on its own, and doctor pay).
+ * expenses and suppliers, notifications, recalls, the reminders, recall and instalment messages the clinic sent on its
+ * own, and doctor pay).
  * Runs after the core clinic
  * (staff, patients, appointments, visits) exists; each module reads what it
  * needs from the database and keeps its own deterministic random stream.
@@ -64,6 +66,8 @@ export interface SeedContext {
   /** Calendar fields of today ± offset days on the clinic clock. */
   calendarDay: (offsetDays: number) => { y: number; m: number; d: number; weekday: number };
   today: Date;
+  /** Cash the desk paid out of the drawer for expenses (the expenses step), put in its day's shift by the cash drawer step. */
+  drawerPayouts?: { expenseId: string; amount: number; paidAt: Date; createdById: string }[];
 }
 
 export async function seedRound2(ctx: SeedContext): Promise<void> {
@@ -80,6 +84,8 @@ export async function seedRound2(ctx: SeedContext): Promise<void> {
     ["treatment plans", seedQuotes],
     // Accepted plans paid over time: the payments before the cash drawer.
     ["instalment plans", seedInstalments],
+    // The desk's cash paid out for expenses goes into the drawer's shifts too.
+    ["expenses and suppliers", seedExpenses],
     // After every step that writes money: a day signed off takes no more.
     ["cash drawer", seedCash],
     ["concierge", seedConcierge],

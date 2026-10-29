@@ -948,8 +948,11 @@ export interface DayCloseReport {
   income: IncomeTotals;
   production: ProductionTotals;
   adjustments: AdjustmentsReport["totals"];
-  /** The drawer against the books, per method: what the drawers and the money entered late add up to (floats aside), and what the payments say. */
-  drawer: { method: PaymentMethodValue; label: string; drawer: number; books: number }[];
+  /**
+   * The drawer against the books, per method: what the drawers and the money entered late add up to (floats aside),
+   * what the payments say, and the cash the drawers paid out for expenses (they agree when drawer = books − paid out).
+   */
+  drawer: { method: PaymentMethodValue; label: string; drawer: number; books: number; paidOut: number }[];
   trace: TraceRow[];
   summary: { receipts: number; onInvoices: number; credit: number; fees: number; refunds: number; untraced: number };
 }
@@ -1048,13 +1051,15 @@ export async function dayCloseReport(scope: ReportScope): Promise<DayCloseReport
       problem: problems.length ? problems.join("; ") : null,
     };
   });
-  // The drawer: what each branch's shifts expect (the float aside) and the money entered late, by method.
+  // The drawer: what each branch's shifts expect (the float aside) and the money entered late, by method; the cash they paid out for expenses.
   const drawerBy = new Map<PaymentMethodValue, number>();
+  let paidOut = 0;
   for (const d of days) {
     const floats = d.shifts.reduce((s, x) => s + x.openingFloat, 0);
+    paidOut += d.shifts.reduce((s, x) => s + x.paidOut.amount, 0);
     for (const m of d.totals) drawerBy.set(m.method, (drawerBy.get(m.method) ?? 0) + m.expected - (m.method === "CASH" ? floats : 0));
   }
-  const methods = PAYMENT_METHODS.filter((m) => (drawerBy.get(m) ?? 0) !== 0 || (income.totals.methods[m] ?? 0) !== 0);
+  const methods = PAYMENT_METHODS.filter((m) => (drawerBy.get(m) ?? 0) !== 0 || (income.totals.methods[m] ?? 0) !== 0 || (m === "CASH" && paidOut > 0));
   return {
     date,
     branches: days.map((d) => {
@@ -1071,7 +1076,7 @@ export async function dayCloseReport(scope: ReportScope): Promise<DayCloseReport
     income: income.totals,
     production: production.totals,
     adjustments: adjustments.totals,
-    drawer: methods.map((method) => ({ method, label: METHOD_LABELS[method], drawer: drawerBy.get(method) ?? 0, books: income.totals.methods[method] ?? 0 })),
+    drawer: methods.map((method) => ({ method, label: METHOD_LABELS[method], drawer: drawerBy.get(method) ?? 0, books: income.totals.methods[method] ?? 0, paidOut: method === "CASH" ? paidOut : 0 })),
     trace,
     summary,
   };

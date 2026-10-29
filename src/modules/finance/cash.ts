@@ -15,7 +15,8 @@ import { FinanceError } from "./errors";
  * cash in the drawer (the float); the money they take or pay out that day
  * goes into it. At the close they count what is there, method by method,
  * against what is expected (cash: the float plus what came in less what went
- * out), and give the reason for any difference. Once every shift of a day is
+ * out: refunds, and cash paid out of the drawer for an expense), and give the
+ * reason for any difference. Once every shift of a day is
  * closed, the owner signs the day off; a day signed off is locked: no money
  * is recorded on it, and none on it is voided (the database refuses it too).
  *
@@ -66,6 +67,8 @@ export interface ShiftView {
   openedAt: string;
   closedAt: string | null;
   payments: number;
+  /** Cash paid out of the drawer for expenses (voided ones left out). */
+  paidOut: { count: number; amount: number };
   methods: MethodLine[];
   note: string | null;
 }
@@ -79,7 +82,7 @@ interface StoredCount {
 }
 
 /** The branch's clock (its own timezone, or the clinic's default). */
-async function branchTimezone(client: Tx | typeof db, tenantId: string, clinicId: string | null): Promise<string> {
+export async function branchTimezone(client: Tx | typeof db, tenantId: string, clinicId: string | null): Promise<string> {
   const clinic = clinicId ? await client.clinic.findFirst({ where: { id: clinicId, tenantId }, select: { timezone: true } }) : null;
   return clinic?.timezone && isValidTimeZone(clinic.timezone) ? clinic.timezone : DEFAULT_TIMEZONE;
 }
@@ -158,12 +161,24 @@ export async function assertDayOpen(tx: Tx, tenantId: string, clinicId: string |
   if (closed) throw dayClosedError(closed, action);
 }
 
-/** What should be in a shift's drawer, per method: the money in less the money out (voided payments left out); cash with the float. */
-async function expectedFor(client: Tx | typeof db, tenantId: string, shift: { id: string; openingFloat: number }): Promise<{ byMethod: Map<PaymentMethodValue, number>; payments: number }> {
-  const rows = await client.payment.findMany({ where: { tenantId, shiftId: shift.id, deletedAt: null }, select: { kind: true, method: true, amount: true } });
+/**
+ * What should be in a shift's drawer, per method: the money in less the money out (voided payments left out); cash with
+ * the float, less the cash paid out of it for expenses.
+ */
+async function expectedFor(
+  client: Tx | typeof db,
+  tenantId: string,
+  shift: { id: string; openingFloat: number },
+): Promise<{ byMethod: Map<PaymentMethodValue, number>; payments: number; paidOut: { count: number; amount: number } }> {
+  const [rows, outs] = await Promise.all([
+    client.payment.findMany({ where: { tenantId, shiftId: shift.id, deletedAt: null }, select: { kind: true, method: true, amount: true } }),
+    client.expensePayment.findMany({ where: { tenantId, shiftId: shift.id, voidedAt: null }, select: { amount: true } }),
+  ]);
   const byMethod = new Map<PaymentMethodValue, number>([["CASH", shift.openingFloat]]);
   for (const r of rows) byMethod.set(r.method, (byMethod.get(r.method) ?? 0) + signed(r));
-  return { byMethod, payments: rows.length };
+  const paidOut = { count: outs.length, amount: outs.reduce((sum, o) => sum + o.amount, 0) };
+  if (paidOut.amount) byMethod.set("CASH", (byMethod.get("CASH") ?? 0) - paidOut.amount);
+  return { byMethod, payments: rows.length, paidOut };
 }
 
 const ORDER = new Map(PAYMENT_METHODS.map((m, i) => [m, i]));
@@ -201,7 +216,7 @@ const shiftSelect = {
 type ShiftRow = Prisma.CashShiftGetPayload<{ select: typeof shiftSelect }>;
 
 async function toView(client: Tx | typeof db, tenantId: string, s: ShiftRow): Promise<ShiftView> {
-  const { byMethod, payments } = await expectedFor(client, tenantId, s);
+  const { byMethod, payments, paidOut } = await expectedFor(client, tenantId, s);
   return {
     id: s.id,
     clinicId: s.clinicId,
@@ -211,6 +226,7 @@ async function toView(client: Tx | typeof db, tenantId: string, s: ShiftRow): Pr
     openedAt: s.openedAt.toISOString(),
     closedAt: s.closedAt?.toISOString() ?? null,
     payments,
+    paidOut,
     methods: methodLines(byMethod, Array.isArray(s.counts) ? (s.counts as unknown as StoredCount[]) : null),
     note: s.note,
   };

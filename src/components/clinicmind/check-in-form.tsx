@@ -4,6 +4,7 @@ import { useEffect, useId, useRef, useState, type FormEvent } from "react";
 import { AlertTriangle, Camera, CheckCircle2, ClipboardCheck, Clock, ImageIcon, Loader2, Phone, RefreshCw, Send, Star, Trash2 } from "lucide-react";
 import { Alert } from "@/components/ui/field";
 import { Textarea } from "@/components/ui/input";
+import { blobToBase64, downscaleImage } from "@/lib/client-files";
 import { cn } from "@/lib/utils";
 import { CHECK_IN_COPY, type CheckInCopy } from "@/modules/concierge/check-in-copy";
 import type { PublicCheckInDTO, PublicCheckInResult } from "@/modules/concierge/dto";
@@ -33,57 +34,6 @@ interface Photo {
 type ResultState = { kind: "done"; result: PublicCheckInResult } | { kind: "expired" } | null;
 
 const EXTRA = "__extra";
-
-/** Decode, orient and shrink a photo to `maxSide` px as JPEG; null when this browser cannot decode it (e.g. HEIC on Chrome). */
-async function downscale(file: File, maxSide: number): Promise<Blob | null> {
-  let width = 0;
-  let height = 0;
-  let source: CanvasImageSource | null = null;
-  let cleanup = () => {};
-  try {
-    if (typeof createImageBitmap === "function") {
-      const bitmap = await createImageBitmap(file, { imageOrientation: "from-image" });
-      source = bitmap;
-      width = bitmap.width;
-      height = bitmap.height;
-      cleanup = () => bitmap.close();
-    } else {
-      const url = URL.createObjectURL(file);
-      const img = new Image();
-      await new Promise<void>((resolve, reject) => {
-        img.onload = () => resolve();
-        img.onerror = () => reject(new Error("decode"));
-        img.src = url;
-      });
-      source = img;
-      width = img.naturalWidth;
-      height = img.naturalHeight;
-      cleanup = () => URL.revokeObjectURL(url);
-    }
-    if (!width || !height) return null;
-    const scale = Math.min(1, maxSide / Math.max(width, height));
-    const canvas = document.createElement("canvas");
-    canvas.width = Math.max(1, Math.round(width * scale));
-    canvas.height = Math.max(1, Math.round(height * scale));
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return null;
-    ctx.drawImage(source, 0, 0, canvas.width, canvas.height);
-    return await new Promise<Blob | null>((resolve) => canvas.toBlob((b) => resolve(b), "image/jpeg", 0.85));
-  } catch {
-    return null;
-  } finally {
-    cleanup();
-  }
-}
-
-function toBase64(blob: Blob): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result).replace(/^data:[^,]*,/, ""));
-    reader.onerror = () => reject(reader.error ?? new Error("read"));
-    reader.readAsDataURL(blob);
-  });
-}
 
 export function CheckInForm({ token, data, productName }: { token: string; data: PublicCheckInDTO; productName: string }) {
   const id = useId();
@@ -119,7 +69,7 @@ export function CheckInForm({ token, data, productName }: { token: string; data:
     setPreparing(slot);
     setErrors((e) => ({ ...e, photos: "", [`photo:${slot}`]: "" }));
     try {
-      const shrunk = file.type.startsWith("image/") || !file.type ? await downscale(file, data.limits.maxPhotoSide) : null;
+      const shrunk = file.type.startsWith("image/") || !file.type ? await downscaleImage(file, data.limits.maxPhotoSide) : null;
       let blob: Blob;
       let type: string;
       if (shrunk) {
@@ -137,7 +87,7 @@ export function CheckInForm({ token, data, productName }: { token: string; data:
         setErrors((e) => ({ ...e, [`photo:${slot}`]: copy.errors.photoTooLarge }));
         return;
       }
-      const base64 = await toBase64(blob);
+      const base64 = await blobToBase64(blob);
       const previewUrl = type === "image/jpeg" || type === "image/png" || type === "image/webp" || type === "image/gif" ? URL.createObjectURL(blob) : null;
       if (previewUrl) urls.current.push(previewUrl);
       setPhotos((p) => {

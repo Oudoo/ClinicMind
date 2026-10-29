@@ -46,7 +46,9 @@ export type Permission =
   | "evidence:approve" // approve and retire sources: what the evidence panel may quote (clinicians only, see canApproveEvidence)
   | "evidence:ask" // ask the evidence panel (clinicians only, see canAskEvidence)
   | "quotes:read" // treatment plans and quotes, and how many are accepted
-  | "quotes:write"; // make, give, send and record the answer to a treatment plan
+  | "quotes:write" // make, give, send and record the answer to a treatment plan
+  | "expenses:read" // the clinic's expenses, bills to pay and suppliers (salaries are the owner's alone)
+  | "expenses:write"; // record an expense or a bill, pay it (cash out of the drawer too), attach its receipt, add a supplier
 
 const ALL: Permission[] = [
   "platform:manage",
@@ -83,6 +85,8 @@ const ALL: Permission[] = [
   "evidence:ask",
   "quotes:read",
   "quotes:write",
+  "expenses:read",
+  "expenses:write",
 ];
 
 const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
@@ -124,6 +128,8 @@ const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
     "evidence:ask",
     "quotes:read",
     "quotes:write",
+    "expenses:read",
+    "expenses:write",
   ],
   DOCTOR: [
     "patients:read",
@@ -165,6 +171,8 @@ const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
     "recalls:write",
     "quotes:read",
     "quotes:write",
+    "expenses:read",
+    "expenses:write",
   ],
   RECEPTIONIST: [
     "patients:read",
@@ -181,6 +189,8 @@ const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
     "recalls:write",
     "quotes:read",
     "quotes:write",
+    "expenses:read",
+    "expenses:write",
   ],
   ASSISTANT: ["patients:read", "appointments:read", "conversations:read", "leads:read", "recalls:read"],
 };

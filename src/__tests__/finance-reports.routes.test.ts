@@ -324,9 +324,9 @@ describe.skipIf(!dbTestsEnabled)("finance report routes", () => {
     expect(r.income).toMatchObject({ net: 7_200, receipts: 4 });
     // The drawers hold what the payments say, method by method.
     expect(r.drawer).toEqual([
-      { method: "CASH", label: "Cash", drawer: 4_700, books: 4_700 },
-      { method: "CARD", label: "Card", drawer: 500, books: 500 },
-      { method: "BANK_TRANSFER", label: "Bank transfer", drawer: 2_000, books: 2_000 },
+      { method: "CASH", label: "Cash", drawer: 4_700, books: 4_700, paidOut: 0 },
+      { method: "CARD", label: "Card", drawer: 500, books: 500, paidOut: 0 },
+      { method: "BANK_TRANSFER", label: "Bank transfer", drawer: 2_000, books: 2_000, paidOut: 0 },
     ]);
     expect(r.production.net).toBe((await report("production", { period: "custom", from: today, to: today })).json.totals.net);
     expect(r.summary).toEqual({ receipts: 4, onInvoices: 6_700, credit: 300, fees: 500, refunds: -300, untraced: 0 });

@@ -58,7 +58,7 @@ export default async function CashPage({ searchParams }: { searchParams: Promise
         <Card className="space-y-4" data-testid="my-shift">
           <SectionTitle
             title="My shift"
-            description={mine ? `Open since ${formatDateInTz(new Date(mine.openedAt), tz, { day: "numeric", month: "short" })}, ${time(mine.openedAt)} · ${formatNumber(mine.openingFloat)} EGP float · ${mine.payments} payment${mine.payments === 1 ? "" : "s"}` : "No shift open: money taken today goes into your shift, so open it first."}
+            description={mine ? `Open since ${formatDateInTz(new Date(mine.openedAt), tz, { day: "numeric", month: "short" })}, ${time(mine.openedAt)} · ${formatNumber(mine.openingFloat)} EGP float · ${mine.payments} payment${mine.payments === 1 ? "" : "s"}${paidOutText(mine)}` : "No shift open: money taken today goes into your shift, so open it first."}
             action={mine ? <Badge tone="success">open</Badge> : null}
           />
           {mine ? (
@@ -180,6 +180,7 @@ function ShiftBlock({ shift, time, closable, own }: { shift: ShiftView; time: (i
           <span className="font-medium">{shift.cashier.fullName}</span>
           <span className="ms-2 text-xs text-muted-foreground">
             {time(shift.openedAt)}–{shift.closedAt ? time(shift.closedAt) : "now"} · float {formatNumber(shift.openingFloat)} EGP · {shift.payments} payment{shift.payments === 1 ? "" : "s"}
+            {paidOutText(shift)}
           </span>
         </p>
         <div className="flex items-center gap-2">
@@ -191,6 +192,11 @@ function ShiftBlock({ shift, time, closable, own }: { shift: ShiftView; time: (i
       {shift.note ? <p className="text-xs text-muted-foreground">Note: {shift.note}</p> : null}
     </section>
   );
+}
+
+/** Cash paid out of the drawer for expenses, which the drawer no longer expects. */
+function paidOutText(shift: ShiftView): string {
+  return shift.paidOut.count ? ` · ${formatNumber(shift.paidOut.amount)} EGP paid out for ${shift.paidOut.count} expense${shift.paidOut.count === 1 ? "" : "s"}` : "";
 }
 
 function MethodsTable({ methods }: { methods: MethodLine[] }) {

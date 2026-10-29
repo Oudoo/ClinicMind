@@ -8,7 +8,9 @@ import { dateKeyInTz } from "../../src/lib/time";
  * close, now and then a few pounds out with the reason), every such day
  * signed off by the owner except yesterday, which waits for the owner, and
  * reception's shift open today so the desk can take money straight away.
- * Runs after every step that writes money: a signed-off day takes no more.
+ * The cash the desk paid out for expenses (the expenses step) comes out of
+ * its day's shift. Runs after every step that writes money: a signed-off day
+ * takes no more.
  */
 
 const MIN = 60_000;
@@ -42,6 +44,13 @@ export async function seedCash(ctx: SeedContext): Promise<void> {
     days.set(key, [...(days.get(key) ?? []), p]);
   }
   if (!days.has(today)) days.set(today, []);
+  // Cash paid out of the drawer for expenses, by day.
+  const outs = new Map<string, NonNullable<SeedContext["drawerPayouts"]>>();
+  for (const o of ctx.drawerPayouts ?? []) {
+    const key = dateKeyInTz(o.paidAt, tz);
+    outs.set(key, [...(outs.get(key) ?? []), o]);
+    if (!days.has(key)) days.set(key, []);
+  }
 
   let signedOff = 0;
   let differences = 0;
@@ -49,12 +58,15 @@ export async function seedCash(ctx: SeedContext): Promise<void> {
   for (const [day, rows] of [...days].sort(([a], [b]) => a.localeCompare(b))) {
     index++;
     const isToday = day === today;
-    const firstAt = rows[0]?.paidAt.getTime() ?? Number.POSITIVE_INFINITY;
-    const lastAt = rows.at(-1)?.paidAt.getTime() ?? 0;
+    const paidOut = outs.get(day) ?? [];
+    const times = [...rows.map((p) => p.paidAt.getTime()), ...paidOut.map((o) => o.paidAt.getTime())];
+    const firstAt = times.length ? Math.min(...times) : Number.POSITIVE_INFINITY;
+    const lastAt = times.length ? Math.max(...times) : 0;
     const openedAt = new Date(Math.min(firstAt, at(day, 9, 45).getTime(), isToday ? now.getTime() - MIN : Number.POSITIVE_INFINITY));
     const closedAt = new Date(Math.max(lastAt + 5 * MIN, at(day, 20, 15).getTime()));
     const expected = new Map<Method, number>([["CASH", FLOAT]]);
     for (const p of rows) expected.set(p.method, (expected.get(p.method) ?? 0) + (p.kind === "REFUND" ? -p.amount : p.amount));
+    for (const o of paidOut) expected.set("CASH", expected.get("CASH")! - o.amount);
     // Now and then the drawer is a few pounds out, with the reason.
     const slip = index % 23 === 0 ? { amount: -50, reason: "Change given short to a patient" } : index % 37 === 0 ? { amount: 20, reason: "Coins left from the day before" } : null;
     const counts = ORDER.filter((m) => expected.has(m)).map((method) => {
@@ -78,6 +90,9 @@ export async function seedCash(ctx: SeedContext): Promise<void> {
       select: { id: true },
     });
     if (rows.length) await db.payment.updateMany({ where: { id: { in: rows.map((p) => p.id) } }, data: { shiftId: shift.id } });
+    for (const o of paidOut) {
+      await db.expensePayment.create({ data: { tenantId, expenseId: o.expenseId, clinicId, amount: o.amount, method: "CASH", paidAt: o.paidAt, shiftId: shift.id, createdById: o.createdById, createdAt: o.paidAt } });
+    }
     // Every day signed off by the owner in the evening, but yesterday (the owner's to do) and today.
     if (!isToday && day !== yesterday) {
       await db.dayClose.create({

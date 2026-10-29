@@ -32,6 +32,7 @@ import {
   ClipboardList,
   CalendarClock,
   HandCoins,
+  Receipt,
 } from "lucide-react";
 import { BRAND } from "@/lib/brand";
 import { onAuthChange } from "@/lib/auth/browser-session";
@@ -55,6 +56,8 @@ interface NavItem {
   roles?: UserRole[];
   /** Shown only to clinicians (clinical questions to the AI). */
   clinician?: boolean;
+  /** Other pages that belong to it (the suppliers to the expenses). */
+  also?: string[];
 }
 
 const NAV: NavItem[] = [
@@ -73,6 +76,7 @@ const NAV: NavItem[] = [
   { href: "/dashboard/finance/prices", label: "Price list", icon: Tags, permission: "patients:write" },
   { href: "/dashboard/finance/unbilled", label: "Not billed", icon: ClipboardCheck, permission: "payments:write" },
   { href: "/dashboard/finance/cash", label: "Cash drawer", icon: Wallet, permission: "payments:write" },
+  { href: "/dashboard/finance/expenses", label: "Expenses", icon: Receipt, permission: "expenses:read", also: ["/dashboard/finance/suppliers"] },
   { href: "/dashboard/finance/doctor-pay", label: "Doctor pay", icon: HandCoins, permission: "finance:read" },
   { href: "/dashboard/finance/doctor-pay/me", label: "My pay", icon: HandCoins, roles: ["DOCTOR", "NURSE"] },
   { href: "/dashboard/finance/reports", label: "Finance reports", icon: FileSpreadsheet, permission: "finance:read" },
@@ -124,7 +128,10 @@ export function DashboardShell({
   const visible = NAV.filter((n) => (!n.permission || can(user.role as UserRole, n.permission)) && (!n.roles || n.roles.includes(user.role as UserRole)) && (!n.clinician || user.isClinician));
   const items = platform ? [PLATFORM_NAV, ...visible] : visible;
   // The most specific match wins (the price list sits under Finance).
-  const current = items.filter((n) => isActive(pathname, n.href)).sort((a, b) => b.href.length - a.href.length)[0];
+  const current = items
+    .map((n) => ({ n, length: Math.max(0, ...[n.href, ...(n.also ?? [])].filter((href) => isActive(pathname, href)).map((href) => href.length)) }))
+    .filter((m) => m.length > 0)
+    .sort((a, b) => b.length - a.length)[0]?.n;
   const title = current?.label ?? PAGE_TITLES.find(([prefix]) => pathname.startsWith(prefix))?.[1] ?? "Overview";
   const [open, setOpen] = useState(false);
 
