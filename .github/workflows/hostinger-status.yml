@@ -32,16 +32,27 @@ jobs:
           HOSTINGER_API_TOKEN: ${{ secrets.HOSTINGER_API_TOKEN }}
         run: node scripts/hostinger-api.mjs deploy/hostinger/status.json
 
-      # Each stage of an HTTPS request (connect, TLS, first byte), against this
-      # site and the account's other Node.js sites for comparison.
-      - name: Time HTTPS requests
+      # Where a request to the site stops: the headers of the plain-HTTP answer (the
+      # Hostinger CDN adds its own), each stage of an HTTPS request against this site and
+      # the account's other sites, and what the site answers in the end when it is slow
+      # (Hostinger stops a request after 120 s). IPv4 only: the runners have no IPv6.
+      - name: Ask the site from outside
         if: always()
         run: |
           domain=$(jq -r .domain deploy/hostinger/status.json)
+          echo "▶ Headers of http://$domain/api/health"
+          curl -sS -4 -o /dev/null -D - --max-time 15 "http://$domain/api/health" \
+            | grep -iE '^(HTTP|server|platform|panel|x-hcdn|location|x-powered-by|x-litespeed|alt-svc)' || echo "  no answer"
+          echo "▶ Each stage of an HTTPS request"
           for url in "https://$domain/api/health" "https://$domain/login" "https://growcdx.com/" "https://dawak.growcdx.com/"; do
-            for ip in 4 6; do
-              curl -sS -o /dev/null -$ip --max-time 20 \
-                -w "$url (IPv$ip) → %{http_code}  connect %{time_connect}s  tls %{time_appconnect}s  first byte %{time_starttransfer}s\n" "$url" \
-                || echo "$url (IPv$ip) → no answer"
-            done
+            curl -sS -4 -o /dev/null --max-time 20 \
+              -w "  $url → %{http_code}  connect %{time_connect}s  tls %{time_appconnect}s  first byte %{time_starttransfer}s\n" "$url" \
+              || echo "  $url → no answer in 20 s"
           done
+          echo "▶ https://$domain/api/health, waiting up to 130 s"
+          curl -sv -4 --max-time 130 -D headers.txt -o body.txt \
+            -w "  → %{http_code} after %{time_total}s (first byte %{time_starttransfer}s)\n" "https://$domain/api/health" 2> tls.txt \
+            || echo "  no answer in 130 s"
+          grep -E 'ALPN|subject:|issuer:' tls.txt | sed 's/^/  /' || true
+          grep -iE '^(HTTP|server|platform|panel|x-hcdn|retry-after)' headers.txt | sed 's/^/  /' || true
+          head -c 300 body.txt 2>/dev/null && echo || true

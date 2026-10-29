@@ -16,8 +16,10 @@
 //       and its secrets are derived from it, so they stay the same from one deploy to the next.
 //       "reseed": true rebuilds the demo clinic around today.
 //   { "action": "status", "domain": "cm.growcdx.com" }
-//       read only: the last build, the app's log of the last hour and its health check. The
+//       read only: the last build, the app's log ("logPeriod", 24h by default) and its errors,
+//       its environment variable names, the SSL and CDN settings and a health check. The
 //       "Hostinger status" workflow runs it from deploy/hostinger/status.json, beside a deploy.
+//       "restart": true restarts the app first (Hostinger's remedy for a hung process).
 //
 // The repository is public, so its workflow logs are too: this prints plan names, states and
 // domain names, never account user names, IP addresses, e-mail addresses or secret values.
@@ -110,6 +112,21 @@ class HostingerApi {
 }
 
 /**
+ * An IP address as the public log shows it: loopback and the any-address as they are, any other
+ * as a numbered private or public address, so two can be told apart without showing either.
+ */
+const addressLabels = new Map();
+function addressLabel(ip) {
+  if (/^127\./.test(ip) || ip === "0.0.0.0") return ip;
+  if (!addressLabels.has(ip)) {
+    const [a, b] = ip.split(".").map(Number);
+    const isPrivate = a === 10 || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) || (a === 100 && b >= 64 && b <= 127);
+    addressLabels.set(ip, `‹${isPrivate ? "private" : "public"} address ${addressLabels.size + 1}›`);
+  }
+  return addressLabels.get(ip);
+}
+
+/**
  * Text for the public log: hosting user names, e-mail and IP addresses masked, and what the
  * demo seed prints that works as a key (the embed secret, the links patients open).
  */
@@ -117,7 +134,7 @@ const redact = (text) =>
   String(text)
     .replace(/\bu\d{5,}\b/g, "u…")
     .replace(/[\w.+-]+@[\w-]+(\.[\w-]+)+/g, "…@…")
-    .replace(/\b\d{1,3}(\.\d{1,3}){3}\b/g, "…ip…")
+    .replace(/\b\d{1,3}(\.\d{1,3}){3}\b/g, addressLabel)
     .replace(/cmembed_[A-Za-z0-9_-]+/g, "cmembed_…")
     .replace(/\/[A-Za-z0-9_-]{24,}/g, "/…");
 
@@ -338,11 +355,19 @@ async function health(domain, attempts = 20) {
   return `no healthy answer after ${attempts} tries`;
 }
 
-async function runtimeLogs(api, username, domain) {
-  const answer = await api.call("hosting_nodejs_runtime-logs", { username, domain, period: "1h", limit: 80 });
+/** The app's newest log entries (`limit`) of the last `period`, optionally only some levels. */
+async function runtimeLogs(api, username, domain, { period = "1h", limit = 80, levels } = {}) {
+  const answer = await api.call("hosting_nodejs_runtime-logs", { username, domain, period, limit, ...(levels ? { levels } : {}) });
   const logs = Array.isArray(answer?.logs) ? answer.logs : [];
   if (!logs.length) return console.log("  (empty)");
   for (const l of logs) console.log(`  ${show(l.timestamp)} ${show(l.level)} ${redact(String(l.message ?? "")).slice(0, 400)}`);
+}
+
+/** The names in an environment variable list, whether it is rows of { key } or an object of them. */
+function envNames(answer) {
+  const rows = rowsOf(answer).length ? rowsOf(answer) : (find(answer, "env_vars") ?? find(answer, "variables"));
+  if (Array.isArray(rows)) return rows.map((r) => (typeof r === "string" ? r : (r?.key ?? r?.name))).filter(Boolean);
+  return answer && typeof answer === "object" ? Object.keys(answer) : [];
 }
 
 async function deploy(api, request) {
@@ -375,17 +400,31 @@ async function status(api, request) {
   const domain = request.domain;
   if (!domain) throw new Error('The request needs "domain".');
   const site = await website(api, domain, false);
+  const username = site.username;
+  if (request.restart) {
+    await section("Restart the app (no rebuild)", async () => {
+      console.log(`  ${redact(JSON.stringify(await api.call("hosting_nodejs_restart-application", { username, domain })))}`);
+      await sleep(20_000);
+    });
+  }
   await section("Last build", async () => {
     const answer = await api.call("hosting_get-deployment", { domain });
     console.log(`  state=${show(answer?.build?.state)}  settings=${redact(JSON.stringify(answer?.buildSettings ?? null))}`);
-    console.log(redact(logText(answer).split("\n").slice(-80).join("\n")));
+    console.log(redact(logText(answer).split("\n").slice(-30).join("\n")));
     printAnalysis(answer?.analysis);
   });
-  await section("The app's log (last hour)", () => runtimeLogs(api, site.username, domain));
+  const period = request.logPeriod ?? "24h";
+  await section(`The app's log (newest 60 entries of ${period})`, () => runtimeLogs(api, username, domain, { period, limit: 60 }));
+  await section(`Errors and warnings (${period})`, () => runtimeLogs(api, username, domain, { period, limit: 40, levels: ["ERROR", "WARN"] }));
+  await section("Environment variables (names only)", async () => {
+    console.log(`  ${envNames(await api.call("hosting_nodejs_list-environment-variables", { username, domain })).join(", ") || "(none)"}`);
+  });
   await section("SSL, CDN and cache", async () => {
     const settings = await api.call("hosting_websites_get-settings", { domain });
     console.log(`  ssl=${show(settings?.ssl?.status)}  https_redirect=${show(settings?.ssl?.is_https_redirect_enabled ?? settings?.ssl?.https_redirect)}  cdn=${show(settings?.cdn?.is_enabled)}  cache=${show(settings?.cache?.is_enabled)}`);
     if (settings?.ssl?.last_error ?? settings?.ssl?.error) console.log(`  ssl error: ${redact(JSON.stringify(settings.ssl.last_error ?? settings.ssl.error))}`);
+    console.log(`  all settings: ${redact(JSON.stringify(settings)).slice(0, 1500)}`);
+    console.log(`  CDN status: ${redact(JSON.stringify(await api.call("hosting_cdn_status", { username, domain }))).slice(0, 500)}`);
   });
   await section("From the internet", () => reachability(domain));
   await section("Health check", async () => console.log(`  ${await health(domain, 2)}`));

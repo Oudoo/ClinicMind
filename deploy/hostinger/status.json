@@ -1,5 +1,6 @@
 {
   "action": "status",
   "domain": "cm.growcdx.com",
-  "requestedAt": "2026-10-29T15:10Z"
+  "restart": true,
+  "requestedAt": "2026-10-29T15:45Z"
 }
