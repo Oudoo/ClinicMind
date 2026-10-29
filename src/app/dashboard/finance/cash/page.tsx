@@ -6,6 +6,7 @@ import { can } from "@/lib/auth/rbac";
 import { addDays, dateKeyInTz, formatDateInTz, formatTimeInTz, fromDateKey } from "@/lib/time";
 import { cn, formatNumber } from "@/lib/utils";
 import { getCashDay, myShift, type DayView, type MethodLine, type ShiftView } from "@/modules/finance/cash";
+import { FinanceError } from "@/modules/finance/errors";
 import { Badge, Card, EmptyState, SectionTitle } from "@/components/ui/primitives";
 import { Button } from "@/components/ui/button";
 import { Input, Select } from "@/components/ui/input";
@@ -35,10 +36,20 @@ export default async function CashPage({ searchParams }: { searchParams: Promise
   const takes = can(ctx.role, "payments:write");
   const owner = can(ctx.role, "tenant:manage");
   const query = { date: first(sp.date), clinicId: first(sp.clinicId) };
-  const day: DayView = await getCashDay(ctx.tenantId, query).catch((err: unknown) => {
+  const day: DayView | null = await getCashDay(ctx.tenantId, query).catch((err: unknown) => {
     if (err instanceof ZodError) return getCashDay(ctx.tenantId, { clinicId: query.clinicId });
+    // A clinic group without a branch yet (the platform's own tenant) has no drawer to show.
+    if (err instanceof FinanceError && err.code === "no_branch") return null;
     throw err;
   });
+  if (!day) {
+    return (
+      <div className="space-y-6">
+        <SectionTitle title="Cash drawer" description="Open your shift with the cash in the drawer, take the day's money in it, and count it at the close. The owner signs the day off." />
+        <EmptyState title="No branch yet" hint="The cash drawer belongs to a branch: this clinic has none." />
+      </div>
+    );
+  }
   const mine = takes && ctx.userId ? await myShift(ctx.tenantId, ctx.userId) : null;
   const tz = day.timezone;
   const dayStart = fromDateKey(day.date, tz)!;
