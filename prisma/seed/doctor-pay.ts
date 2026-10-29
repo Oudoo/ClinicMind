@@ -11,10 +11,10 @@ const HOUR = 3_600_000;
  * the two doctors' pay rules, set at the start of the month three months
  * back (Dr. Omar a share of what his hair work collects, costs off first;
  * Dr. Mariam a fee per laser session and shares for the rest); the costs of
- * their recent work (transplant materials, PRP kits, two lab bills, one
- * cost voided as entered twice); the first month's statements closed and
- * paid, the second's closed and waiting to be paid, the last month left
- * open for the owner to close. Dr. Layla, the owner, has no rules: her work
+ * their recent work (transplant materials, PRP kits, one cost voided as
+ * entered twice; the labs' bills come from the lab work step); the first
+ * month's statements closed and paid, the second's closed and waiting to be
+ * paid, the last month left open for the owner to close. Dr. Layla, the owner, has no rules: her work
  * shows on Doctor pay as work no rule pays for. Runs last, once all the
  * work and money is in.
  */
@@ -114,7 +114,7 @@ export async function seedDoctorPay(ctx: SeedContext): Promise<void> {
     }
   }
 
-  // The costs of their work since then: each transplant's materials, each PRP kit, two lab bills, one cost entered twice.
+  // The costs of their work since then: each transplant's materials, each PRP kit, one cost entered twice.
   const doctors = Object.keys(RULES).map((email) => ctx.users.find((u) => u.email === email)?.id).filter((id): id is string => Boolean(id));
   const work = await db.procedure.findMany({
     where: { tenantId, doctorId: { in: doctors }, status: "SIGNED", performedAt: { gte: setAt, lt: now }, deletedAt: null },
@@ -153,11 +153,7 @@ export async function seedDoctorPay(ctx: SeedContext): Promise<void> {
       costs += 1;
     }
   }
-  const labbed = work.filter((p) => ["general-dermatology", "acne", "pigmentation"].includes(p.treatment.key) && !p.priceItemId).slice(0, 2);
-  for (const [i, p] of labbed.entries()) {
-    await cost(p.id, new Date(p.performedAt.getTime() + (i + 2) * 24 * HOUR), "LAB", i === 0 ? "Histopathology, skin biopsy" : "Fungal culture", i === 0 ? 1_200 : 650);
-    costs += 1;
-  }
+  // The labs' bills on the work come from lab orders (the lab work step).
 
   // The first month's statements closed and paid, the second's closed and waiting; the last month is the owner's to close.
   let closed = 0;

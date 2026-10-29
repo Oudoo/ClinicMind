@@ -670,4 +670,51 @@ describe("the seeded demo database (when DATABASE_URL points at one)", () => {
     const open = await db.cashShift.findFirstOrThrow({ where: { tenantId, status: "OPEN" }, select: { expensePayments: { select: { amount: true } } } });
     expect(open.expensePayments.length).toBeGreaterThan(0);
   });
+
+  it("sends lab work and follows it: results back after they went, the late ones told, each bill an expense and its procedure's cost", async (ctx) => {
+    if (!demo) return ctx.skip();
+    const tenantId = demo.id;
+    const today = dateKeyInTz(new Date(), "Africa/Cairo");
+    const orders = await db.labOrder.findMany({
+      where: { tenantId },
+      select: {
+        id: true,
+        status: true,
+        sentAt: true,
+        dueOn: true,
+        receivedAt: true,
+        result: true,
+        abnormal: true,
+        labId: true,
+        procedureId: true,
+        lateNotifiedAt: true,
+        createdAt: true,
+        lab: { select: { isLab: true } },
+        expense: { select: { category: true, supplierId: true, amount: true, voidedAt: true } },
+        cost: { select: { procedureId: true, amount: true, kind: true } },
+      },
+    });
+    expect(orders.length).toBeGreaterThanOrEqual(6);
+    const wrong: string[] = [];
+    for (const o of orders) {
+      if (!o.lab.isLab) wrong.push(`${o.id}: sent to a supplier that is not a lab`);
+      if (o.status === "RECEIVED" && (!o.result || !o.receivedAt || o.receivedAt < new Date(o.sentAt.getTime() - 86_400_000))) wrong.push(`${o.id}: a result with no text, or back before it went`);
+      if (o.status === "SENT" && o.dueOn.toISOString().slice(0, 10) < today && !o.lateNotifiedAt) wrong.push(`${o.id}: late and no one told`);
+      if (o.lateNotifiedAt && dateKeyInTz(o.lateNotifiedAt, "Africa/Cairo") <= o.dueOn.toISOString().slice(0, 10)) wrong.push(`${o.id}: told it was late before its day passed`);
+      if (o.receivedAt && o.createdAt > o.receivedAt) wrong.push(`${o.id}: recorded after its result came back`);
+      if (o.expense) {
+        if (o.expense.category !== "LAB" || o.expense.supplierId !== o.labId) wrong.push(`${o.id}: its bill is not the lab's`);
+        if (o.procedureId && (!o.cost || o.cost.procedureId !== o.procedureId || o.cost.amount !== o.expense.amount || o.cost.kind !== "LAB")) wrong.push(`${o.id}: its bill is not a cost on its procedure`);
+      }
+    }
+    expect(wrong).toEqual([]);
+    const late = orders.filter((o) => o.status === "SENT" && o.dueOn.toISOString().slice(0, 10) < today);
+    expect(late.length).toBeGreaterThanOrEqual(1);
+    expect(await db.notification.count({ where: { tenantId, kind: "LAB_ORDER_LATE" } })).toBeGreaterThan(0);
+    expect(orders.some((o) => o.status === "SENT" && o.dueOn.toISOString().slice(0, 10) >= today)).toBe(true);
+    expect(orders.some((o) => o.status === "RECEIVED" && o.abnormal)).toBe(true);
+    expect(orders.some((o) => o.status === "RECEIVED" && !o.expense)).toBe(true);
+    expect(orders.some((o) => o.status === "CANCELLED")).toBe(true);
+    expect(await db.timelineEvent.count({ where: { tenantId, kind: "LAB" } })).toBeGreaterThanOrEqual(orders.length);
+  });
 });

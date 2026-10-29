@@ -21,6 +21,7 @@ import { seedQuotes } from "./quotes";
 import { seedInstalmentReminders, seedInstalments } from "./instalments";
 import { seedDoctorPay } from "./doctor-pay";
 import { seedExpenses } from "./expenses";
+import { seedLab } from "./lab";
 
 /**
  * The second half of the demo seed: everything the PM round-2 modules need
@@ -28,7 +29,7 @@ import { seedExpenses } from "./expenses";
  * enrolments, intake links, dictated appointment notes, campaign costs,
  * review snapshots, alert rules, prescribing-safety overrides, the evidence
  * library and recorded pregnancies, treatment plans and quotes and the instalment plans paying for them,
- * expenses and suppliers, notifications, recalls, the reminders, recall and instalment messages the clinic sent on its
+ * expenses and suppliers, lab work, notifications, recalls, the reminders, recall and instalment messages the clinic sent on its
  * own, and doctor pay).
  * Runs after the core clinic
  * (staff, patients, appointments, visits) exists; each module reads what it
@@ -86,6 +87,8 @@ export async function seedRound2(ctx: SeedContext): Promise<void> {
     ["instalment plans", seedInstalments],
     // The desk's cash paid out for expenses goes into the drawer's shifts too.
     ["expenses and suppliers", seedExpenses],
+    // The labs' bills are expenses, and costs on the procedures for doctor pay.
+    ["lab work", seedLab],
     // After every step that writes money: a day signed off takes no more.
     ["cash drawer", seedCash],
     ["concierge", seedConcierge],

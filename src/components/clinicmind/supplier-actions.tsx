@@ -57,6 +57,8 @@ function SupplierDialog({ supplier, canSalaries, onClose }: { supplier?: Supplie
   const [email, setEmail] = useState(supplier?.email ?? "");
   const [notes, setNotes] = useState(supplier?.notes ?? "");
   const [archived, setArchived] = useState(supplier?.archived ?? false);
+  const [isLab, setIsLab] = useState(supplier?.isLab ?? false);
+  const [turnaround, setTurnaround] = useState(supplier?.turnaroundDays != null ? String(supplier.turnaroundDays) : "");
   const [issues, setIssues] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -65,13 +67,25 @@ function SupplierDialog({ supplier, canSalaries, onClose }: { supplier?: Supplie
   async function submit(e: FormEvent) {
     e.preventDefault();
     if (busy) return;
-    if (name.trim().length < 2) {
-      setIssues({ name: "The supplier's name." });
-      return;
-    }
+    const days = turnaround.trim() ? Number(turnaround) : undefined;
+    const next: Record<string, string> = {};
+    if (name.trim().length < 2) next.name = "The supplier's name.";
+    if (isLab && days !== undefined && (!Number.isInteger(days) || days < 0 || days > 90)) next.turnaroundDays = "0 to 90 days.";
+    setIssues(next);
+    if (Object.keys(next).length) return;
     setBusy(true);
     setError(null);
-    const body = { name: name.trim(), category, contactName: contactName.trim(), phone: phone.trim(), email: email.trim(), notes: notes.trim(), ...(supplier ? { archived } : {}) };
+    const body = {
+      name: name.trim(),
+      category,
+      contactName: contactName.trim(),
+      phone: phone.trim(),
+      email: email.trim(),
+      notes: notes.trim(),
+      isLab,
+      turnaroundDays: isLab ? days : undefined,
+      ...(supplier ? { archived } : {}),
+    };
     try {
       if (supplier) await apiFetch(`/api/suppliers/${supplier.id}`, { method: "PATCH", body });
       else await apiFetch("/api/suppliers", { method: "POST", body });
@@ -119,6 +133,29 @@ function SupplierDialog({ supplier, canSalaries, onClose }: { supplier?: Supplie
           <Field label="Notes (optional)" htmlFor={`${id}-notes`} hint="Payment terms, the account number for transfers">
             <Textarea id={`${id}-notes`} value={notes} onChange={(e) => setNotes(e.target.value)} maxLength={500} className="min-h-[3.5rem]" />
           </Field>
+          <div className="flex flex-wrap items-end gap-3">
+            <label className="flex flex-1 items-start gap-2 text-sm">
+              <Checkbox
+                checked={isLab}
+                onChange={(e) => {
+                  setIsLab(e.target.checked);
+                  if (e.target.checked && category !== "LAB" && !supplier) setCategory("LAB");
+                }}
+                className="mt-0.5"
+              />
+              <span>
+                A lab
+                <span className="block text-xs text-muted-foreground">Lab orders go to it (Lab work); its bills come off the doctor&apos;s share.</span>
+              </span>
+            </label>
+            {isLab ? (
+              <div className="w-36">
+                <Field label="Results in (days)" htmlFor={`${id}-turnaround`} hint={hint("turnaroundDays")}>
+                  <Input id={`${id}-turnaround`} inputMode="numeric" value={turnaround} onChange={(e) => setTurnaround(e.target.value)} placeholder="7" />
+                </Field>
+              </div>
+            ) : null}
+          </div>
           {supplier ? (
             <label className="flex items-start gap-2 text-sm">
               <Checkbox checked={archived} onChange={(e) => setArchived(e.target.checked)} className="mt-0.5" />

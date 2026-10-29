@@ -8,6 +8,7 @@ import { zOptionalText, zText } from "@/lib/validation";
 import { getTenantTimezone } from "@/modules/appointments/service";
 import { MAX_AMOUNT, PAYMENT_METHODS, type PaymentMethodValue } from "./constants";
 import { FinanceError } from "./errors";
+import { voidExpenseTx } from "./expenses";
 import { procedureLabel } from "./charges";
 import { splitByWeight } from "./reports";
 import {
@@ -362,7 +363,16 @@ export async function voidProcedureCost(tenantId: string, costId: string, rawInp
   const cost = await db.procedureCost.findFirst({ where: { id: costId, tenantId }, include: { procedure: { select: { patientId: true } } } });
   if (!cost) throw new TenantScopeError("procedure_cost", costId);
   if (cost.voidedAt) throw new FinanceError(409, "invalid_state", "the cost is voided already", { message: "This cost is voided already." });
-  const after = await db.procedureCost.update({ where: { id: cost.id }, data: { voidedAt: new Date(), voidedById: actor.id ?? null, voidReason: input.reason } });
+  const now = new Date();
+  const { after, bill } = await db.$transaction(async (tx) => {
+    const after = await tx.procedureCost.update({ where: { id: cost.id }, data: { voidedAt: now, voidedById: actor.id ?? null, voidReason: input.reason } });
+    // A lab's bill: the expense goes with its cost.
+    const order = await tx.labOrder.findFirst({ where: { tenantId, costId: cost.id }, select: { expense: { select: { id: true, voidedAt: true, payments: true } } } });
+    const bill = order?.expense && !order.expense.voidedAt ? order.expense : null;
+    if (bill) await voidExpenseTx(tx, tenantId, bill, `Its cost on the procedure was voided: ${input.reason}`, actor, now);
+    return { after, bill };
+  });
+  if (bill) await audit({ tenantId, actorId: actor.id, actorEmail: actor.email, ip: actor.ip, action: "expense.void", entity: "Expense", entityId: bill.id, after: { reason: input.reason, via: "procedure.cost_void", costId: cost.id } });
   await audit({
     tenantId,
     actorId: actor.id,

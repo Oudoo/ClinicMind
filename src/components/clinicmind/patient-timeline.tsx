@@ -27,6 +27,7 @@ const KIND_TONE: Record<TimelineKind, BadgeTone> = {
   ESCALATION: "danger",
   INTAKE: "default",
   LEAD: "default",
+  LAB: "accent",
 };
 
 const KIND_LABEL: Record<TimelineKind, string> = {
@@ -45,6 +46,7 @@ const KIND_LABEL: Record<TimelineKind, string> = {
   ESCALATION: "Escalation",
   INTAKE: "Onboarding",
   LEAD: "Lead",
+  LAB: "Lab work",
 };
 
 /** Chronological feed of a patient's `TimelineEvent`s, newest first. Server component. */

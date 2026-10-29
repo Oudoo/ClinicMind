@@ -28,6 +28,8 @@ export const NOTIFICATION_KINDS = [
   "AI_REVIEW",
   "QUOTE_ANSWERED",
   "INSTALMENT_OVERDUE",
+  "LAB_ORDER_LATE",
+  "LAB_RESULT_IN",
   "SYSTEM",
 ] as const satisfies readonly NotificationKind[];
 
@@ -53,6 +55,8 @@ export const KIND_LABELS: Record<NotificationKind, string> = {
   AI_REVIEW: "Monthly AI review",
   QUOTE_ANSWERED: "Treatment plan answered",
   INSTALMENT_OVERDUE: "Instalment overdue",
+  LAB_ORDER_LATE: "Lab result late",
+  LAB_RESULT_IN: "Lab result in",
   SYSTEM: "System",
 };
 
@@ -77,6 +81,8 @@ export const KIND_HINTS: Record<NotificationKind, string> = {
   AI_REVIEW: "On the first of the month: the questions asked of the clinic's AI last month, how they were answered and rated.",
   QUOTE_ANSWERED: "A patient accepted or declined a treatment plan from its link.",
   INSTALMENT_OVERDUE: "An instalment of a payment plan was not paid by its day.",
+  LAB_ORDER_LATE: "A lab's result did not come back by its day: chase the lab.",
+  LAB_RESULT_IN: "The result of a lab order you asked for came back.",
   SYSTEM: "Account, digest and test notifications.",
 };
 

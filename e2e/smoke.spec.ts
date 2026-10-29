@@ -76,6 +76,7 @@ test.describe("signed-in clinic owner", () => {
       ["Patients", /patient/i],
       ["Appointments", /appointment/i],
       ["Consultations", /consultation/i],
+      ["Lab work", /lab work/i],
       ["AI Assistant", /assistant/i],
       ["Conversations", /conversation/i],
       ["Invoices", /invoices/i],

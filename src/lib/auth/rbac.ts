@@ -48,7 +48,9 @@ export type Permission =
   | "quotes:read" // treatment plans and quotes, and how many are accepted
   | "quotes:write" // make, give, send and record the answer to a treatment plan
   | "expenses:read" // the clinic's expenses, bills to pay and suppliers (salaries are the owner's alone)
-  | "expenses:write"; // record an expense or a bill, pay it (cash out of the drawer too), attach its receipt, add a supplier
+  | "expenses:write" // record an expense or a bill, pay it (cash out of the drawer too), attach its receipt, add a supplier
+  | "lab:read" // lab orders, where they stand and which are late (their results: clinicians only, see canReadLabResults)
+  | "lab:write"; // send a lab order, record its result, cancel it
 
 const ALL: Permission[] = [
   "platform:manage",
@@ -87,6 +89,8 @@ const ALL: Permission[] = [
   "quotes:write",
   "expenses:read",
   "expenses:write",
+  "lab:read",
+  "lab:write",
 ];
 
 const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
@@ -130,6 +134,8 @@ const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
     "quotes:write",
     "expenses:read",
     "expenses:write",
+    "lab:read",
+    "lab:write",
   ],
   DOCTOR: [
     "patients:read",
@@ -153,6 +159,8 @@ const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
     "evidence:ask",
     "quotes:read",
     "quotes:write",
+    "lab:read",
+    "lab:write",
   ],
   NURSE: [
     "patients:read",
@@ -173,6 +181,8 @@ const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
     "quotes:write",
     "expenses:read",
     "expenses:write",
+    "lab:read",
+    "lab:write",
   ],
   RECEPTIONIST: [
     "patients:read",
@@ -191,6 +201,8 @@ const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
     "quotes:write",
     "expenses:read",
     "expenses:write",
+    "lab:read",
+    "lab:write",
   ],
   ASSISTANT: ["patients:read", "appointments:read", "conversations:read", "leads:read", "recalls:read"],
 };
@@ -266,6 +278,11 @@ export function assertCanUseAssistant(actor: { role: UserRole; isClinician: bool
   if (!canUseAssistant(actor)) {
     throw new RbacError(actor.isClinician ? `Role ${actor.role} lacks permission ai:assistant` : "Only clinicians may ask clinical questions");
   }
+}
+
+/** A lab's result is clinical: the roles that read consultations read it; the desk sees where an order stands. */
+export function canReadLabResults(role: UserRole): boolean {
+  return can(role, "lab:read") && can(role, "consultations:read");
 }
 
 /**

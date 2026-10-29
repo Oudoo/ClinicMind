@@ -27,6 +27,7 @@ import { PatientConciergeCard } from "@/components/clinicmind/patient-concierge-
 import { PatientFinanceCard } from "@/components/clinicmind/patient-finance-card";
 import { PatientQuotesCard } from "@/components/clinicmind/patient-quotes-card";
 import { PatientInstalmentsCard } from "@/components/clinicmind/patient-instalments-card";
+import { PatientLabCard } from "@/components/clinicmind/patient-lab-card";
 import { PatientLeadCard } from "@/components/clinicmind/patient-lead-card";
 import { PatientIntakeCard } from "@/components/clinicmind/patient-intake-card";
 import { PatientAccount } from "@/components/clinicmind/patient-account";
@@ -379,6 +380,7 @@ export default async function PatientPage({ params, searchParams }: { params: Pr
                 </Card>
                 <PatientConciergeCard tenantId={ctx.tenantId} userId={ctx.userId} role={ctx.role} patientId={patient.id} canWrite={canWrite && !archived} />
                 <PatientQuotesCard tenantId={ctx.tenantId} role={ctx.role} patientId={patient.id} canWrite={canWrite && !archived} />
+                <PatientLabCard tenantId={ctx.tenantId} role={ctx.role} patientId={patient.id} canWrite={canWrite && !archived} />
                 <PatientFinanceCard tenantId={ctx.tenantId} userId={ctx.userId} role={ctx.role} patientId={patient.id} canWrite={canWrite && !archived} />
                 <PatientInstalmentsCard tenantId={ctx.tenantId} role={ctx.role} patientId={patient.id} canWrite={canWrite && !archived} />
                 <PatientLeadCard tenantId={ctx.tenantId} userId={ctx.userId} role={ctx.role} patientId={patient.id} canWrite={canWrite && !archived} />

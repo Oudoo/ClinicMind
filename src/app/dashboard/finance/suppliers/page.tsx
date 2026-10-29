@@ -78,6 +78,11 @@ export default async function SuppliersPage({ searchParams }: { searchParams: Pr
                     <Link href={`/dashboard/finance/suppliers/${s.id}`} className="font-medium underline-offset-2 hover:underline">
                       {s.name}
                     </Link>
+                    {s.isLab ? (
+                      <Badge className="ml-2" tone="accent">
+                        Lab
+                      </Badge>
+                    ) : null}
                     {s.archived ? <Badge className="ml-2">No longer used</Badge> : null}
                     <div className="text-xs text-muted-foreground">
                       {s.categoryLabel}

@@ -69,6 +69,9 @@ export const SupplierInput = z.object({
   phone: zOptionalText(40),
   email: zEmail,
   notes: zOptionalText(500),
+  /** A lab: lab orders go to it, its results back in so many days. */
+  isLab: z.boolean().default(false),
+  turnaroundDays: z.number().int().min(0, "0 to 90 days").max(90, "0 to 90 days").optional(),
   /** No longer used: kept with its bills, offered no more (edit only). */
   archived: z.boolean().optional(),
 });
@@ -214,6 +217,8 @@ export interface SupplierDTO {
   email: string | null;
   notes: string | null;
   archived: boolean;
+  isLab: boolean;
+  turnaroundDays: number | null;
   /** Its bills not paid in full, and what is owed on them. */
   openBills: number;
   owed: number;
@@ -544,6 +549,8 @@ async function withBalances(tenantId: string, suppliers: Supplier[], today: stri
       email: s.email,
       notes: s.notes,
       archived: !!s.archivedAt,
+      isLab: s.isLab,
+      turnaroundDays: s.turnaroundDays,
       ...t,
     };
   });
@@ -565,7 +572,18 @@ export async function createSupplier(tenantId: string, rawInput: unknown, actor:
   let made;
   try {
     made = await db.supplier.create({
-      data: { tenantId, name, category: input.category, contactName: input.contactName ?? null, phone: input.phone ?? null, email: input.email ?? null, notes: input.notes ?? null, createdById: actor.id ?? null },
+      data: {
+        tenantId,
+        name,
+        category: input.category,
+        contactName: input.contactName ?? null,
+        phone: input.phone ?? null,
+        email: input.email ?? null,
+        notes: input.notes ?? null,
+        isLab: input.isLab,
+        turnaroundDays: input.isLab ? (input.turnaroundDays ?? null) : null,
+        createdById: actor.id ?? null,
+      },
     });
   } catch (err) {
     if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") throw duplicateSupplier();
@@ -587,7 +605,17 @@ export async function updateSupplier(tenantId: string, id: string, rawInput: unk
   try {
     await db.supplier.update({
       where: { id },
-      data: { name, category: input.category, contactName: input.contactName ?? null, phone: input.phone ?? null, email: input.email ?? null, notes: input.notes ?? null, archivedAt },
+      data: {
+        name,
+        category: input.category,
+        contactName: input.contactName ?? null,
+        phone: input.phone ?? null,
+        email: input.email ?? null,
+        notes: input.notes ?? null,
+        isLab: input.isLab,
+        turnaroundDays: input.isLab ? (input.turnaroundDays ?? null) : null,
+        archivedAt,
+      },
     });
   } catch (err) {
     if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") throw duplicateSupplier();
@@ -609,6 +637,81 @@ export async function updateSupplier(tenantId: string, id: string, rawInput: unk
 
 // ── Expenses ─────────────────────────────────────────────────────────────────
 
+/**
+ * Write an expense (and its payment when paid now) inside a transaction: the branch and the supplier settled, the days
+ * checked. Cash at the desk today comes out of the actor's drawer, at the drawer's branch. Its id.
+ */
+export async function recordExpenseTx(
+  tx: Tx,
+  tenantId: string,
+  e: {
+    clinicId: string;
+    supplierId: string | null;
+    category: ExpenseCategoryValue;
+    description: string;
+    amount: number;
+    billedOn: string;
+    dueOn: string | null;
+    reference?: string;
+    note?: string;
+    paid?: { method: PaymentMethodValue; fromDrawer: boolean; reference?: string };
+  },
+  timezone: string,
+  actor: ExpenseActor,
+  now: Date,
+): Promise<string> {
+  const drawer = e.paid?.fromDrawer ? await drawerFor(tx, tenantId, actor.id, e.billedOn, now) : null;
+  const expense = await tx.expense.create({
+    data: {
+      tenantId,
+      clinicId: drawer?.clinicId ?? e.clinicId,
+      supplierId: e.supplierId,
+      category: e.category,
+      description: e.description,
+      reference: e.reference ?? null,
+      billedOn: asDate(e.billedOn),
+      dueOn: e.paid || !e.dueOn ? null : asDate(e.dueOn),
+      amount: e.amount,
+      note: e.note ?? null,
+      createdById: actor.id ?? null,
+      createdAt: now,
+    },
+    select: { id: true, clinicId: true },
+  });
+  if (e.paid) {
+    await tx.expensePayment.create({
+      data: {
+        tenantId,
+        expenseId: expense.id,
+        clinicId: drawer?.clinicId ?? expense.clinicId,
+        amount: e.amount,
+        method: e.paid.method,
+        paidAt: momentOf(e.billedOn, timezone, now),
+        reference: e.paid.reference ?? null,
+        shiftId: drawer?.shiftId ?? null,
+        createdById: actor.id ?? null,
+        createdAt: now,
+      },
+    });
+  }
+  return expense.id;
+}
+
+/**
+ * Void an expense inside a transaction, its live payments with it (a drawer's cash only while its day is open), and
+ * the cost a lab's bill put on its procedure. How many payments were voided.
+ */
+export async function voidExpenseTx(tx: Tx, tenantId: string, e: { id: string; payments: { id: string; shiftId: string | null; clinicId: string; paidAt: Date; voidedAt: Date | null }[] }, reason: string, actor: ExpenseActor, now: Date): Promise<number> {
+  const live = e.payments.filter((p) => !p.voidedAt);
+  for (const p of live) if (p.shiftId) await assertDayOpen(tx, tenantId, p.clinicId, p.paidAt, "the cash paid out of the drawer stays; the expense is not voided.");
+  if (live.length) await tx.expensePayment.updateMany({ where: { id: { in: live.map((p) => p.id) } }, data: { voidedAt: now, voidedById: actor.id ?? null, voidReason: `The expense was voided: ${reason}` } });
+  await tx.expense.update({ where: { id: e.id }, data: { voidedAt: now, voidedById: actor.id ?? null, voidReason: reason } });
+  // A lab's bill: its cost on the procedure goes with it.
+  const order = await tx.labOrder.findFirst({ where: { tenantId, expenseId: e.id }, select: { costId: true } });
+  if (order?.costId) await tx.procedureCost.updateMany({ where: { id: order.costId, voidedAt: null }, data: { voidedAt: now, voidedById: actor.id ?? null, voidReason: `The lab's bill was voided: ${reason}` } });
+  return live.length;
+}
+
 /** Record a bill to pay, or money spent (paid now, in full): with its supplier, its receipt's photos and, for cash at the desk today, out of the drawer. */
 export async function createExpense(tenantId: string, rawInput: unknown, actor: ExpenseActor = {}, opts: { now?: Date } = {}): Promise<ExpenseDTO> {
   const input = ExpenseInput.parse(rawInput);
@@ -622,41 +725,9 @@ export async function createExpense(tenantId: string, rawInput: unknown, actor: 
   const id = await db.$transaction(async (tx) => {
     const clinic = await requireClinic(tx, tenantId, input.clinicId, actor.id);
     const supplier = await resolveSupplier(tx, tenantId, input, input.category, actor);
-    const drawer = input.paid?.fromDrawer ? await drawerFor(tx, tenantId, actor.id, billedOn, now) : null;
-    const expense = await tx.expense.create({
-      data: {
-        tenantId,
-        clinicId: drawer?.clinicId ?? clinic.id,
-        supplierId: supplier?.id ?? null,
-        category: input.category,
-        description: input.description,
-        reference: input.reference ?? null,
-        billedOn: asDate(billedOn),
-        dueOn: dueOn ? asDate(dueOn) : null,
-        amount: input.amount,
-        note: input.note ?? null,
-        createdById: actor.id ?? null,
-        createdAt: now,
-      },
-    });
-    if (input.paid) {
-      await tx.expensePayment.create({
-        data: {
-          tenantId,
-          expenseId: expense.id,
-          clinicId: drawer?.clinicId ?? expense.clinicId,
-          amount: input.amount,
-          method: input.paid.method,
-          paidAt: momentOf(billedOn, timezone, now),
-          reference: input.paid.reference ?? null,
-          shiftId: drawer?.shiftId ?? null,
-          createdById: actor.id ?? null,
-          createdAt: now,
-        },
-      });
-    }
-    await storeFiles(tx, tenantId, expense.id, files, actor, now);
-    return expense.id;
+    const expenseId = await recordExpenseTx(tx, tenantId, { ...input, clinicId: clinic.id, supplierId: supplier?.id ?? null, billedOn, dueOn: dueOn ?? null }, timezone, actor, now);
+    await storeFiles(tx, tenantId, expenseId, files, actor, now);
+    return expenseId;
   });
   await audit({
     tenantId,
@@ -728,11 +799,7 @@ export async function voidExpense(tenantId: string, id: string, rawInput: unknow
   const row = await db.$transaction(async (tx) => {
     const e = await loadExpense(tx, tenantId, id, actor.role);
     if (e.voidedAt) throw new FinanceError(409, "invalid_state", "the expense is voided already", { message: "This expense is voided already." });
-    const live = e.payments.filter((p) => !p.voidedAt);
-    for (const p of live) if (p.shiftId) await assertDayOpen(tx, tenantId, p.clinicId, p.paidAt, "the cash paid out of the drawer stays; the expense is not voided.");
-    if (live.length) await tx.expensePayment.updateMany({ where: { id: { in: live.map((p) => p.id) } }, data: { voidedAt: now, voidedById: actor.id ?? null, voidReason: `The expense was voided: ${input.reason}` } });
-    await tx.expense.update({ where: { id }, data: { voidedAt: now, voidedById: actor.id ?? null, voidReason: input.reason } });
-    return { ...e, voided: live.length };
+    return { ...e, voided: await voidExpenseTx(tx, tenantId, e, input.reason, actor, now) };
   });
   await audit({ tenantId, actorId: actor.id, actorEmail: actor.email, ip: actor.ip, action: "expense.void", entity: "Expense", entityId: id, after: { amount: row.amount, category: row.category, reason: input.reason, paymentsVoided: row.voided } });
   return getExpense(tenantId, id, { role: actor.role, now });

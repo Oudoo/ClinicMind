@@ -110,6 +110,7 @@ enum TimelineKind {
   ESCALATION
   INTAKE
   LEAD
+  LAB
 }
 
 enum EmbeddingSource {
@@ -214,6 +215,8 @@ model Tenant {
   expensePayments         ExpensePayment[]
   expenseFiles            ExpenseFile[]
   recurringExpenses       RecurringExpense[]
+  labOrders               LabOrder[]
+  labOrderFiles           LabOrderFile[]
 
   @@index([status])
   @@map("tenants")
@@ -271,6 +274,7 @@ model Clinic {
   expenses          Expense[]
   expensePayments   ExpensePayment[]
   recurringExpenses RecurringExpense[]
+  labOrders         LabOrder[]
 
   @@unique([tenantId, code])
   @@index([tenantId])
@@ -319,6 +323,7 @@ model User {
   cashShifts             CashShift[]
   payRules               DoctorPayRule[]         @relation("DoctorPayRules")
   payStatements          DoctorStatement[]       @relation("DoctorStatements")
+  labOrders              LabOrder[]              @relation("LabOrdersAsked")
 
   @@unique([tenantId, email])
   @@index([tenantId, role])
@@ -447,6 +452,7 @@ model Patient {
   recalls          Recall[]
   quotes           Quote[]
   instalmentPlans  InstalmentPlan[]
+  labOrders        LabOrder[]
 
   @@index([tenantId])
   @@index([tenantId, householdHeadId])
@@ -996,6 +1002,8 @@ enum NotificationKind {
   AI_REVIEW
   QUOTE_ANSWERED
   INSTALMENT_OVERDUE
+  LAB_ORDER_LATE
+  LAB_RESULT_IN
   SYSTEM
 }
 
@@ -1282,6 +1290,7 @@ model Procedure {
   recalls   Recall[]
   quoteItem QuoteItem?
   costs     ProcedureCost[]
+  labOrders LabOrder[]
 
   @@index([tenantId, performedAt])
   @@index([tenantId, patientId])
@@ -1928,7 +1937,8 @@ model FileBlob {
   bytes     Bytes
   createdAt DateTime @default(now())
 
-  expenseFile ExpenseFile?
+  expenseFile  ExpenseFile?
+  labOrderFile LabOrderFile?
 
   @@index([tenantId, patientId])
   @@map("file_blobs")
@@ -2507,6 +2517,8 @@ model ProcedureCost {
   voidedById  String?
   voidReason  String?
 
+  labOrder LabOrder?
+
   @@index([tenantId, procedureId])
   @@map("procedure_costs")
 }
@@ -2618,24 +2630,29 @@ enum ExpenseCategory {
 
 /// Who the clinic buys from or pays: a supplier of materials, a lab, the landlord, a utility, an agency, the accountant.
 model Supplier {
-  id          String          @id @default(cuid())
-  tenantId    String
-  tenant      Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  name        String
+  id             String          @id @default(cuid())
+  tenantId       String
+  tenant         Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name           String
   /// The category its bills go under unless said otherwise.
-  category    ExpenseCategory @default(OTHER)
-  contactName String?
-  phone       String?
-  email       String?
-  notes       String?
+  category       ExpenseCategory @default(OTHER)
+  contactName    String?
+  phone          String?
+  email          String?
+  notes          String?
   /// No longer used: kept with its bills, offered no more.
-  archivedAt  DateTime?
-  createdById String?
-  createdAt   DateTime        @default(now())
-  updatedAt   DateTime        @updatedAt
+  archivedAt     DateTime?
+  /// A lab: lab orders go to it (Lab work).
+  isLab          Boolean         @default(false)
+  /// For a lab: the days its results usually take (an order's day due back).
+  turnaroundDays Int?
+  createdById    String?
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
 
   expenses  Expense[]
   recurring RecurringExpense[]
+  labOrders LabOrder[]
 
   @@unique([tenantId, name])
   @@index([tenantId])
@@ -2676,6 +2693,7 @@ model Expense {
 
   payments ExpensePayment[]
   files    ExpenseFile[]
+  labOrder LabOrder?
 
   @@unique([tenantId, recurringId, period])
   @@index([tenantId, billedOn])
@@ -2768,4 +2786,91 @@ model RecurringExpense {
 
   @@index([tenantId])
   @@map("recurring_expenses")
+}
+
+// ── Lab work ─────────────────────────────────────────────────────────────────
+
+/// Where a lab order stands: at the lab, its result back, or cancelled.
+enum LabOrderStatus {
+  SENT
+  RECEIVED
+  CANCELLED
+}
+
+/// Work sent to a lab for a patient (a biopsy for histopathology, blood tests, a culture): from the procedure it came
+/// from, where on the body it was taken, due back by a day; a late one is flagged and the doctor and the desk are told.
+/// The lab's bill for it is an expense, and a cost on its procedure (off the doctor's share). Never deleted: cancelled
+/// with the reason.
+model LabOrder {
+  id             String         @id @default(cuid())
+  tenantId       String
+  tenant         Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  clinicId       String
+  clinic         Clinic         @relation(fields: [clinicId], references: [id], onDelete: NoAction)
+  patientId      String
+  patient        Patient        @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  labId          String
+  lab            Supplier       @relation(fields: [labId], references: [id], onDelete: NoAction)
+  procedureId    String?
+  procedure      Procedure?     @relation(fields: [procedureId], references: [id], onDelete: NoAction)
+  /// Who asked for it.
+  doctorId       String?
+  doctor         User?          @relation("LabOrdersAsked", fields: [doctorId], references: [id], onDelete: SetNull)
+  /// What is asked of the lab.
+  tests          String
+  /// Where on the body the sample was taken (the tooth, once the dental chart comes).
+  site           String?
+  /// The lab's own number for it (its requisition or barcode).
+  reference      String?
+  note           String?
+  sentAt         DateTime
+  /// The day the result is due back (the clinic clock).
+  dueOn          DateTime       @db.Date
+  status         LabOrderStatus @default(SENT)
+  receivedAt     DateTime?
+  receivedById   String?
+  /// The result, as the lab's report has it (clinicians only).
+  result         String?
+  /// Something in it a doctor must act on.
+  abnormal       Boolean        @default(false)
+  /// The lab's bill for it: an expense, and a cost on its procedure.
+  expenseId      String?        @unique
+  expense        Expense?       @relation(fields: [expenseId], references: [id], onDelete: NoAction)
+  costId         String?        @unique
+  cost           ProcedureCost? @relation(fields: [costId], references: [id], onDelete: NoAction)
+  /// When the doctor and the desk were told it is late.
+  lateNotifiedAt DateTime?
+  cancelledAt    DateTime?
+  cancelledById  String?
+  cancelReason   String?
+  createdById    String?
+  createdAt      DateTime       @default(now())
+  updatedById    String?
+  updatedAt      DateTime       @updatedAt
+
+  files LabOrderFile[]
+
+  @@index([tenantId, status, dueOn])
+  @@index([tenantId, patientId])
+  @@index([tenantId, labId])
+  @@map("lab_orders")
+}
+
+/// A photo or a PDF of a lab's report (its bytes in a FileBlob).
+model LabOrderFile {
+  id          String   @id @default(cuid())
+  tenantId    String
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  labOrderId  String
+  labOrder    LabOrder @relation(fields: [labOrderId], references: [id], onDelete: Cascade)
+  blobId      String   @unique
+  blob        FileBlob @relation(fields: [blobId], references: [id], onDelete: Cascade)
+  name        String?
+  mimeType    String
+  sizeBytes   Int
+  createdById String?
+  createdAt   DateTime @default(now())
+
+  @@index([tenantId, labOrderId])
+  @@map("lab_order_files")
 }
