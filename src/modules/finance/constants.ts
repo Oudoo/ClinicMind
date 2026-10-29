@@ -36,6 +36,49 @@ export const PROCEDURE_STATUS_LABELS: Record<ProcedureStatusValue, string> = {
   CANCELLED: "Cancelled",
 };
 
+/** Why a discount is given: a fixed list, so every discount can be counted and explained. */
+export const DISCOUNT_REASONS = ["LOYALTY", "FAMILY", "STAFF", "PROMOTION", "PACKAGE", "GOODWILL", "DOCTOR", "OTHER"] as const;
+export type DiscountReasonValue = (typeof DISCOUNT_REASONS)[number];
+
+export const DISCOUNT_REASON_LABELS: Record<DiscountReasonValue, string> = {
+  LOYALTY: "Returning patient",
+  FAMILY: "Family of a patient",
+  STAFF: "Staff or their family",
+  PROMOTION: "Campaign offer",
+  PACKAGE: "Package price",
+  GOODWILL: "Goodwill (a complaint or a long wait)",
+  DOCTOR: "The doctor's decision",
+  OTHER: "Another reason",
+};
+
+/** Why what is left on an invoice is written off (the owner's decision). */
+export const WRITE_OFF_REASONS = ["BAD_DEBT", "SMALL_BALANCE", "DISPUTE", "GOODWILL", "DECEASED", "OTHER"] as const;
+export type WriteOffReasonValue = (typeof WRITE_OFF_REASONS)[number];
+
+export const WRITE_OFF_REASON_LABELS: Record<WriteOffReasonValue, string> = {
+  BAD_DEBT: "Bad debt: it cannot be collected",
+  SMALL_BALANCE: "Too small to chase",
+  DISPUTE: "A dispute settled",
+  GOODWILL: "Goodwill",
+  DECEASED: "The patient has died",
+  OTHER: "Another reason",
+};
+
+/** The roles whose discounts are limited (a percentage of the price); the owner's are not. */
+export const DISCOUNT_LIMITED_ROLES = ["RECEPTIONIST", "NURSE", "DOCTOR"] as const;
+export type DiscountLimitedRole = (typeof DISCOUNT_LIMITED_ROLES)[number];
+export type DiscountLimits = Record<DiscountLimitedRole, number>;
+export const DEFAULT_DISCOUNT_LIMITS: DiscountLimits = { RECEPTIONIST: 10, NURSE: 10, DOCTOR: 20 };
+
+/** The largest discount a role may give, as a percentage of the price: the owner's has no limit, a role not listed gives none. */
+export function discountLimitFor(role: string, limits: DiscountLimits): number {
+  if (role === "CLINIC_OWNER" || role === "SUPER_ADMIN") return 100;
+  return (DISCOUNT_LIMITED_ROLES as readonly string[]).includes(role) ? limits[role as DiscountLimitedRole] : 0;
+}
+
+/** Whether a discount on a price is within a limit (a percentage), in whole numbers. */
+export const withinDiscountLimit = (price: number, discount: number, limit: number) => discount <= 0 || discount * 100 <= price * limit;
+
 /** How a price-list item is counted (Phase 2 price list). */
 export const PRICE_UNITS = ["VISIT", "SESSION", "AREA", "UNIT", "TOOTH", "ARCH", "PACKAGE"] as const;
 export type PriceUnitValue = (typeof PRICE_UNITS)[number];

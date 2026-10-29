@@ -76,6 +76,9 @@ export interface ChargeInput {
   doctorId?: string | null;
   clinicId?: string | null;
   createdById?: string | null;
+  /** A discount: the charge it takes off, and why (a key of the fixed list). */
+  discountOfId?: string | null;
+  reason?: string | null;
 }
 
 export function postCharge(tx: Tx, input: ChargeInput) {
@@ -92,6 +95,8 @@ export function postCharge(tx: Tx, input: ChargeInput) {
       doctorId: input.doctorId ?? null,
       clinicId: input.clinicId ?? null,
       createdById: input.createdById ?? null,
+      discountOfId: input.discountOfId ?? null,
+      reason: input.reason ?? null,
     },
   });
 }

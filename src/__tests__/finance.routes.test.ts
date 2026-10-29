@@ -159,6 +159,7 @@ describe.skipIf(!dbTestsEnabled)("finance routes", () => {
         performedAt,
         price: 60_000,
         discount: 5_000,
+        discountReason: "PACKAGE",
         notes: "2,400 grafts",
         deposit: { amount: 5_000, method: "BANK_TRANSFER", reference: "TRF-1" },
       });

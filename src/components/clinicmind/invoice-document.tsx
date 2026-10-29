@@ -23,6 +23,8 @@ const COPY = {
     amount: "Amount (EGP)",
     total: "Total",
     paid: "Paid",
+    writtenOff: "Written off",
+    closedWrittenOff: "Closed: written off",
     due: "To pay",
     payments: "Payments",
     receipt: "Receipt",
@@ -44,6 +46,8 @@ const COPY = {
     amount: "المبلغ (جنيه)",
     total: "الإجمالي",
     paid: "المدفوع",
+    writtenOff: "مشطوب",
+    closedWrittenOff: "مغلقة: مشطوبة",
     due: "المتبقي",
     payments: "المدفوعات",
     receipt: "إيصال",
@@ -102,7 +106,9 @@ export function InvoiceDocument({ invoice }: { invoice: InvoiceDTO }) {
               {date(invoice.issuedAt)}
             </p>
           ) : null}
-          <p className="mt-1 inline-block rounded border border-border px-2 py-0.5 text-xs uppercase tracking-wide">{t.status[invoice.status] ?? invoice.status}</p>
+          <p className="mt-1 inline-block rounded border border-border px-2 py-0.5 text-xs uppercase tracking-wide">
+            {invoice.status === "PAID" && invoice.writtenOff > 0 ? t.closedWrittenOff : (t.status[invoice.status] ?? invoice.status)}
+          </p>
         </div>
       </header>
 
@@ -159,6 +165,14 @@ export function InvoiceDocument({ invoice }: { invoice: InvoiceDTO }) {
                 {money(invoice.paid)}
               </dd>
             </div>
+            {invoice.writtenOff > 0 ? (
+              <div className="flex justify-between gap-4 text-muted-foreground">
+                <dt>{t.writtenOff}</dt>
+                <dd className="font-mono tabular-nums" dir="ltr">
+                  {money(invoice.writtenOff)}
+                </dd>
+              </div>
+            ) : null}
             <div className="flex justify-between gap-4 border-t border-border pt-1 font-semibold">
               <dt>{t.due}</dt>
               <dd className="font-mono tabular-nums" dir="ltr">

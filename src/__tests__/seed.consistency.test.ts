@@ -247,10 +247,13 @@ describe("the seeded demo database (when DATABASE_URL points at one)", () => {
       if (position.balance !== position.dueOnInvoices + position.notInvoiced - position.credit || position.credit < 0) wrong.push(`${p.fullName}: ${JSON.stringify(position)}`);
     }
     expect(wrong).toEqual([]);
-    // Every invoice's status says what was allocated to it.
-    const invoices = await db.invoice.findMany({ where: { tenantId, status: { in: ["ISSUED", "PART_PAID", "PAID"] } }, select: { number: true, status: true, total: true, allocations: { select: { amount: true } } } });
+    // Every invoice's status says what was settled on it: the money allocated to it and what was written off.
+    const invoices = await db.invoice.findMany({
+      where: { tenantId, status: { in: ["ISSUED", "PART_PAID", "PAID"] } },
+      select: { number: true, status: true, total: true, allocations: { select: { amount: true } }, writeOffs: { where: { voidedAt: null }, select: { amount: true } } },
+    });
     const misstated = invoices.filter((i) => {
-      const paid = i.allocations.reduce((s, a) => s + a.amount, 0);
+      const paid = [...i.allocations, ...i.writeOffs].reduce((s, a) => s + a.amount, 0);
       return i.status !== (paid >= i.total ? "PAID" : paid > 0 ? "PART_PAID" : "ISSUED");
     });
     expect(misstated.map((i) => i.number)).toEqual([]);

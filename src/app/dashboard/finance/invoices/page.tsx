@@ -104,7 +104,13 @@ export default async function InvoicesPage({ searchParams }: { searchParams: Pro
                   <TD className="whitespace-nowrap text-right font-mono tabular-nums">{formatNumber(inv.total)}</TD>
                   <TD className="hidden whitespace-nowrap text-right font-mono tabular-nums md:table-cell">{inv.status === "DRAFT" ? "—" : formatNumber(inv.paid)}</TD>
                   <TD className="text-right">
-                    <Badge tone={STATUS[inv.status]?.tone ?? "default"}>{STATUS[inv.status]?.label ?? inv.status}</Badge>
+                    {inv.status === "PAID" && inv.writtenOff > 0 ? (
+                      <Badge tone="default" title={`${formatNumber(inv.writtenOff)} EGP written off`}>
+                        Written off
+                      </Badge>
+                    ) : (
+                      <Badge tone={STATUS[inv.status]?.tone ?? "default"}>{STATUS[inv.status]?.label ?? inv.status}</Badge>
+                    )}
                   </TD>
                 </TR>
               ))}

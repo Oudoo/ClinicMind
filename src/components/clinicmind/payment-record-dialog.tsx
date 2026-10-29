@@ -90,11 +90,11 @@ export function RecordPaymentDialog({
     if (!patient) return;
     let cancelled = false;
     // The head of a family can pay the members' invoices too.
-    apiFetch<{ invoices: { id: string; number: string | null; total: number; paid: number; patientId: string; patientName: string }[] }>(
+    apiFetch<{ invoices: { id: string; number: string | null; due: number; patientId: string; patientName: string }[] }>(
       `/api/invoices?patientId=${encodeURIComponent(patient.id)}&payable=1&status=OPEN&pageSize=50`,
     )
       .then((res) => {
-        if (!cancelled) setOpenInvoices(res.invoices.map((i) => ({ id: i.id, number: i.number, due: i.total - i.paid, patientId: i.patientId, patientName: i.patientName })).filter((i) => i.due > 0));
+        if (!cancelled) setOpenInvoices(res.invoices.map((i) => ({ id: i.id, number: i.number, due: i.due, patientId: i.patientId, patientName: i.patientName })).filter((i) => i.due > 0));
       })
       .catch(() => undefined);
     return () => {

@@ -10,7 +10,18 @@ import { PatientPicker, type PatientOption } from "@/components/clinicmind/appoi
 import { apiFetch, fieldErrors } from "@/lib/http";
 import { dateKeyInTz, formatDateInTz, fromDateKey, fromLocalInput } from "@/lib/time";
 import { formatNumber } from "@/lib/utils";
-import { CATEGORY_LABELS, METHOD_LABELS, PAYMENT_METHODS, PRICE_CATEGORIES, unitPhrase, type PaymentMethodValue } from "@/modules/finance/constants";
+import {
+  CATEGORY_LABELS,
+  DISCOUNT_REASON_LABELS,
+  DISCOUNT_REASONS,
+  METHOD_LABELS,
+  PAYMENT_METHODS,
+  PRICE_CATEGORIES,
+  unitPhrase,
+  withinDiscountLimit,
+  type DiscountReasonValue,
+  type PaymentMethodValue,
+} from "@/modules/finance/constants";
 import { stagesFor } from "@/modules/finance/charges";
 import { financeErrorMessage, toPriceOptions, type DoctorOption, type PriceOption, type TreatmentOption } from "./finance-shared";
 
@@ -18,8 +29,9 @@ import { financeErrorMessage, toPriceOptions, type DoctorOption, type PriceOptio
  * Record a procedure (planned until a clinician signs it): the price-list item
  * and how many of its unit, priced from the list for the chosen day (the
  * treatment's catalogue range when the clinic has no price list yet), the
- * doctor, the date and time on the clinic clock, price, discount, notes and,
- * for roles that take money, a deposit in the same step.
+ * doctor, the date and time on the clinic clock, price, discount (with its
+ * reason, within the role's limit), notes and, for roles that take money, a
+ * deposit in the same step.
  */
 export function RecordProcedureDialog({
   timezone,
@@ -29,9 +41,12 @@ export function RecordProcedureDialog({
   canDeposit,
   patient: presetPatient = null,
   defaultDoctorId = "",
+  discountLimit = 100,
   onOpenChange,
   onDone,
 }: {
+  /** The largest discount the user's role may give, as a percentage of the price (the owner's: 100). */
+  discountLimit?: number;
   timezone: string;
   treatments: TreatmentOption[];
   /** The price list as of today; refreshed for another day when the date changes. */
@@ -52,6 +67,8 @@ export function RecordProcedureDialog({
   const [time, setTime] = useState("11:00");
   const [price, setPrice] = useState(first?.priceFrom ? String(first.priceFrom) : "");
   const [discount, setDiscount] = useState("0");
+  const [discountReason, setDiscountReason] = useState<DiscountReasonValue | "">("");
+  const [discountNote, setDiscountNote] = useState("");
   const [notes, setNotes] = useState("");
   const [zeroReason, setZeroReason] = useState("");
   const [takeDeposit, setTakeDeposit] = useState(false);
@@ -131,6 +148,11 @@ export function RecordProcedureDialog({
     if (!Number.isInteger(p) || p < 0) next.price = "Whole EGP.";
     if (!Number.isInteger(d) || d < 0) next.discount = "Whole EGP.";
     else if (Number.isInteger(p) && d > p) next.discount = "Discount cannot exceed the price.";
+    else if (Number.isInteger(p) && !withinDiscountLimit(p, d, discountLimit)) {
+      next.discount = discountLimit > 0 ? `Your role can give up to ${discountLimit}% off: more needs the clinic owner.` : "Discounts are given by the clinic owner.";
+    }
+    if (d > 0 && !discountReason) next.discountReason = "Choose why the discount is given.";
+    else if (d > 0 && discountReason === "OTHER" && !discountNote.trim()) next.discountNote = "Say why the discount is given.";
     const performedAt = fromLocalInput(`${date}T${time}`, timezone);
     if (!performedAt) next.performedAt = "Enter a valid date and time.";
     const dep = toInt(depositAmount);
@@ -150,6 +172,7 @@ export function RecordProcedureDialog({
           doctorId: doctorId || undefined,
           performedAt: performedAt.toISOString(),
           discount: d,
+          ...(d > 0 ? { discountReason, discountNote: discountNote.trim() || undefined } : {}),
           notes: notes.trim() || undefined,
           zeroChargeReason: free ? zeroReason.trim() : undefined,
           deposit: takeDeposit ? { amount: dep, method: depositMethod, reference: depositReference.trim() || undefined } : undefined,
@@ -260,10 +283,29 @@ export function RecordProcedureDialog({
                 aria-invalid={issues.price ? true : undefined}
               />
             </Field>
-            <Field label="Discount (EGP)" htmlFor={`${id}-discount`} hint={issue("discount")}>
+            <Field label="Discount (EGP)" htmlFor={`${id}-discount`} hint={issue("discount") ?? (discountLimit < 100 ? `Up to ${discountLimit}% at your role` : undefined)}>
               <Input id={`${id}-discount`} inputMode="numeric" value={discount} onChange={(e) => setDiscount(e.target.value)} aria-invalid={issues.discount ? true : undefined} />
             </Field>
           </div>
+          {Number(discount.replace(/[,\s]/g, "")) > 0 ? (
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <Field label="Why the discount?" htmlFor={`${id}-discount-reason`} hint={issue("discountReason")}>
+                <Select id={`${id}-discount-reason`} value={discountReason} onChange={(e) => setDiscountReason(e.target.value as DiscountReasonValue)} aria-invalid={issues.discountReason ? true : undefined}>
+                  <option value="" disabled>
+                    Choose a reason…
+                  </option>
+                  {DISCOUNT_REASONS.map((r) => (
+                    <option key={r} value={r}>
+                      {DISCOUNT_REASON_LABELS[r]}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+              <Field label="In a word" htmlFor={`${id}-discount-note`} hint={issue("discountNote") ?? (discountReason === "OTHER" ? "Required for another reason" : "Optional")}>
+                <Input id={`${id}-discount-note`} value={discountNote} onChange={(e) => setDiscountNote(e.target.value)} maxLength={300} aria-invalid={issues.discountNote ? true : undefined} />
+              </Field>
+            </div>
+          ) : null}
           <p className="-mt-2 text-xs text-muted-foreground">
             {usesList
               ? !item

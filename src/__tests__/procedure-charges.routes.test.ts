@@ -158,7 +158,7 @@ describe.skipIf(!dbTestsEnabled)("procedure charge routes", () => {
 
   it("charges work done at once on its day, when it is signed", async () => {
     const performedAt = at(-1, 11);
-    const made = await create({ patientId: patient, treatmentId: acne, doctorId: doctor.id, performedAt: performedAt.toISOString(), price: 2_000, discount: 200 });
+    const made = await create({ patientId: patient, treatmentId: acne, doctorId: doctor.id, performedAt: performedAt.toISOString(), price: 2_000, discount: 200, discountReason: "LOYALTY" });
     expect(made.res.status).toBe(201);
     expect(made.json.procedure).toMatchObject({ stages: 1, charged: 0, stagesDone: 0 });
     expect(await charges(made.json.procedure.id)).toHaveLength(0);
@@ -174,7 +174,7 @@ describe.skipIf(!dbTestsEnabled)("procedure charge routes", () => {
   });
 
   it("asks why a procedure is charged nothing, and keeps the reason on its charge", async () => {
-    const base = { patientId: patient, treatmentId: acne, performedAt: at(-1, 12).toISOString(), price: 1_500, discount: 1_500 };
+    const base = { patientId: patient, treatmentId: acne, performedAt: at(-1, 12).toISOString(), price: 1_500, discount: 1_500, discountReason: "GOODWILL" };
     const missing = await create(base);
     expect(missing.res.status).toBe(422);
     expect(missing.json.issues.fieldErrors.zeroChargeReason).toBeDefined();

@@ -1,4 +1,4 @@
-import type { Prisma } from "@prisma/client";
+import type { Prisma, UserRole } from "@prisma/client";
 import { z } from "zod";
 import { db, notDeleted } from "@/lib/db";
 import { audit } from "@/lib/audit";
@@ -6,8 +6,9 @@ import { requireTenantPatient, requireTenantUser, TenantScopeError } from "@/lib
 import { zDateTime, zOptionalText, zText } from "@/lib/validation";
 import { requireTenantTreatment } from "@/modules/treatments/service";
 import { enrolOnSignedProcedure } from "@/modules/concierge/service";
-import { MAX_AMOUNT, PAYMENT_METHODS, PROCEDURE_STATUSES, procedureBalance } from "./constants";
+import { DISCOUNT_REASONS, MAX_AMOUNT, PAYMENT_METHODS, PROCEDURE_STATUSES, procedureBalance } from "./constants";
 import { FinanceError, ProcedureNotFoundError, ProcedureStateError } from "./errors";
+import { assertDiscountAllowed, DiscountReasonFields, discountReasonIssues } from "./discounts";
 import { priceOn } from "./prices";
 import { fromDateKey, startOfDayInTz } from "@/lib/time";
 import { getTenantTimezone } from "@/modules/appointments/service";
@@ -31,6 +32,8 @@ export interface Actor {
   id?: string | null;
   email?: string | null;
   ip?: string | null;
+  /** The acting role: discounts are limited by it (none given: an internal call, not limited). */
+  role?: UserRole | null;
 }
 
 // ── Validation ───────────────────────────────────────────────────────────────
@@ -66,6 +69,8 @@ export const ProcedureInput = z
     /** Required without a price-list item. */
     price: zMoney.optional(),
     discount: zMoney.default(0),
+    /** Required with a discount: a reason of the fixed list (another reason needs its words). */
+    ...DiscountReasonFields,
     notes: zOptionalText(2000),
     /** Why nothing is charged; required when price − discount is 0. */
     zeroChargeReason: zOptionalText(300),
@@ -73,6 +78,9 @@ export const ProcedureInput = z
     deposit: DepositInput.optional(),
   })
   .superRefine((v, ctx) => {
+    for (const [path, message] of Object.entries(discountReasonIssues(isNum(v.discount) ? v.discount : 0, v.discountReason, v.discountNote))) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: [path], message });
+    }
     if (!v.priceItemId && !v.treatmentId) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["treatmentId"], message: "Choose a treatment or a price-list item" });
     }
@@ -94,6 +102,8 @@ export const ProcedureUpdateInput = z
     performedAt: zDateTime.optional(),
     price: zMoney.optional(),
     discount: zMoney.optional(),
+    discountReason: z.enum(DISCOUNT_REASONS).optional(),
+    discountNote: zClearableText(300),
     notes: zClearableText(2000),
     zeroChargeReason: zClearableText(300),
   })
@@ -309,6 +319,8 @@ export async function createProcedure(tenantId: string, rawInput: unknown, actor
   if (parsed.discount > priced.price) {
     throw new z.ZodError([{ code: "custom", path: ["discount"], message: "Discount cannot exceed the price" }]);
   }
+  // Within the role's limit (a share of the price), or the owner's.
+  await assertDiscountAllowed(tenantId, actor.role, priced.price, parsed.discount);
   const free = priced.price - parsed.discount === 0;
   if (free && !parsed.zeroChargeReason) throw zeroReasonMissing();
   const input = { ...parsed, ...priced };
@@ -327,6 +339,9 @@ export async function createProcedure(tenantId: string, rawInput: unknown, actor
         performedAt: input.performedAt,
         price: input.price,
         discount: input.discount,
+        discountReason: input.discount > 0 ? (input.discountReason ?? null) : null,
+        discountNote: input.discount > 0 ? (input.discountNote ?? null) : null,
+        discountById: input.discount > 0 ? (actor.id ?? null) : null,
         stages: input.stages,
         zeroChargeReason: free ? (input.zeroChargeReason ?? null) : null,
         notes: input.notes ?? null,
@@ -417,6 +432,13 @@ export async function updateProcedure(tenantId: string, id: string, rawInput: un
     if (discount > price) {
       throw new z.ZodError([{ code: "custom", path: ["discount"], message: "Discount cannot exceed the price" }]);
     }
+    const discountReason = discount > 0 ? (input.discountReason ?? before.discountReason) : null;
+    const discountNote = discount > 0 ? (input.discountNote === undefined ? before.discountNote : input.discountNote) : null;
+    const reasonIssues = Object.entries(discountReasonIssues(discount, discountReason, discountNote));
+    if (reasonIssues.length) throw new z.ZodError(reasonIssues.map(([path, message]) => ({ code: "custom" as const, path: [path], message })));
+    // A discount given or changed (or a new price under it) is within the actor's limit.
+    const discountChanged = discount !== before.discount || (discount > 0 && price !== before.price);
+    if (discountChanged) await assertDiscountAllowed(tenantId, actor.role, price, discount, tx);
     const zeroChargeReason = input.zeroChargeReason === undefined ? before.zeroChargeReason : input.zeroChargeReason;
     if (price - discount === 0 && !zeroChargeReason) throw zeroReasonMissing();
     const after = await tx.procedure.update({
@@ -428,6 +450,9 @@ export async function updateProcedure(tenantId: string, id: string, rawInput: un
         performedAt: input.performedAt,
         price,
         discount,
+        discountReason,
+        discountNote,
+        discountById: discountChanged ? (discount > 0 ? (actor.id ?? null) : null) : before.discountById,
         zeroChargeReason: price - discount === 0 ? zeroChargeReason : null,
         notes: input.notes,
       },

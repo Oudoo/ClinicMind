@@ -5,7 +5,8 @@ import type { Prisma } from "@prisma/client";
  * first; what is not allocated is the patient's credit. Deposits are held as
  * credit: a deposit taken for a procedure only pays an invoice that bills
  * that procedure. Refunds come off the credit. An invoice's status follows
- * what is allocated to it (issued, part-paid, paid).
+ * what is allocated to it and what the owner wrote off on it (issued,
+ * part-paid, paid).
  *
  * Families: the head of a household pays for its members. A member's own
  * money pays their own invoices first; the head's money then pays what is
@@ -62,11 +63,21 @@ export async function payableBy(tx: Tx, tenantId: string, patientId: string): Pr
   return [patientId, ...members.map((m) => m.id)];
 }
 
-/** Set an issued invoice's status from what is allocated to it. */
+/** What is settled on an invoice: the money allocated to it and what was written off on it. */
+export async function settledOn(tx: Tx, tenantId: string, invoiceId: string): Promise<{ paid: number; writtenOff: number }> {
+  const [paid, writtenOff] = await Promise.all([
+    tx.paymentAllocation.aggregate({ where: { tenantId, invoiceId }, _sum: { amount: true } }),
+    tx.writeOff.aggregate({ where: { tenantId, invoiceId, voidedAt: null }, _sum: { amount: true } }),
+  ]);
+  return { paid: paid._sum.amount ?? 0, writtenOff: writtenOff._sum.amount ?? 0 };
+}
+
+/** Set an issued invoice's status from what is settled on it. */
 export async function refreshInvoiceStatus(tx: Tx, tenantId: string, invoiceId: string): Promise<void> {
   const invoice = await tx.invoice.findFirst({ where: { id: invoiceId, tenantId }, select: { status: true, total: true } });
   if (!invoice || (invoice.status !== "ISSUED" && invoice.status !== "PART_PAID" && invoice.status !== "PAID")) return;
-  const paid = (await tx.paymentAllocation.aggregate({ where: { tenantId, invoiceId }, _sum: { amount: true } }))._sum.amount ?? 0;
+  const { paid: money, writtenOff } = await settledOn(tx, tenantId, invoiceId);
+  const paid = money + writtenOff;
   const status = paid >= invoice.total ? "PAID" : paid > 0 ? "PART_PAID" : "ISSUED";
   if (status !== invoice.status) await tx.invoice.update({ where: { id: invoiceId }, data: { status } });
 }
@@ -78,7 +89,13 @@ async function allocateFrom(tx: Tx, tenantId: string, payerId: string, patientId
   const invoices = await tx.invoice.findMany({
     where: { tenantId, patientId: { in: patientIds }, status: { in: [...OPEN_INVOICE_STATUSES] } },
     orderBy: [{ issuedAt: "asc" }, { createdAt: "asc" }, { id: "asc" }],
-    select: { id: true, total: true, allocations: { select: { amount: true } }, lines: { select: { charge: { select: { procedureId: true } } } } },
+    select: {
+      id: true,
+      total: true,
+      allocations: { select: { amount: true } },
+      writeOffs: { where: { voidedAt: null }, select: { amount: true } },
+      lines: { select: { charge: { select: { procedureId: true } } } },
+    },
   });
   if (!invoices.length) return 0;
   const payments = await tx.payment.findMany({
@@ -89,7 +106,7 @@ async function allocateFrom(tx: Tx, tenantId: string, payerId: string, patientId
   const left = new Map(payments.map((p) => [p.id, p.amount - total(p.allocations)]));
   let allocated = 0;
   for (const invoice of invoices) {
-    let due = invoice.total - total(invoice.allocations);
+    let due = invoice.total - total(invoice.allocations) - total(invoice.writeOffs);
     const billed = new Set(invoice.lines.map((l) => l.charge.procedureId).filter((id): id is string => Boolean(id)));
     for (const p of payments) {
       if (due <= 0 || available <= 0) break;

@@ -33,7 +33,7 @@ export async function POST(req: Request) {
     assertCan(ctx.role, "patients:write");
     const body = (await req.json().catch(() => null)) as { deposit?: unknown } | null;
     if (body && typeof body === "object" && body.deposit) assertCan(ctx.role, "payments:write");
-    const procedure = await createProcedure(ctx.tenantId, body, { id: ctx.userId, email: ctx.email, ip: clientIp(req) });
+    const procedure = await createProcedure(ctx.tenantId, body, { id: ctx.userId, email: ctx.email, ip: clientIp(req), role: ctx.role });
     return ok({ procedure }, { status: 201 });
   } catch (err) {
     return financeErrorResponse(err) ?? handleApiError(err);

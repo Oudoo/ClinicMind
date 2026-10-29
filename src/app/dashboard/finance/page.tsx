@@ -14,6 +14,7 @@ import { parseReportQuery, periodFromQuery } from "@/modules/reporting/query";
 import { listReportDoctors } from "@/modules/reporting/service";
 import { listTreatments } from "@/modules/treatments/service";
 import { listPriceList } from "@/modules/finance/prices";
+import { discountLimitOf } from "@/modules/finance/discounts";
 import { Badge, Card, EmptyState, SectionTitle } from "@/components/ui/primitives";
 import { Columns, DeltaChip, HBars, Kpi } from "@/components/ui/kpi";
 import { Pagination } from "@/components/ui/pagination";
@@ -64,7 +65,7 @@ export default async function FinancePage({ searchParams }: { searchParams: Prom
   const canRecordProcedure = can(ctx.role, "patients:write");
   const canVoid = can(ctx.role, "tenant:manage");
 
-  const [summary, recent, treatments, doctors, owingPatient, owingRows, prices] = await Promise.all([
+  const [summary, recent, treatments, doctors, owingPatient, owingRows, prices, discountLimit] = await Promise.all([
     getFinanceSummary(ctx.tenantId, period, timezone),
     listPayments(ctx.tenantId, { from: period.from, to: period.to, includeVoided: false, page, pageSize: PAGE_SIZE }),
     listTreatments(ctx.tenantId),
@@ -72,6 +73,7 @@ export default async function FinancePage({ searchParams }: { searchParams: Prom
     owingId ? db.patient.findFirst({ where: { id: owingId, tenantId: ctx.tenantId, ...notDeleted }, select: { id: true, fullName: true, phone: true } }) : Promise.resolve(null),
     owingId ? getPatientOutstanding(ctx.tenantId, owingId) : Promise.resolve([]),
     listPriceList(ctx.tenantId),
+    discountLimitOf(ctx.tenantId, ctx.role),
   ]);
 
   const pq = periodQuery(period);
@@ -97,6 +99,7 @@ export default async function FinancePage({ searchParams }: { searchParams: Prom
             canPay={canPay}
             canRecordProcedure={canRecordProcedure}
             canRefund={canVoid}
+            discountLimit={discountLimit}
           />
         }
       />

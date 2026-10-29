@@ -89,6 +89,8 @@ export interface InvoiceItem {
   status: string;
   total: number;
   paid: number;
+  /** Written off by the owner. */
+  writtenOff?: number;
   /** Issued (or, for a draft, created) at. */
   date: string;
 }
@@ -111,9 +113,10 @@ export const signedAmount = (p: { kind: string; amount: number }) => (p.kind ===
 /** A message for a failed finance request. */
 export function financeErrorMessage(err: unknown): string {
   if (err instanceof ApiError) {
+    const body = (err.body ?? {}) as { status?: string; action?: string; message?: string };
+    // The server's own words when it gave them (a discount above the role's limit says what the role may give).
+    if (typeof body.message === "string" && body.message) return body.message;
     if (err.status === 409 && err.code === "invalid_state") {
-      const body = err.body as { status?: string; action?: string; message?: string };
-      if (body.message) return body.message;
       return `A ${String(body.status ?? "").toLowerCase() || "closed"} procedure cannot be ${body.action ?? "changed"}. Reload to see its latest status.`;
     }
     if (err.status === 404) return "That record no longer exists (or belongs to another clinic).";

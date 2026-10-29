@@ -191,6 +191,7 @@ model Tenant {
   invoiceLines            InvoiceLine[]
   creditNotes             CreditNote[]
   paymentAllocations      PaymentAllocation[]
+  writeOffs               WriteOff[]
   documentSequences       DocumentSequence[]
 
   @@index([status])
@@ -398,6 +399,7 @@ model Patient {
   appointmentNotes AppointmentNote[]
   intakeLinks      IntakeLink[]
   householdMembers Patient[]            @relation("Household")
+  writeOffs        WriteOff[]
 
   @@index([tenantId])
   @@index([tenantId, householdHeadId])
@@ -1164,6 +1166,12 @@ model Procedure {
   performedAt      DateTime
   price            Int
   discount         Int             @default(0)
+  /// Why a discount was given (a key of the fixed list, see finance/constants.ts); required with a discount.
+  discountReason   String?
+  /// The words for a discount given for "another reason".
+  discountNote     String?
+  /// Who gave the discount (within their role's limit; above it, only the owner).
+  discountById     String?
   currency         String          @default("EGP")
   status           ProcedureStatus @default(PLANNED)
   /// Work done in stages (the sessions of a course): how many. Each stage's share is charged when it is done.
@@ -1221,6 +1229,12 @@ model Charge {
   reversalOfId  String?    @unique
   reversalOf    Charge?    @relation("ChargeReversal", fields: [reversalOfId], references: [id], onDelete: NoAction)
   reversedBy    Charge?    @relation("ChargeReversal")
+  /// A discount taken off a charge already posted (a negative row): the charge it takes off, and why.
+  discountOfId  String?
+  discountOf    Charge?    @relation("ChargeDiscount", fields: [discountOfId], references: [id], onDelete: NoAction)
+  discounts     Charge[]   @relation("ChargeDiscount")
+  /// A discount's reason (a key of the fixed list).
+  reason        String?
   createdById   String?
   createdAt     DateTime   @default(now())
 
@@ -1230,6 +1244,7 @@ model Charge {
   @@index([tenantId, patientId])
   @@index([tenantId, appointmentId])
   @@index([procedureId])
+  @@index([discountOfId])
   @@map("charges")
 }
 
@@ -1280,6 +1295,7 @@ model Invoice {
   lines       InvoiceLine[]
   creditNote  CreditNote?
   allocations PaymentAllocation[]
+  writeOffs   WriteOff[]
 
   @@unique([tenantId, clinicId, sequence])
   @@unique([tenantId, number])
@@ -1345,6 +1361,33 @@ model PaymentAllocation {
   @@index([tenantId, invoiceId])
   @@index([paymentId])
   @@map("payment_allocations")
+}
+
+/// What is left on an issued invoice that the clinic gives up on (a bad debt, a balance too small to chase…): the
+/// owner's decision, with a reason from a fixed list. It settles the invoice without money and comes off what the
+/// patient owes; it is never edited, and is voided only with the invoice it was on (cancelled by a credit note).
+model WriteOff {
+  id           String    @id @default(cuid())
+  tenantId     String
+  tenant       Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  patientId    String
+  patient      Patient   @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  invoiceId    String
+  invoice      Invoice   @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  /// Whole EGP, up to what was left to pay on the invoice.
+  amount       Int
+  /// A key of the fixed list (see finance/constants.ts).
+  reason       String
+  note         String?
+  writtenOffAt DateTime
+  createdById  String?
+  voidedAt     DateTime?
+  createdAt    DateTime  @default(now())
+
+  @@index([tenantId, writtenOffAt])
+  @@index([tenantId, patientId])
+  @@index([invoiceId])
+  @@map("write_offs")
 }
 
 /// Money in or out, whole EGP: deposits, payments, refunds and consultation fees.

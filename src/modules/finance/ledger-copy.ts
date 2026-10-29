@@ -18,7 +18,7 @@ export const relationLabel = (relation: string | null | undefined, language: Led
   relation && (RELATIONS as readonly string[]).includes(relation) ? RELATION_LABELS[language][relation as RelationValue] : null;
 
 /** What moved the balance: work charged (or reversed), money in or out, or money a family member put in. */
-export const LEDGER_KINDS = ["CHARGE", "REVERSAL", "NO_CHARGE", "CONSULTATION_FEE", "PAYMENT", "DEPOSIT", "REFUND", "PAID_BY", "PAID_FOR"] as const;
+export const LEDGER_KINDS = ["CHARGE", "REVERSAL", "NO_CHARGE", "DISCOUNT", "CONSULTATION_FEE", "PAYMENT", "DEPOSIT", "REFUND", "WRITE_OFF", "PAID_BY", "PAID_FOR"] as const;
 export type LedgerKind = (typeof LEDGER_KINDS)[number];
 
 export interface LedgerEntry {
@@ -36,8 +36,10 @@ export interface LedgerEntry {
   method: string | null;
   /** The procedure a payment went towards. */
   towards: string | null;
-  /** A refund's reason. */
+  /** A refund's reason, or a write-off's words. */
   note: string | null;
+  /** A discount's or a write-off's reason (a key of the fixed list). */
+  reason: string | null;
   /** Who paid for this patient, or whom this patient paid for. */
   counterpart: string | null;
   invoiceNumber: string | null;
@@ -54,6 +56,16 @@ export const METHOD_WORDS: Record<LedgerLanguage, Record<string, string>> = {
   ar: { CASH: "نقدًا", CARD: "بطاقة", BANK_TRANSFER: "تحويل بنكي", WALLET: "محفظة إلكترونية", POS: "ماكينة دفع", INSTAPAY: "إنستاباي", CHEQUE: "شيك", OTHER: "أخرى" },
 };
 
+/** The reasons of the fixed lists, as a statement says them. */
+export const DISCOUNT_WORDS: Record<LedgerLanguage, Record<string, string>> = {
+  en: { LOYALTY: "returning patient", FAMILY: "family of a patient", STAFF: "staff", PROMOTION: "campaign offer", PACKAGE: "package price", GOODWILL: "goodwill", DOCTOR: "the doctor's decision", OTHER: "another reason" },
+  ar: { LOYALTY: "عميل دائم", FAMILY: "قريب لمريض", STAFF: "موظف أو قريب لموظف", PROMOTION: "عرض", PACKAGE: "سعر باقة", GOODWILL: "تقديرًا للمريض", DOCTOR: "بقرار الطبيب", OTHER: "سبب آخر" },
+};
+export const WRITE_OFF_WORDS: Record<LedgerLanguage, Record<string, string>> = {
+  en: { BAD_DEBT: "bad debt", SMALL_BALANCE: "too small to chase", DISPUTE: "a dispute settled", GOODWILL: "goodwill", DECEASED: "the patient has died", OTHER: "another reason" },
+  ar: { BAD_DEBT: "دين معدوم", SMALL_BALANCE: "مبلغ صغير", DISPUTE: "تسوية خلاف", GOODWILL: "تقديرًا للمريض", DECEASED: "وفاة المريض", OTHER: "سبب آخر" },
+};
+
 /** A piece of a line's wording; `iso` pieces (names, numbers, English text) keep their own direction. */
 export interface Part {
   t: string;
@@ -66,7 +78,7 @@ const KIND_WORDS: Record<LedgerLanguage, Record<"CONSULTATION_FEE" | "PAYMENT" |
 };
 
 /** The line's wording in the language asked for. */
-export function describeEntry(e: Pick<LedgerEntry, "kind" | "description" | "method" | "towards" | "note" | "counterpart" | "invoiceNumber">, language: LedgerLanguage = "en"): Part[] {
+export function describeEntry(e: Pick<LedgerEntry, "kind" | "description" | "method" | "towards" | "note" | "counterpart" | "invoiceNumber"> & { reason?: string | null }, language: LedgerLanguage = "en"): Part[] {
   const ar = language === "ar";
   const sep: Part = { t: " · " };
   const method = e.method ? (METHOD_WORDS[language][e.method] ?? e.method) : null;
@@ -77,6 +89,18 @@ export function describeEntry(e: Pick<LedgerEntry, "kind" | "description" | "met
     case "REVERSAL": {
       const what = (e.description ?? "").replace(/^Reversed:\s*/, "");
       return ar ? [{ t: "إلغاء: " }, { t: what, iso: "auto" }] : [{ t: "Reversed: " }, { t: what, iso: "auto" }];
+    }
+    case "DISCOUNT": {
+      // Stored in English, as the invoice line reads ("Discount (returning patient): Acne treatment").
+      if (!ar) return [{ t: e.description ?? "", iso: "auto" }];
+      const what = (e.description ?? "").replace(/^Discount \([^)]*\):\s*/, "");
+      return [{ t: `خصم (${DISCOUNT_WORDS.ar[e.reason ?? ""] ?? DISCOUNT_WORDS.ar.OTHER}): ` }, { t: what, iso: "auto" }];
+    }
+    case "WRITE_OFF": {
+      const why = WRITE_OFF_WORDS[language][e.reason ?? ""] ?? WRITE_OFF_WORDS[language].OTHER!;
+      return ar
+        ? [{ t: `شطب (${why}): الفاتورة ` }, { t: e.invoiceNumber ?? "", iso: "ltr" }]
+        : [{ t: `Written off (${why}): invoice ` }, { t: e.invoiceNumber ?? "", iso: "ltr" }];
     }
     case "CONSULTATION_FEE":
     case "PAYMENT":

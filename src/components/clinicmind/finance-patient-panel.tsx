@@ -51,6 +51,7 @@ export function FinancePatientPanel({
   billable = null,
   credit = null,
   account = null,
+  discountLimit = 100,
   treatments,
   priceItems = [],
   doctors,
@@ -72,6 +73,8 @@ export function FinancePatientPanel({
   credit?: number | null;
   /** The account as the ledger has it (for the roles that see payments): what was billed, received, and the balance. */
   account?: { billed: number; received: number; balance: number } | null;
+  /** The largest discount the user's role may give (a percentage of the price). */
+  discountLimit?: number;
   treatments: TreatmentOption[];
   /** The price list as of today (the dialog reprices for another day). */
   priceItems?: PriceOption[];
@@ -278,7 +281,9 @@ export function FinancePatientPanel({
                 </div>
                 <div className="flex shrink-0 items-center gap-2">
                   <span className="font-mono text-sm tabular-nums">{formatNumber(inv.total)}</span>
-                  <Badge tone={INVOICE_TONE[inv.status] ?? "default"}>{INVOICE_LABEL[inv.status] ?? inv.status}</Badge>
+                  <Badge tone={inv.status === "PAID" && inv.writtenOff ? "default" : (INVOICE_TONE[inv.status] ?? "default")}>
+                    {inv.status === "PAID" && inv.writtenOff ? "Written off" : (INVOICE_LABEL[inv.status] ?? inv.status)}
+                  </Badge>
                 </div>
               </li>
             ))}
@@ -339,6 +344,7 @@ export function FinancePatientPanel({
           doctors={doctors}
           canDeposit={canPay}
           patient={patient}
+          discountLimit={discountLimit}
           onOpenChange={(v) => (!v ? setDialog(null) : undefined)}
           onDone={() => done("Procedure recorded")}
         />

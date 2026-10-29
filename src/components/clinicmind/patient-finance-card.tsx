@@ -9,6 +9,7 @@ import { listTreatments } from "@/modules/treatments/service";
 import { listPriceList } from "@/modules/finance/prices";
 import { listBillable, listInvoices } from "@/modules/finance/invoices";
 import { accountPosition } from "@/modules/finance/ledger";
+import { discountLimitOf } from "@/modules/finance/discounts";
 import { FinancePatientPanel } from "./finance-patient-panel";
 import { toPriceOptions, type InvoiceItem, type PaymentItem, type ProcedureItem } from "./finance-shared";
 
@@ -27,7 +28,7 @@ export async function PatientFinanceCard({ tenantId, role, patientId, canWrite }
   const seesPayments = can(role, "payments:write") || can(role, "finance:read");
   const canPay = canWrite && can(role, "payments:write");
   const canRecordProcedure = canWrite;
-  const [patient, timezone, procedures, payments, treatments, doctors, prices, invoices, billable, position] = await Promise.all([
+  const [patient, timezone, procedures, payments, treatments, doctors, prices, invoices, billable, position, discountLimit] = await Promise.all([
     db.patient.findFirst({ where: { id: patientId, tenantId }, select: { id: true, fullName: true } }),
     getTenantTimezone(tenantId),
     listProcedures(tenantId, { patientId, page: 1, pageSize: 100 }),
@@ -38,6 +39,7 @@ export async function PatientFinanceCard({ tenantId, role, patientId, canWrite }
     seesPayments ? listInvoices(tenantId, { patientId, pageSize: 50 }) : Promise.resolve(null),
     canPay ? listBillable(tenantId, patientId) : Promise.resolve(null),
     seesPayments ? db.$transaction((tx) => accountPosition(tx, tenantId, [{ id: patientId, fullName: "" }])) : Promise.resolve(null),
+    canRecordProcedure ? discountLimitOf(tenantId, role) : Promise.resolve(0),
   ]);
   if (!patient) return null;
 
@@ -78,7 +80,7 @@ export async function PatientFinanceCard({ tenantId, role, patientId, canWrite }
       }))
     : null;
   const invoiceItems: InvoiceItem[] | null = invoices
-    ? invoices.invoices.map((i) => ({ id: i.id, number: i.number, status: i.status, total: i.total, paid: i.paid, date: i.issuedAt ?? i.createdAt }))
+    ? invoices.invoices.map((i) => ({ id: i.id, number: i.number, status: i.status, total: i.total, paid: i.paid, writtenOff: i.writtenOff, date: i.issuedAt ?? i.createdAt }))
     : null;
 
   return (
@@ -91,6 +93,7 @@ export async function PatientFinanceCard({ tenantId, role, patientId, canWrite }
       billable={billable ? { count: billable.charges.length, total: billable.total } : null}
       credit={position ? position.credit : null}
       account={position ? { billed: position.billed, received: position.received, balance: position.balance } : null}
+      discountLimit={discountLimit}
       treatments={treatments.map((t) => ({ id: t.id, key: t.key, name: t.name, priceFrom: t.priceFrom, priceTo: t.priceTo, depositAmount: t.depositAmount }))}
       priceItems={prices ? toPriceOptions(prices.items) : []}
       doctors={doctors}

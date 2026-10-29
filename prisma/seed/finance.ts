@@ -96,6 +96,10 @@ function priceFor(t: TreatmentInfo, r: Random): number {
   return Math.max(t.priceFrom, Math.min(t.priceTo, Math.round(raw / step) * step));
 }
 
+/** Why a seeded discount was given: from the price, so no random number is drawn (the rest of the demo stays as it was). */
+const SEED_DISCOUNT_REASONS = ["LOYALTY", "PROMOTION", "PACKAGE", "FAMILY", "DOCTOR"] as const;
+const discountReasonFor = (price: number) => SEED_DISCOUNT_REASONS[Math.floor(price / 50) % SEED_DISCOUNT_REASONS.length]!;
+
 function discountFor(price: number, r: Random): number {
   if (!r.chance(0.15)) return 0;
   const step = price >= 20_000 ? 500 : 50;
@@ -221,6 +225,8 @@ export async function seedFinance(ctx: SeedContext): Promise<void> {
       performedAt: o.performedAt,
       price,
       discount,
+      discountReason: discount > 0 ? discountReasonFor(price) : null,
+      discountById: discount > 0 ? o.doctorId : null,
       status: "SIGNED",
       signedAt: o.signedAt,
       signedById: o.doctorId,

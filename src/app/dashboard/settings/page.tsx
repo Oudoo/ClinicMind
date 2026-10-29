@@ -12,6 +12,8 @@ import { BRAND, type TenantBranding } from "@/lib/brand";
 import { formatDate } from "@/lib/utils";
 import { NotificationPreferences } from "@/components/clinicmind/notification-preferences";
 import { MessagingIntegrationCard } from "@/components/clinicmind/messaging-integration-card";
+import { DiscountLimitsCard } from "@/components/clinicmind/discount-limits";
+import { discountLimits } from "@/modules/finance/discounts";
 
 const STATUS_TONE: Record<string, "default" | "success" | "warning" | "danger"> = {
   ACTIVE: "success",
@@ -96,6 +98,8 @@ export default async function SettingsPage() {
           <Row label="Subdomain" value={`${ctx.tenantSlug}.${env.ROOT_DOMAIN}`} />
         </Card>
       </div>
+
+      {can(ctx.role, "patients:write") || can(ctx.role, "payments:write") ? <DiscountLimitsCard initial={await discountLimits(ctx.tenantId)} canEdit={can(ctx.role, "tenant:manage")} /> : null}
 
       <NotificationPreferences tenantId={ctx.tenantId} userId={ctx.userId} role={ctx.role} />
       <MessagingIntegrationCard tenantId={ctx.tenantId} userId={ctx.userId} role={ctx.role} />

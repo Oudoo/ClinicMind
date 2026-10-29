@@ -25,9 +25,12 @@ export function FinanceActions({
   canPay,
   canRecordProcedure,
   canRefund = false,
+  discountLimit = 100,
 }: {
   timezone: string;
   canRefund?: boolean;
+  /** The largest discount the user's role may give (a percentage of the price). */
+  discountLimit?: number;
   treatments: TreatmentOption[];
   priceItems?: PriceOption[];
   doctors: DoctorOption[];
@@ -69,7 +72,7 @@ export function FinanceActions({
       ) : null}
       {open === "payment" ? <RecordPaymentDialog timezone={timezone} canRefund={canRefund} onOpenChange={close} onDone={() => done("Payment recorded")} /> : null}
       {open === "procedure" ? (
-        <RecordProcedureDialog timezone={timezone} treatments={treatments} priceItems={priceItems} doctors={doctors} canDeposit={canPay} onOpenChange={close} onDone={() => done("Procedure recorded", "Planned until a clinician signs it.")} />
+        <RecordProcedureDialog timezone={timezone} treatments={treatments} priceItems={priceItems} doctors={doctors} canDeposit={canPay} discountLimit={discountLimit} onOpenChange={close} onDone={() => done("Procedure recorded", "Planned until a clinician signs it.")} />
       ) : null}
       {open === "import" ? (
         <ImportPosDialog

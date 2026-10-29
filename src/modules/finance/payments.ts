@@ -10,7 +10,7 @@ import { KIND_LABELS, LARGE_PAYMENT_THRESHOLD, MAX_AMOUNT, METHOD_LABELS, PAYMEN
 import { FinanceError, PaymentNotFoundError } from "./errors";
 import { requireTenantAppointment, type Actor } from "./procedures";
 import { clinicForPayment, takeNumber } from "./documents";
-import { allocateCredit, CREDITING_KINDS, patientCredit, payableBy, refreshInvoiceStatus, releasePayment } from "./allocations";
+import { allocateCredit, CREDITING_KINDS, patientCredit, payableBy, refreshInvoiceStatus, releasePayment, settledOn } from "./allocations";
 
 /**
  * Payments: money in or out, whole EGP. Deposits and payments are linked to a
@@ -163,8 +163,8 @@ export async function recordPayment(tenantId: string, rawInput: unknown, actor: 
     let allocated = 0;
     if (invoice) {
       // Matched by hand: this invoice first, up to what it still needs.
-      const paid = (await tx.paymentAllocation.aggregate({ where: { tenantId, invoiceId: invoice.id }, _sum: { amount: true } }))._sum.amount ?? 0;
-      const amount = Math.min(payment.amount, invoice.total - paid);
+      const settled = await settledOn(tx, tenantId, invoice.id);
+      const amount = Math.min(payment.amount, invoice.total - settled.paid - settled.writtenOff);
       if (amount > 0) {
         await tx.paymentAllocation.create({ data: { tenantId, paymentId: payment.id, invoiceId: invoice.id, amount, createdById: actor.id ?? null } });
         await refreshInvoiceStatus(tx, tenantId, invoice.id);

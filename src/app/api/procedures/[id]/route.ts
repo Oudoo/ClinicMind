@@ -32,7 +32,7 @@ export async function PATCH(req: Request, { params }: Params) {
     const ctx = await getActingContext(req);
     if (!ctx) return unauthorized();
     assertCan(ctx.role, "patients:write");
-    const procedure = await updateProcedure(ctx.tenantId, id, await req.json().catch(() => null), { id: ctx.userId, email: ctx.email, ip: clientIp(req) });
+    const procedure = await updateProcedure(ctx.tenantId, id, await req.json().catch(() => null), { id: ctx.userId, email: ctx.email, ip: clientIp(req), role: ctx.role });
     return ok({ procedure });
   } catch (err) {
     return financeErrorResponse(err) ?? handleApiError(err);

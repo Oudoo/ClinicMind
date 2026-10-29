@@ -70,7 +70,7 @@ export class InvoiceNotFoundError extends FinanceError {
   }
 }
 
-function invoiceState(status: string, action: string, message: string) {
+export function invoiceState(status: string, action: string, message: string) {
   return new FinanceError(409, "invalid_state", `a ${status} invoice cannot be ${action}`, { status, action, message });
 }
 
@@ -83,6 +83,8 @@ export interface BillableCharge {
   chargedAt: Date;
   clinicId: string;
   procedureId: string | null;
+  /** A discount: the charge it takes off. */
+  discountOfId: string | null;
 }
 
 /**
@@ -94,7 +96,7 @@ export async function billableCharges(tx: Tx, tenantId: string, patientId: strin
   const fallback = await defaultClinicId(tx, tenantId);
   const rows = await tx.charge.findMany({
     where: { tenantId, patientId, amount: { not: 0 }, invoiceLines: { none: { invoice: { status: { in: [...LIVE] } } } } },
-    select: { id: true, description: true, amount: true, chargedAt: true, clinicId: true, procedureId: true, reversalOfId: true },
+    select: { id: true, description: true, amount: true, chargedAt: true, clinicId: true, procedureId: true, reversalOfId: true, discountOfId: true },
     orderBy: [{ chargedAt: "asc" }, { createdAt: "asc" }],
   });
   const unbilled = new Set(rows.map((r) => r.id));
@@ -103,7 +105,7 @@ export async function billableCharges(tx: Tx, tenantId: string, patientId: strin
     .filter((r) => !cancelled.has(r.id))
     .flatMap((r) => {
       const clinicId = r.clinicId ?? fallback;
-      return clinicId ? [{ id: r.id, description: r.description, amount: r.amount, chargedAt: r.chargedAt, clinicId, procedureId: r.procedureId }] : [];
+      return clinicId ? [{ id: r.id, description: r.description, amount: r.amount, chargedAt: r.chargedAt, clinicId, procedureId: r.procedureId, discountOfId: r.discountOfId }] : [];
     });
 }
 
@@ -118,12 +120,13 @@ export async function listBillable(tenantId: string, patientId: string) {
 const invoiceInclude = {
   clinic: { select: { id: true, name: true, code: true, address: true, phone: true } },
   patient: { select: { id: true, fullName: true, phone: true, whatsapp: true, language: true } },
-  lines: { orderBy: { position: "asc" }, select: { id: true, chargeId: true, description: true, amount: true, chargedAt: true } },
+  lines: { orderBy: { position: "asc" }, select: { id: true, chargeId: true, description: true, amount: true, chargedAt: true, charge: { select: { discountOfId: true } } } },
   allocations: {
     orderBy: { createdAt: "asc" },
     select: { amount: true, createdAt: true, payment: { select: { id: true, receiptNumber: true, kind: true, method: true, paidAt: true } } },
   },
   creditNote: { select: { number: true, amount: true, reason: true, issuedAt: true } },
+  writeOffs: { where: { voidedAt: null }, orderBy: { writtenOffAt: "asc" }, select: { amount: true, reason: true, note: true, writtenOffAt: true } },
 } as const;
 
 type InvoiceRow = Prisma.InvoiceGetPayload<{ include: typeof invoiceInclude }>;
@@ -135,6 +138,8 @@ export interface InvoiceDTO {
   language: InvoiceLanguage;
   total: number;
   paid: number;
+  /** Written off by the owner (none on a cancelled invoice). */
+  writtenOff: number;
   due: number;
   note: string | null;
   createdAt: string;
@@ -149,11 +154,15 @@ export interface InvoiceDTO {
   patient: { id: string; fullName: string; phone: string | null; language: string };
   lines: { id: string; chargeId: string; description: string; amount: number; chargedAt: string }[];
   payments: { receiptNumber: string | null; method: string; paidAt: string; amount: number }[];
+  writeOffs: { amount: number; reason: string; note: string | null; writtenOffAt: string }[];
   creditNote: { number: string; amount: number; reason: string; issuedAt: string } | null;
+  /** The charges on the lines that are discounts, and of what (so a draft's discount stays with its charge). */
+  discountOf: Record<string, string>;
 }
 
 function toDTO(row: InvoiceRow, tenantName: string, timezone: string): InvoiceDTO {
   const paid = row.status === "CANCELLED" ? 0 : row.allocations.reduce((s, a) => s + a.amount, 0);
+  const writtenOff = row.status === "CANCELLED" ? 0 : row.writeOffs.reduce((s, w) => s + w.amount, 0);
   return {
     id: row.id,
     number: row.number,
@@ -161,7 +170,8 @@ function toDTO(row: InvoiceRow, tenantName: string, timezone: string): InvoiceDT
     language: row.language === "ar" ? "ar" : "en",
     total: row.total,
     paid,
-    due: row.status === "CANCELLED" || row.status === "DRAFT" ? 0 : Math.max(0, row.total - paid),
+    writtenOff,
+    due: row.status === "CANCELLED" || row.status === "DRAFT" ? 0 : Math.max(0, row.total - paid - writtenOff),
     note: row.note,
     createdAt: row.createdAt.toISOString(),
     issuedAt: row.issuedAt?.toISOString() ?? null,
@@ -173,9 +183,11 @@ function toDTO(row: InvoiceRow, tenantName: string, timezone: string): InvoiceDT
     timezone,
     clinic: row.clinic,
     patient: { id: row.patient.id, fullName: row.patient.fullName, phone: row.patient.whatsapp ?? row.patient.phone, language: row.patient.language },
-    lines: row.lines.map((l) => ({ ...l, chargedAt: l.chargedAt.toISOString() })),
+    lines: row.lines.map(({ charge: _charge, ...l }) => ({ ...l, chargedAt: l.chargedAt.toISOString() })),
     payments: row.allocations.map((a) => ({ receiptNumber: a.payment.receiptNumber, method: a.payment.method, paidAt: a.payment.paidAt.toISOString(), amount: a.amount })),
+    writeOffs: row.status === "CANCELLED" ? [] : row.writeOffs.map((w) => ({ amount: w.amount, reason: w.reason, note: w.note, writtenOffAt: w.writtenOffAt.toISOString() })),
     creditNote: row.creditNote ? { ...row.creditNote, issuedAt: row.creditNote.issuedAt.toISOString() } : null,
+    discountOf: Object.fromEntries(row.lines.filter((l) => l.charge.discountOfId).map((l) => [l.chargeId, l.charge.discountOfId!])),
   };
 }
 
@@ -196,6 +208,9 @@ export interface InvoiceListRow {
   status: string;
   total: number;
   paid: number;
+  writtenOff: number;
+  /** Left to pay (nothing on a draft or a cancelled invoice). */
+  due: number;
   patientId: string;
   patientName: string;
   issuedAt: string | null;
@@ -217,24 +232,40 @@ export async function listInvoices(tenantId: string, rawQuery: unknown = {}) {
       orderBy: [{ createdAt: "desc" }],
       skip: (query.page - 1) * query.pageSize,
       take: query.pageSize,
-      select: { id: true, number: true, status: true, total: true, issuedAt: true, createdAt: true, patientId: true, patient: { select: { fullName: true } }, allocations: { select: { amount: true } } },
+      select: {
+        id: true,
+        number: true,
+        status: true,
+        total: true,
+        issuedAt: true,
+        createdAt: true,
+        patientId: true,
+        patient: { select: { fullName: true } },
+        allocations: { select: { amount: true } },
+        writeOffs: { where: { voidedAt: null }, select: { amount: true } },
+      },
     }),
     db.invoice.count({ where }),
   ]);
   return {
-    invoices: rows.map(
-      (r): InvoiceListRow => ({
+    invoices: rows.map((r): InvoiceListRow => {
+      const live = r.status !== "CANCELLED";
+      const paid = live ? r.allocations.reduce((s, a) => s + a.amount, 0) : 0;
+      const writtenOff = live ? r.writeOffs.reduce((s, w) => s + w.amount, 0) : 0;
+      return {
         id: r.id,
         number: r.number,
         status: r.status,
         total: r.total,
-        paid: r.status === "CANCELLED" ? 0 : r.allocations.reduce((s, a) => s + a.amount, 0),
+        paid,
+        writtenOff,
+        due: live && r.status !== "DRAFT" ? Math.max(0, r.total - paid - writtenOff) : 0,
         patientId: r.patientId,
         patientName: r.patient.fullName,
         issuedAt: r.issuedAt?.toISOString() ?? null,
         createdAt: r.createdAt.toISOString(),
-      }),
-    ),
+      };
+    }),
     total,
     page: query.page,
     pageSize: query.pageSize,
@@ -253,6 +284,9 @@ export async function createDraft(tenantId: string, rawInput: unknown, actor: Ac
     let chosen: BillableCharge[];
     if (input.chargeIds) {
       const byId = new Map(billable.map((c) => [c.id, c]));
+      // A charge chosen brings its discounts along.
+      const chosenIds = new Set(input.chargeIds);
+      for (const c of billable) if (c.discountOfId && chosenIds.has(c.discountOfId) && !chosenIds.has(c.id)) input.chargeIds.push(c.id);
       const missing = input.chargeIds.filter((cid) => !byId.has(cid));
       if (missing.length) {
         throw new FinanceError(409, "not_billable", "some charges are billed already or are not the patient's", {
@@ -305,7 +339,16 @@ export async function updateDraft(tenantId: string, id: string, rawInput: unknow
     const invoice = await lockDraft(tx, tenantId, id);
     if (invoice.status !== "DRAFT") throw invoiceState(invoice.status, "changed", "An issued invoice never changes: cancel it with a credit note and issue a new one.");
     if (input.removeChargeIds?.length) {
-      await tx.invoiceLine.deleteMany({ where: { tenantId, invoiceId: id, chargeId: { in: input.removeChargeIds } } });
+      // A discount stays with its charge: taking a charge off takes its discounts too, and a discount alone stays.
+      const onDraft = await tx.invoiceLine.findMany({ where: { tenantId, invoiceId: id }, select: { chargeId: true, charge: { select: { discountOfId: true } } } });
+      const discountOf = new Map(onDraft.filter((l) => l.charge.discountOfId).map((l) => [l.chargeId, l.charge.discountOfId!]));
+      const removing = new Set(input.removeChargeIds);
+      const alone = [...removing].filter((cid) => discountOf.has(cid) && !removing.has(discountOf.get(cid)!));
+      if (alone.length) {
+        throw new FinanceError(409, "discount_stays", "a discount is taken off with its charge", { message: "A discount stays with its charge: take the charge off to take its discount off too." });
+      }
+      for (const [discount, of] of discountOf) if (removing.has(of)) removing.add(discount);
+      await tx.invoiceLine.deleteMany({ where: { tenantId, invoiceId: id, chargeId: { in: [...removing] } } });
     }
     const lines = await tx.invoiceLine.findMany({ where: { tenantId, invoiceId: id }, select: { amount: true } });
     const sum = lines.reduce((s, l) => s + l.amount, 0);
@@ -392,6 +435,8 @@ export async function cancelInvoice(tenantId: string, id: string, rawInput: unkn
     const allocations = await tx.paymentAllocation.findMany({ where: { tenantId, invoiceId: id }, select: { amount: true, payment: { select: { patientId: true } } } });
     const released = allocations.reduce((s, a) => s + a.amount, 0);
     await tx.paymentAllocation.deleteMany({ where: { tenantId, invoiceId: id } });
+    // What was written off on it goes with it: its charges are billable again, in full.
+    await tx.writeOff.updateMany({ where: { tenantId, invoiceId: id, voidedAt: null }, data: { voidedAt: now } });
     await tx.invoice.update({ where: { id }, data: { status: "CANCELLED", cancelledAt: now, cancelledById: actor.id ?? null, cancelReason: input.reason } });
     // What it had been paid goes back to whoever paid it (the patient, or the head of their family) and on to open invoices.
     await allocateFor(tx, tenantId, [invoice.patientId, ...allocations.map((a) => a.payment.patientId)], actor.id ?? null);

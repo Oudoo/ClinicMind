@@ -11,12 +11,13 @@ import type { LedgerEntry, LedgerKind } from "./ledger-copy";
 
 /**
  * The patient's account: every charge (work done, a reversal, a visit charged
- * nothing), every payment, deposit and consultation fee, every refund and
- * what a family member paid for the patient (or the patient for one), in date
- * order with the balance after each line. Positive is owed, negative is
- * credit. Voided payments are left out: they never counted.
+ * nothing, a discount), every payment, deposit and consultation fee, every
+ * refund, every write-off and what a family member paid for the patient (or
+ * the patient for one), in date order with the balance after each line.
+ * Positive is owed, negative is credit. Voided payments and write-offs voided
+ * with their invoice are left out: they never counted.
  *
- *   balance = charges − deposits and payments + refunds
+ *   balance = charges − deposits and payments + refunds − write-offs
  *             + paid for family members − paid by family members
  *
  * A consultation fee is charged and paid at once, so it shows on both sides.
@@ -89,7 +90,7 @@ async function transfersOf(client: Client, tenantId: string, ids: string[]): Pro
 async function loadEntries(client: Client, tenantId: string, subjects: Subject[]): Promise<RawEntry[]> {
   const ids = subjects.map((s) => s.id);
   const name = new Map(subjects.map((s) => [s.id, s.fullName]));
-  const [charges, payments, transfers] = await Promise.all([
+  const [charges, payments, transfers, writeOffs] = await Promise.all([
     client.charge.findMany({
       where: { tenantId, patientId: { in: ids } },
       select: {
@@ -99,6 +100,9 @@ async function loadEntries(client: Client, tenantId: string, subjects: Subject[]
         description: true,
         chargedAt: true,
         createdAt: true,
+        reversalOfId: true,
+        discountOfId: true,
+        reason: true,
         invoiceLines: { where: { invoice: { status: { in: [...BILLED] } } }, select: { invoice: { select: { number: true } } }, take: 1 },
       },
     }),
@@ -118,11 +122,15 @@ async function loadEntries(client: Client, tenantId: string, subjects: Subject[]
       },
     }),
     transfersOf(client, tenantId, ids),
+    client.writeOff.findMany({
+      where: { tenantId, patientId: { in: ids }, voidedAt: null },
+      select: { id: true, patientId: true, amount: true, reason: true, note: true, writtenOffAt: true, createdAt: true, invoice: { select: { number: true } } },
+    }),
   ]);
-  const blank = { description: null, method: null, towards: null, note: null, counterpart: null, invoiceNumber: null } as const;
+  const blank = { description: null, method: null, towards: null, note: null, reason: null, counterpart: null, invoiceNumber: null } as const;
   const entries: RawEntry[] = [];
   for (const c of charges) {
-    const kind: LedgerKind = c.amount > 0 ? "CHARGE" : c.amount < 0 ? "REVERSAL" : "NO_CHARGE";
+    const kind: LedgerKind = c.reversalOfId ? "REVERSAL" : c.discountOfId ? "DISCOUNT" : c.amount > 0 ? "CHARGE" : c.amount < 0 ? "REVERSAL" : "NO_CHARGE";
     const invoice = c.invoiceLines[0]?.invoice.number ?? null;
     entries.push({
       ...blank,
@@ -135,8 +143,26 @@ async function loadEntries(client: Client, tenantId: string, subjects: Subject[]
       reference: invoice,
       invoiceNumber: invoice,
       description: c.description,
+      reason: c.reason,
       debit: Math.max(0, c.amount),
       credit: Math.max(0, -c.amount),
+    });
+  }
+  for (const w of writeOffs) {
+    entries.push({
+      ...blank,
+      id: `write-off:${w.id}`,
+      at: w.writtenOffAt.toISOString(),
+      createdAt: w.createdAt,
+      kind: "WRITE_OFF",
+      patientId: w.patientId,
+      patientName: name.get(w.patientId) ?? "",
+      reference: w.invoice.number,
+      invoiceNumber: w.invoice.number,
+      reason: w.reason,
+      note: w.note,
+      debit: 0,
+      credit: w.amount,
     });
   }
   for (const p of payments) {
@@ -193,7 +219,7 @@ export interface AccountPosition {
   notInvoiced: number;
   /** Paid and not yet put towards an invoice. */
   credit: number;
-  openInvoices: { id: string; number: string | null; patientId: string; patientName: string; issuedAt: string | null; total: number; paid: number; due: number }[];
+  openInvoices: { id: string; number: string | null; patientId: string; patientName: string; issuedAt: string | null; total: number; paid: number; writtenOff: number; due: number }[];
 }
 
 /** Each patient's balance now (patients with nothing on their account are 0). */
@@ -202,12 +228,14 @@ export async function patientBalances(client: Client, tenantId: string, ids: rea
   const balances = new Map(unique.map((id) => [id, 0]));
   if (!unique.length) return balances;
   const add = (id: string, amount: number) => balances.set(id, (balances.get(id) ?? 0) + amount);
-  const [charges, payments, transfers] = await Promise.all([
+  const [charges, payments, transfers, writeOffs] = await Promise.all([
     client.charge.groupBy({ by: ["patientId"], where: { tenantId, patientId: { in: unique } }, _sum: { amount: true } }),
     client.payment.groupBy({ by: ["patientId", "kind"], where: { tenantId, patientId: { in: unique }, deletedAt: null, kind: { in: [...CREDITING_KINDS, "REFUND"] } }, _sum: { amount: true } }),
     transfersOf(client, tenantId, unique),
+    client.writeOff.groupBy({ by: ["patientId"], where: { tenantId, patientId: { in: unique }, voidedAt: null }, _sum: { amount: true } }),
   ]);
   for (const c of charges) add(c.patientId, c._sum.amount ?? 0);
+  for (const w of writeOffs) add(w.patientId, -(w._sum.amount ?? 0));
   for (const p of payments) add(p.patientId, p.kind === "REFUND" ? (p._sum.amount ?? 0) : -(p._sum.amount ?? 0));
   for (const t of transfers) {
     if (balances.has(t.payerId)) add(t.payerId, t.amount);
@@ -245,7 +273,7 @@ export async function accountPosition(tx: Tx, tenantId: string, subjects: Subjec
     tx.invoice.findMany({
       where: { tenantId, patientId: { in: ids }, status: { in: [...OPEN_INVOICE_STATUSES] } },
       orderBy: [{ issuedAt: "asc" }, { createdAt: "asc" }],
-      select: { id: true, number: true, patientId: true, issuedAt: true, total: true, allocations: { select: { amount: true } } },
+      select: { id: true, number: true, patientId: true, issuedAt: true, total: true, allocations: { select: { amount: true } }, writeOffs: { where: { voidedAt: null }, select: { amount: true } } },
     }),
     Promise.all(ids.map((id) => patientCredit(tx, tenantId, id))),
   ]);
@@ -253,7 +281,8 @@ export async function accountPosition(tx: Tx, tenantId: string, subjects: Subjec
   const billed = (charged._sum.amount ?? 0) + (fees._sum.amount ?? 0);
   const openInvoices = invoices.map((i) => {
     const paid = i.allocations.reduce((s, a) => s + a.amount, 0);
-    return { id: i.id, number: i.number, patientId: i.patientId, patientName: name.get(i.patientId) ?? "", issuedAt: i.issuedAt?.toISOString() ?? null, total: i.total, paid, due: Math.max(0, i.total - paid) };
+    const writtenOff = i.writeOffs.reduce((s, w) => s + w.amount, 0);
+    return { id: i.id, number: i.number, patientId: i.patientId, patientName: name.get(i.patientId) ?? "", issuedAt: i.issuedAt?.toISOString() ?? null, total: i.total, paid, writtenOff, due: Math.max(0, i.total - paid - writtenOff) };
   });
   return {
     balance,

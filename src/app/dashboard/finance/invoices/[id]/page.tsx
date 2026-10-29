@@ -8,14 +8,16 @@ import { getInvoice, InvoiceNotFoundError } from "@/modules/finance/invoices";
 import { NotForRole } from "@/components/clinicmind/report-shared";
 import { InvoiceDocument } from "@/components/clinicmind/invoice-document";
 import { InvoiceActions } from "@/components/clinicmind/invoice-actions";
+import { discountLimitOf } from "@/modules/finance/discounts";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Invoice" };
 
 /**
  * `/dashboard/finance/invoices/[id]` — one invoice as the patient will see it,
- * with what can be done with it: a draft is issued or discarded, an issued
- * one printed, sent on WhatsApp or (the owner) cancelled with a credit note.
+ * with what can be done with it: a draft is issued, discarded or has a line
+ * discounted (within the role's limit); an issued one is printed, sent on
+ * WhatsApp or (the owner) written off or cancelled with a credit note.
  */
 export default async function InvoicePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -30,6 +32,7 @@ export default async function InvoicePage({ params }: { params: Promise<{ id: st
   });
   if (!invoice) notFound();
   const canAct = can(ctx.role, "payments:write");
+  const discountLimit = canAct && invoice.status === "DRAFT" ? await discountLimitOf(ctx.tenantId, ctx.role) : 0;
 
   return (
     <div className="mx-auto max-w-3xl space-y-4">
@@ -47,12 +50,16 @@ export default async function InvoicePage({ params }: { params: Promise<{ id: st
               status: invoice.status,
               number: invoice.number,
               total: invoice.total,
+              due: invoice.due,
+              lines: invoice.status === "DRAFT" ? invoice.lines.map((l) => ({ chargeId: l.chargeId, description: l.description, amount: l.amount })) : undefined,
+              discountOf: invoice.discountOf,
               language: invoice.language,
               patientId: invoice.patient.id,
               patientName: invoice.patient.fullName,
               sentAt: invoice.sentAt,
             }}
             canCancel={can(ctx.role, "tenant:manage")}
+            discountLimit={discountLimit}
           />
         ) : null}
       </div>
