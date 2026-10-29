@@ -7,6 +7,7 @@ import { seedCourses } from "./courses";
 import { seedInvoices } from "./invoices";
 import { seedHouseholds } from "./households";
 import { seedAdjustments } from "./adjustments";
+import { seedCash } from "./cash";
 import { seedConcierge } from "./concierge";
 import { seedIntake } from "./intake";
 import { seedAppointmentNotes } from "./appointment-notes";
@@ -67,6 +68,8 @@ export async function seedRound2(ctx: SeedContext): Promise<void> {
     ["receipts and invoices", seedInvoices],
     ["family accounts", seedHouseholds],
     ["discounts and write-offs", seedAdjustments],
+    // After every step that writes money: a day signed off takes no more.
+    ["cash drawer", seedCash],
     ["concierge", seedConcierge],
     ["intake", seedIntake],
     ["appointment notes", seedAppointmentNotes],

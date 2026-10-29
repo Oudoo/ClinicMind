@@ -8,7 +8,9 @@ import { zDateTime, zOptionalText, zText } from "@/lib/validation";
 import { getTenantTimezone } from "@/modules/appointments/service";
 import { KIND_LABELS, MAX_AMOUNT, METHOD_LABELS, PAYMENT_KINDS, PAYMENT_METHODS, type PaymentKindValue, type PaymentMethodValue } from "./constants";
 import type { Actor } from "./procedures";
-import { numberPayments } from "./documents";
+import { defaultClinicId, numberPayments } from "./documents";
+import { FinanceError } from "./errors";
+import { closedDaysAmong } from "./cash";
 import { allocateCredit } from "./allocations";
 
 /**
@@ -311,11 +313,15 @@ export async function previewImport(tenantId: string, rawInput: unknown): Promis
     : [];
   const known = new Set(existing.map((e) => e.reference));
   const seenInFile = new Set<string>();
+  // Imported money is booked at the first branch; a day signed off there takes no more.
+  const branch = await defaultClinicId(db, tenantId);
+  const lock = branch ? await closedDaysAmong(db, tenantId, branch, parsed.rows.flatMap((r) => (r.paidAt ? [r.paidAt] : []))) : null;
 
   const rows: ImportPreviewRow[] = parsed.rows.map((r) => {
     const problems = [...r.problems];
     const patient = r.phone ? (byPhone.get(r.phone) ?? null) : null;
     if (r.phone && !patient) problems.push("No patient with this phone number");
+    if (r.paidAt && lock?.closed.has(lock.dayOf(r.paidAt))) problems.push("That day is signed off: it takes no more money");
     if (r.reference) {
       if (known.has(r.reference)) problems.push("A payment with this reference already exists");
       else if (seenInFile.has(r.reference)) problems.push("Duplicate reference inside the file");
@@ -399,6 +405,14 @@ export async function confirmImport(tenantId: string, rawInput: unknown, actor: 
   const skipped = input.rows.length - rows.length;
   const importBatchId = randomUUID();
   if (!rows.length) return { importBatchId, created: 0, skipped };
+  const branch = await defaultClinicId(db, tenantId);
+  if (branch) {
+    const lock = await closedDaysAmong(db, tenantId, branch, rows.map((r) => r.paidAt));
+    const closed = [...new Set(rows.map((r) => lock.dayOf(r.paidAt)).filter((d) => lock.closed.has(d)))];
+    if (closed.length) {
+      throw new FinanceError(409, "day_closed", "rows fall on days signed off", { days: closed, message: `Signed off already, so they take no more money: ${closed.join(", ")}. Leave those rows out.` });
+    }
+  }
 
   const now = new Date();
   const created = await db.$transaction(async (tx) => {

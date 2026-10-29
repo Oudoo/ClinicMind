@@ -26,7 +26,7 @@ import { POST as importRoute } from "@/app/api/payments/import/route";
 import { POST as confirmRoute } from "@/app/api/payments/import/confirm/route";
 import { GET as summaryRoute } from "@/app/api/finance/summary/route";
 import { GET as exportRoute } from "@/app/api/finance/export/route";
-import { createTenant, createUser, dbTestsEnabled, deleteTenants, request, runAsSystem, sessionCookieFor } from "@/test/db";
+import { createTenant, createUser, dbTestsEnabled, deleteTenants, openShifts, request, runAsSystem, sessionCookieFor } from "@/test/db";
 
 // Setup and checks call the services directly; the routes enter their own request scope.
 runAsSystem();
@@ -127,6 +127,7 @@ describe.skipIf(!dbTestsEnabled)("finance routes", () => {
     receptionCookie = await sessionCookieFor(reception.id);
     assistantCookie = await sessionCookieFor(assistant.id);
     ownerBCookie = await sessionCookieFor(ownerB.id);
+    await openShifts(a, [owner.id, reception.id]);
     await ensureDefaultTreatments(a);
     await ensureDefaultTreatments(b);
     const treatment = async (tenantId: string, key: string) => (await db.treatment.findFirstOrThrow({ where: { tenantId, key } })).id;

@@ -7,7 +7,8 @@ import { Alert, Field } from "@/components/ui/field";
 import { Input, Select, Textarea } from "@/components/ui/input";
 import { DictationField } from "@/components/clinicmind/dictate-field";
 import { PatientPicker, type PatientOption } from "@/components/clinicmind/appointment-patient-picker";
-import { apiFetch, fieldErrors } from "@/lib/http";
+import Link from "next/link";
+import { ApiError, apiFetch, fieldErrors } from "@/lib/http";
 import { dateKeyInTz, formatDateInTz, formatTimeInTz, fromLocalInput } from "@/lib/time";
 import { formatNumber } from "@/lib/utils";
 import { KIND_LABELS, METHOD_LABELS, PAYMENT_KINDS, PAYMENT_METHODS, type PaymentKindValue, type PaymentMethodValue } from "@/modules/finance/constants";
@@ -59,6 +60,8 @@ export function RecordPaymentDialog({
   const [invoiceId, setInvoiceId] = useState("");
   const [issues, setIssues] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
+  // Money taken today goes into the cashier's open shift: without one, the way to the drawer.
+  const [noShift, setNoShift] = useState(false);
   const [busy, setBusy] = useState(false);
 
   // From the finance dashboard: load the chosen patient's open procedures.
@@ -139,6 +142,7 @@ export function RecordPaymentDialog({
     } catch (err) {
       const fields = fieldErrors(err);
       setIssues(fields);
+      setNoShift(err instanceof ApiError && (err.code === "no_shift" || err.code === "stale_shift"));
       setError(Object.keys(fields).length ? "Please check the highlighted fields." : financeErrorMessage(err));
     } finally {
       setBusy(false);
@@ -151,7 +155,19 @@ export function RecordPaymentDialog({
     <Dialog open onOpenChange={onOpenChange}>
       <DialogContent title="Record a payment" description={`Whole EGP · times on the clinic clock (${timezone}).`} className="max-w-xl">
         <form onSubmit={submit} className="space-y-4" noValidate>
-          {error ? <Alert>{error}</Alert> : null}
+          {error ? (
+            <Alert>
+              {error}
+              {noShift ? (
+                <>
+                  {" "}
+                  <Link href="/dashboard/finance/cash" className="font-medium underline underline-offset-2">
+                    Open the cash drawer
+                  </Link>
+                </>
+              ) : null}
+            </Alert>
+          ) : null}
           {presetPatient ? (
             <p className="text-sm">
               <span className="data-label mr-2">Patient</span>

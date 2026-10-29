@@ -192,6 +192,8 @@ model Tenant {
   creditNotes             CreditNote[]
   paymentAllocations      PaymentAllocation[]
   writeOffs               WriteOff[]
+  cashShifts              CashShift[]
+  dayCloses               DayClose[]
   documentSequences       DocumentSequence[]
 
   @@index([status])
@@ -244,6 +246,8 @@ model Clinic {
   appointments Appointment[]
   prices       PriceItemPrice[]
   invoices     Invoice[]
+  cashShifts   CashShift[]
+  dayCloses    DayClose[]
 
   @@unique([tenantId, code])
   @@index([tenantId])
@@ -288,6 +292,7 @@ model User {
   notificationPreference NotificationPreference?
   savedViews             SavedView[]
   safetyOverrides        SafetyOverride[]
+  cashShifts             CashShift[]
 
   @@unique([tenantId, email])
   @@index([tenantId, role])
@@ -1390,6 +1395,60 @@ model WriteOff {
   @@map("write_offs")
 }
 
+enum CashShiftStatus {
+  OPEN
+  CLOSED
+}
+
+/// A cashier's shift at a branch's desk: the cash in the drawer when it opens, the money taken and paid out
+/// in it, and what was counted at the close, per method, with the reason for any difference. A cashier has
+/// one open shift at a time (a partial unique index); money is taken only in an open shift.
+model CashShift {
+  id           String          @id @default(cuid())
+  tenantId     String
+  tenant       Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  clinicId     String
+  clinic       Clinic          @relation(fields: [clinicId], references: [id], onDelete: NoAction)
+  userId       String
+  user         User            @relation(fields: [userId], references: [id], onDelete: NoAction)
+  status       CashShiftStatus @default(OPEN)
+  /// Cash in the drawer when the shift opened (whole EGP).
+  openingFloat Int             @default(0)
+  openedAt     DateTime
+  closedAt     DateTime?
+  /// At the close, per method: `[{ method, expected, counted, reason }]` (cash expected includes the float).
+  counts       Json?
+  note         String?
+  createdAt    DateTime        @default(now())
+
+  payments Payment[]
+
+  @@index([tenantId, clinicId, openedAt])
+  @@index([tenantId, userId, status])
+  @@map("cash_shifts")
+}
+
+/// The owner's sign-off of a branch's day: every shift of the day closed and counted, the totals per method.
+/// A day signed off is locked: no money is recorded on it or voided from it any more (a trigger holds it).
+model DayClose {
+  id         String   @id @default(cuid())
+  tenantId   String
+  tenant     Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  clinicId   String
+  clinic     Clinic   @relation(fields: [clinicId], references: [id], onDelete: NoAction)
+  /// The day on the branch's clock, YYYY-MM-DD.
+  day        String
+  closedAt   DateTime
+  closedById String?
+  /// Per method: `[{ method, expected, counted, difference }]`, and the shifts' count.
+  totals     Json
+  note       String?
+  createdAt  DateTime @default(now())
+
+  @@unique([tenantId, clinicId, day])
+  @@map("day_closes")
+}
+
 /// Money in or out, whole EGP: deposits, payments, refunds and consultation fees.
 model Payment {
   id              String        @id @default(cuid())
@@ -1413,6 +1472,9 @@ model Payment {
   clinicId        String?
   receiptSequence Int?
   receiptNumber   String?
+  /// The cashier's shift it was taken in (none for a card-machine import).
+  shiftId         String?
+  shift           CashShift?    @relation(fields: [shiftId], references: [id], onDelete: NoAction)
   createdById     String?
   createdAt       DateTime      @default(now())
   deletedAt       DateTime?
@@ -1424,6 +1486,7 @@ model Payment {
   @@index([tenantId, patientId])
   @@index([tenantId, appointmentId])
   @@index([procedureId])
+  @@index([shiftId])
   @@map("payments")
 }
 

@@ -81,6 +81,7 @@ test.describe("signed-in clinic owner", () => {
       ["Invoices", /invoices/i],
       ["Price list", /price list/i],
       ["Not billed", /not billed/i],
+      ["Cash drawer", /cash drawer/i],
       ["Settings", /settings/i],
     ] as const) {
       await page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: label }).first().click();

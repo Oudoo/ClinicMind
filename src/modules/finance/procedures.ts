@@ -13,7 +13,8 @@ import { priceOn } from "./prices";
 import { fromDateKey, startOfDayInTz } from "@/lib/time";
 import { getTenantTimezone } from "@/modules/appointments/service";
 import { postCharge, procedureLabel, reverseProcedureCharges, stagePhrase, stageShare, stagesFor, summarizeCharges } from "./charges";
-import { clinicForPayment, takeNumber } from "./documents";
+import { takeNumber, visitClinic } from "./documents";
+import { cashFor, zPaidAt } from "./cash";
 
 /**
  * Procedures: a treatment planned for or performed on a patient, with its
@@ -51,7 +52,7 @@ const isNum = (v: unknown): v is number => typeof v === "number" && Number.isFin
 export const DepositInput = z.object({
   amount: zPositiveMoney,
   method: z.enum(PAYMENT_METHODS).default("CASH"),
-  paidAt: zDateTime.optional(),
+  paidAt: zPaidAt.optional(),
   reference: zOptionalText(120),
 });
 
@@ -353,7 +354,8 @@ export async function createProcedure(tenantId: string, rawInput: unknown, actor
     let deposit: { id: string; amount: number } | null = null;
     if (input.deposit) {
       const paidAt = input.deposit.paidAt ?? new Date();
-      const clinicId = await clinicForPayment(tx, tenantId, { appointmentId: input.appointmentId, procedureId: procedure.id });
+      // Into the cashier's open shift, like any money taken today (see cash.ts).
+      const { shiftId, clinicId } = await cashFor(tx, tenantId, actor.id, paidAt, () => visitClinic(tx, tenantId, { appointmentId: input.appointmentId, procedureId: procedure.id }));
       const receipt = clinicId ? await takeNumber(tx, tenantId, clinicId, "RECEIPT") : null;
       const payment = await tx.payment.create({
         data: {
@@ -362,6 +364,7 @@ export async function createProcedure(tenantId: string, rawInput: unknown, actor
           procedureId: procedure.id,
           appointmentId: input.appointmentId ?? null,
           clinicId,
+          shiftId,
           receiptSequence: receipt?.sequence ?? null,
           receiptNumber: receipt?.number ?? null,
           kind: "DEPOSIT",

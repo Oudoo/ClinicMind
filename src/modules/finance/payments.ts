@@ -9,7 +9,8 @@ import { notify } from "@/modules/notifications/service";
 import { KIND_LABELS, LARGE_PAYMENT_THRESHOLD, MAX_AMOUNT, METHOD_LABELS, PAYMENT_KINDS, PAYMENT_METHODS } from "./constants";
 import { FinanceError, PaymentNotFoundError } from "./errors";
 import { requireTenantAppointment, type Actor } from "./procedures";
-import { clinicForPayment, takeNumber } from "./documents";
+import { takeNumber, visitClinic } from "./documents";
+import { assertDayOpen, cashFor, zPaidAt } from "./cash";
 import { allocateCredit, CREDITING_KINDS, patientCredit, payableBy, refreshInvoiceStatus, releasePayment, settledOn } from "./allocations";
 
 /**
@@ -21,7 +22,9 @@ import { allocateCredit, CREDITING_KINDS, patientCredit, payableBy, refreshInvoi
  * head of a family's money goes on to the members' invoices). A
  * refund needs a reason and the patient's credit to cover it. A voided
  * payment is soft-deleted (kept for the audit trail, out of every total) and
- * gives back what it had paid on invoices.
+ * gives back what it had paid on invoices. Money taken today goes into the
+ * cashier's open shift (see cash.ts); none is recorded on, or voided from, a
+ * day signed off.
  */
 
 const zId = zText(64).min(1);
@@ -32,7 +35,7 @@ export const PaymentInput = z
     kind: z.enum(PAYMENT_KINDS),
     method: z.enum(PAYMENT_METHODS).default("CASH"),
     amount: z.number().int().positive().max(MAX_AMOUNT),
-    paidAt: zDateTime.optional(),
+    paidAt: zPaidAt.optional(),
     procedureId: zOptionalText(64),
     appointmentId: zOptionalText(64),
     /** Put it towards this invoice first (matched by hand); otherwise the oldest open invoice is paid first. */
@@ -128,7 +131,8 @@ export async function recordPayment(tenantId: string, rawInput: unknown, actor: 
     if (invoice && invoice.status !== "ISSUED" && invoice.status !== "PART_PAID") {
       throw new FinanceError(409, "invalid_state", "the invoice has nothing to pay", { status: invoice.status, action: "paid", message: `Invoice ${invoice.number ?? ""} has nothing left to pay.` });
     }
-    const clinicId = await clinicForPayment(tx, tenantId, input);
+    // Taken today: into the cashier's open shift, at its branch; entered late for an earlier day: into no shift.
+    const { shiftId, clinicId } = await cashFor(tx, tenantId, actor.id, paidAt, () => visitClinic(tx, tenantId, input));
     const receipt = clinicId ? await takeNumber(tx, tenantId, clinicId, input.kind === "REFUND" ? "REFUND" : "RECEIPT") : null;
     const payment = await tx.payment.create({
       data: {
@@ -143,6 +147,7 @@ export async function recordPayment(tenantId: string, rawInput: unknown, actor: 
         reference: input.reference ?? null,
         note: input.note ?? null,
         clinicId,
+        shiftId,
         receiptSequence: receipt?.sequence ?? null,
         receiptNumber: receipt?.number ?? null,
         createdById: actor.id ?? null,
@@ -220,6 +225,7 @@ export async function voidPayment(tenantId: string, id: string, rawInput: unknow
   const { before, after } = await db.$transaction(async (tx) => {
     const before = await tx.payment.findFirst({ where: { id, tenantId, ...notDeleted }, include: paymentInclude });
     if (!before) throw new PaymentNotFoundError(id);
+    await assertDayOpen(tx, tenantId, before.clinicId, before.paidAt, "its money is not voided; record a refund instead.");
     const after = await tx.payment.update({ where: { id, tenantId }, data: { deletedAt: now }, include: paymentInclude });
     // What it paid on invoices is taken back; a voided refund gives the credit back. Either way, re-allocate.
     await releasePayment(tx, tenantId, id, before.patientId, actor.id ?? null);

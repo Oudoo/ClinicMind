@@ -30,6 +30,7 @@ import {
   medicationStartDays,
 } from "../../prisma/seed/clinical";
 import { accountPosition } from "@/modules/finance/ledger";
+import { dateKeyInTz } from "@/lib/time";
 
 const FEMALE_ONLY = /\b(PCOS|polycystic|hirsutism|melasma)\b/i;
 
@@ -268,5 +269,46 @@ describe("the seeded demo database (when DATABASE_URL points at one)", () => {
     ]);
     const paidForThem = await db.paymentAllocation.count({ where: { tenantId: demo.id, payment: { patientId: head.id }, invoice: { patient: { householdHeadId: head.id } } } });
     expect(paidForThem).toBeGreaterThan(0);
+  });
+
+  it("takes the desk's money in a shift of its day, counted at the close with the reason for any difference; signs off every day but yesterday and today", async (ctx) => {
+    if (!demo) return ctx.skip();
+    const tenantId = demo.id;
+    const clinic = await db.clinic.findFirstOrThrow({ where: { tenantId, deletedAt: null }, orderBy: [{ createdAt: "asc" }, { id: "asc" }], select: { id: true, timezone: true } });
+    const tz = clinic.timezone;
+    const today = dateKeyInTz(new Date(), tz);
+    const yesterday = dateKeyInTz(new Date(Date.now() - 86_400_000), tz);
+    expect(await db.payment.count({ where: { tenantId, deletedAt: null, importBatchId: null, shiftId: null, OR: [{ clinicId: clinic.id }, { clinicId: null }] } })).toBe(0);
+
+    const shifts = await db.cashShift.findMany({
+      where: { tenantId },
+      select: { status: true, clinicId: true, openingFloat: true, openedAt: true, counts: true, payments: { where: { deletedAt: null }, select: { kind: true, method: true, amount: true, paidAt: true } } },
+    });
+    const days = new Set<string>();
+    const wrong: string[] = [];
+    for (const s of shifts) {
+      const day = dateKeyInTz(s.openedAt, tz);
+      days.add(day);
+      if (s.payments.some((p) => dateKeyInTz(p.paidAt, tz) !== day)) wrong.push(`${day}: money from another day`);
+      if (s.status === "OPEN") {
+        if (day !== today) wrong.push(`${day}: still open`);
+        continue;
+      }
+      const expected = new Map<string, number>([["CASH", s.openingFloat]]);
+      for (const p of s.payments) expected.set(p.method, (expected.get(p.method) ?? 0) + (p.kind === "REFUND" ? -p.amount : p.amount));
+      const counts = (s.counts ?? []) as { method: string; expected: number; counted: number; difference: number; reason: string | null }[];
+      for (const [method, amount] of expected) {
+        const c = counts.find((x) => x.method === method);
+        if (!c || c.expected !== amount || c.counted - c.expected !== c.difference) wrong.push(`${day}: ${method} counted against ${c?.expected} for ${amount}`);
+        else if (c.difference !== 0 && !c.reason) wrong.push(`${day}: ${method} off by ${c.difference} with no reason`);
+      }
+    }
+    expect(wrong).toEqual([]);
+    expect(shifts.filter((s) => s.status === "OPEN").map((s) => dateKeyInTz(s.openedAt, tz))).toEqual([today]);
+    expect(shifts.some((s) => (s.counts as { difference: number }[] | null)?.some((c) => c.difference !== 0))).toBe(true);
+
+    const closes = new Set((await db.dayClose.findMany({ where: { tenantId, clinicId: clinic.id }, select: { day: true } })).map((d) => d.day));
+    expect([...days].filter((d) => d !== today && d !== yesterday && !closes.has(d))).toEqual([]);
+    expect(closes.has(today) || closes.has(yesterday)).toBe(false);
   });
 });

@@ -25,7 +25,7 @@ import { POST as cancelRoute } from "@/app/api/invoices/[id]/cancel/route";
 import { POST as sendRoute } from "@/app/api/invoices/[id]/send/route";
 import { POST as paymentRoute } from "@/app/api/payments/route";
 import { POST as voidRoute } from "@/app/api/payments/[id]/void/route";
-import { createTenant, createUser, dbTestsEnabled, deleteTenants, request, runAsSystem, sessionCookieFor } from "@/test/db";
+import { createTenant, createUser, dbTestsEnabled, deleteTenants, openShifts, request, runAsSystem, sessionCookieFor } from "@/test/db";
 
 runAsSystem();
 
@@ -91,6 +91,7 @@ describe.skipIf(!dbTestsEnabled)("invoice routes", () => {
     doctorCookie = await sessionCookieFor(doctor.id);
     assistantCookie = await sessionCookieFor(assistant.id);
     ownerBCookie = await sessionCookieFor(ownerB.id);
+    await openShifts(a, [owner.id, reception.id], branch1);
     await ensureDefaultTreatments(a);
     acne = (await db.treatment.findFirstOrThrow({ where: { tenantId: a, key: "acne" } })).id;
     patientB = (await db.patient.create({ data: { tenantId: b, fullName: "Patient Of B", phone: "+201009999999" } })).id;

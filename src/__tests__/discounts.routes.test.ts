@@ -29,7 +29,7 @@ import { POST as discountRoute } from "@/app/api/invoices/[id]/discount/route";
 import { POST as writeOffRoute } from "@/app/api/invoices/[id]/write-off/route";
 import { POST as paymentRoute } from "@/app/api/payments/route";
 import { GET as ledgerRoute } from "@/app/api/patients/[id]/ledger/route";
-import { createTenant, createUser, dbTestsEnabled, deleteTenants, request, runAsSystem, sessionCookieFor } from "@/test/db";
+import { createTenant, createUser, dbTestsEnabled, deleteTenants, openShifts, request, runAsSystem, sessionCookieFor } from "@/test/db";
 
 runAsSystem();
 
@@ -114,6 +114,7 @@ describe.skipIf(!dbTestsEnabled)("discount and write-off routes", () => {
     doctorCookie = await sessionCookieFor(doctor.id);
     assistantCookie = await sessionCookieFor(assistant.id);
     ownerBCookie = await sessionCookieFor(ownerB.id);
+    await openShifts(a, [owner.id, reception.id, nurse.id], branch);
     await ensureDefaultTreatments(a);
     acne = (await db.treatment.findFirstOrThrow({ where: { tenantId: a, key: "acne" } })).id;
   });

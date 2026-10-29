@@ -57,8 +57,8 @@ export async function defaultClinicId(tx: Tx, tenantId: string): Promise<string 
   return clinic?.id ?? null;
 }
 
-/** The branch a payment was taken at: its visit's, its procedure's visit's, else the first location. */
-export async function clinicForPayment(tx: Tx, tenantId: string, link: { appointmentId?: string | null; procedureId?: string | null }): Promise<string | null> {
+/** The branch of a payment's visit: its appointment's, or its procedure's appointment's (null when it has none). */
+export async function visitClinic(tx: Tx, tenantId: string, link: { appointmentId?: string | null; procedureId?: string | null }): Promise<string | null> {
   if (link.appointmentId) {
     const a = await tx.appointment.findFirst({ where: { id: link.appointmentId, tenantId }, select: { clinicId: true } });
     if (a?.clinicId) return a.clinicId;
@@ -70,7 +70,12 @@ export async function clinicForPayment(tx: Tx, tenantId: string, link: { appoint
       if (a?.clinicId) return a.clinicId;
     }
   }
-  return defaultClinicId(tx, tenantId);
+  return null;
+}
+
+/** The branch a payment was taken at: its visit's, its procedure's visit's, else the first location. */
+export async function clinicForPayment(tx: Tx, tenantId: string, link: { appointmentId?: string | null; procedureId?: string | null }): Promise<string | null> {
+  return (await visitClinic(tx, tenantId, link)) ?? defaultClinicId(tx, tenantId);
 }
 
 /**

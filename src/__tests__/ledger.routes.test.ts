@@ -28,7 +28,7 @@ import { GET as nextRoute } from "@/app/api/appointments/next/route";
 import { POST as createProcedureRoute } from "@/app/api/procedures/route";
 import { POST as signRoute } from "@/app/api/procedures/[id]/sign/route";
 import { POST as cancelProcedureRoute } from "@/app/api/procedures/[id]/cancel/route";
-import { createTenant, createUser, dbTestsEnabled, deleteTenants, request, runAsSystem, sessionCookieFor } from "@/test/db";
+import { createTenant, createUser, dbTestsEnabled, deleteTenants, openShifts, request, runAsSystem, sessionCookieFor } from "@/test/db";
 
 runAsSystem();
 
@@ -118,6 +118,7 @@ describe.skipIf(!dbTestsEnabled)("patient ledger and family account routes", () 
     doctorCookie = await sessionCookieFor(doctor.id);
     assistantCookie = await sessionCookieFor(assistant.id);
     ownerBCookie = await sessionCookieFor(ownerB.id);
+    await openShifts(a, [owner.id, reception.id], branch);
     await ensureDefaultTreatments(a);
     acne = (await db.treatment.findFirstOrThrow({ where: { tenantId: a, key: "acne" } })).id;
     patientB = (await db.patient.create({ data: { tenantId: b, fullName: "Patient Of B", phone: "+201008888888" } })).id;

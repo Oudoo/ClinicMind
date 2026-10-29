@@ -66,6 +66,15 @@ export async function createUser(opts: {
   });
 }
 
+/**
+ * Open a cash shift for each user, at the tenant's first branch unless one is
+ * given: money taken today goes into the cashier's open shift (see cash.ts).
+ */
+export async function openShifts(tenantId: string, userIds: string[], clinicId?: string): Promise<void> {
+  const branch = clinicId ?? (await db.clinic.findFirstOrThrow({ where: { tenantId, deletedAt: null }, orderBy: [{ createdAt: "asc" }, { id: "asc" }], select: { id: true } })).id;
+  await db.cashShift.createMany({ data: userIds.map((userId) => ({ tenantId, clinicId: branch, userId, openingFloat: 0, openedAt: new Date() })) });
+}
+
 /** Sign a user in the way the login route does and return the Cookie header value. */
 export async function sessionCookieFor(userId: string): Promise<string> {
   const session = await createSession(userId, { userAgent: "vitest" });
