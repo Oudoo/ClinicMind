@@ -195,6 +195,9 @@ model Tenant {
   cashShifts              CashShift[]
   dayCloses               DayClose[]
   documentSequences       DocumentSequence[]
+  recallRules             RecallRule[]
+  recalls                 Recall[]
+  recallActivities        RecallActivity[]
 
   @@index([status])
   @@map("tenants")
@@ -405,6 +408,7 @@ model Patient {
   intakeLinks      IntakeLink[]
   householdMembers Patient[]            @relation("Household")
   writeOffs        WriteOff[]
+  recalls          Recall[]
 
   @@index([tenantId])
   @@index([tenantId, householdHeadId])
@@ -989,10 +993,12 @@ model Treatment {
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
-  procedures Procedure[]
-  protocols  Protocol[]
-  campaigns  Campaign[]
-  priceItems PriceItem[]
+  procedures  Procedure[]
+  protocols   Protocol[]
+  campaigns   Campaign[]
+  priceItems  PriceItem[]
+  recallRules RecallRule[]
+  recalls     Recall[]
 
   @@unique([tenantId, key])
   @@index([tenantId])
@@ -1199,6 +1205,7 @@ model Procedure {
   payments  Payment[]
   charges   Charge[]
   enrolment ConciergeEnrolment?
+  recalls   Recall[]
 
   @@index([tenantId, performedAt])
   @@index([tenantId, patientId])
@@ -1936,4 +1943,163 @@ model PriceItemPrice {
 
   @@index([tenantId, priceItemId, effectiveFrom])
   @@map("price_item_prices")
+}
+
+// ── Recalls ──────────────────────────────────────────────────────────────────
+
+/// Why a patient is due back: a review after a treatment, the next session of a course, treatment accepted but
+/// never booked, a visit missed or cancelled and not rebooked, or no visit for a year or more.
+enum RecallKind {
+  REVIEW
+  NEXT_SESSION
+  UNBOOKED
+  MISSED
+  LAPSED
+}
+
+/// OPEN (due soon, due or overdue by its dates) → CONTACTED → BOOKED → DONE; or SNOOZED until a day, DECLINED
+/// with a reason, UNREACHABLE. DONE, DECLINED and UNREACHABLE are the ends.
+enum RecallStatus {
+  OPEN
+  CONTACTED
+  SNOOZED
+  BOOKED
+  DONE
+  DECLINED
+  UNREACHABLE
+}
+
+enum RecallActivityKind {
+  CALL
+  MESSAGE
+  STATUS
+  NOTE
+}
+
+/// What a rule brings patients back for: the sessions of a course (the next one an interval after each) or reviews at set days.
+enum RecallRuleKind {
+  SESSIONS
+  REVIEWS
+}
+
+/// When a treatment or a diagnosis brings a patient back: the interval or the review days, the window still on
+/// time, how many sessions make a course, who works the recall and how they reach the patient.
+model RecallRule {
+  id             String         @id @default(cuid())
+  tenantId       String
+  tenant         Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name           String
+  kind           RecallRuleKind
+  /// A procedure of this treatment triggers it (signed, or a session of it done).
+  treatmentId    String?
+  treatment      Treatment?     @relation(fields: [treatmentId], references: [id], onDelete: Cascade)
+  /// A signed consultation with a diagnosis containing one of these words triggers it (stored lower case).
+  diagnosisTerms String[]       @default([])
+  /// SESSIONS: one value, the days from one session to the next; REVIEWS: the days after the treatment of each review.
+  dueDays        Int[]
+  /// Days after the due day still on time ("every 4–6 weeks": due at 28 days, window 14).
+  windowDays     Int            @default(14)
+  /// SESSIONS: how many sessions make a course when each is recorded as its own procedure (a course sold as a package counts its own).
+  sessions       Int?
+  ownerRole      UserRole       @default(RECEPTIONIST)
+  /// One named person instead of everyone in the role.
+  ownerId        String?
+  /// How the patient is reached: WhatsApp (the automatic messages too), a phone call (VOICE) or SMS.
+  channel        ChannelType    @default(WHATSAPP)
+  active         Boolean        @default(true)
+  createdById    String?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  recalls Recall[]
+
+  @@index([tenantId, treatmentId])
+  @@map("recall_rules")
+}
+
+/// One patient due back for one reason, worked until it ends as done, declined (with the reason) or unreachable.
+model Recall {
+  id                  String       @id @default(cuid())
+  tenantId            String
+  tenant              Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  patientId           String
+  patient             Patient      @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  kind                RecallKind
+  ruleId              String?
+  rule                RecallRule?  @relation(fields: [ruleId], references: [id], onDelete: SetNull)
+  treatmentId         String?
+  treatment           Treatment?   @relation(fields: [treatmentId], references: [id], onDelete: SetNull)
+  /// The procedure it follows: reviewed, its next session, or the planned work itself.
+  procedureId         String?
+  procedure           Procedure?   @relation(fields: [procedureId], references: [id], onDelete: SetNull)
+  /// NEXT_SESSION: the session it brings the patient back for (1-based).
+  stage               Int?
+  /// MISSED: the visit missed or cancelled; LAPSED: the last visit.
+  appointmentId       String?
+  /// The signed consultation it follows (a diagnosis rule, or a follow-up the doctor stated).
+  consultationId      String?
+  label               String
+  /// The first day it is due and the last day still on time (start and end of those days on the clinic clock).
+  dueAt               DateTime
+  windowEndAt         DateTime
+  status              RecallStatus @default(OPEN)
+  ownerRole           UserRole     @default(RECEPTIONIST)
+  ownerId             String?
+  channel             ChannelType  @default(WHATSAPP)
+  /// What the visit it brings is expected to charge (whole EGP; 0 when not known).
+  value               Int          @default(0)
+  /// When to try the patient again: after no answer, or the day they asked to be called.
+  nextContactAt       DateTime?
+  /// Calls and messages by staff (the automatic messages are not counted).
+  attempts            Int          @default(0)
+  lastContactAt       DateTime?
+  snoozedUntil        DateTime?
+  /// The visit booked for it.
+  bookedAppointmentId String?
+  bookedAt            DateTime?
+  bookedById          String?
+  /// The visit that closed it as done (none when a session or the planned work was marked done without one).
+  doneAppointmentId   String?
+  /// DECLINED: a key of the fixed list (modules/recalls/constants.ts).
+  declineReason       String?
+  outcomeNote         String?
+  closedAt            DateTime?
+  closedById          String?
+  /// Automatic messages sent so far: 1 (14 days before), 2 (the due day), 3 (7 days after).
+  autoStep            Int          @default(0)
+  /// One recall per source (a review, a session, a plan, a missed visit, a lapse): never recalled twice.
+  dedupeKey           String
+  createdById         String?
+  createdAt           DateTime     @default(now())
+  updatedAt           DateTime     @updatedAt
+
+  activities RecallActivity[]
+
+  @@unique([tenantId, dedupeKey])
+  @@index([tenantId, status, dueAt])
+  @@index([tenantId, patientId, status])
+  @@index([tenantId, bookedAppointmentId])
+  @@index([procedureId])
+  @@map("recalls")
+}
+
+/// Every call, message, change of state and note on a recall, in order. Never edited or deleted (a trigger refuses it).
+model RecallActivity {
+  id        String             @id @default(cuid())
+  tenantId  String
+  tenant    Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  recallId  String
+  recall    Recall             @relation(fields: [recallId], references: [id], onDelete: Cascade)
+  kind      RecallActivityKind
+  /// CALL: the outcome; STATUS: the status it moved to; MESSAGE: the delivery.
+  outcome   String?
+  note      String?
+  messageId String?
+  /// Who did it; null: the system (an automatic message, a booking or visit it noticed).
+  byId      String?
+  at        DateTime           @default(now())
+
+  @@index([tenantId, recallId, at])
+  @@index([tenantId, byId, at])
+  @@map("recall_activities")
 }

@@ -19,6 +19,7 @@ import {
 import { notify } from "@/modules/notifications/service";
 import { getTenantTimezone } from "@/modules/appointments/service";
 import { transitionTimeBlock } from "@/modules/appointments/rules";
+import { recallsOnConsultationSigned, safely } from "@/modules/recalls/engine";
 import { medicationKey } from "./normalise";
 import { findSummaryMentions } from "./summary";
 import { loadSafetyRecord, resolveOverrides, runSafetyChecks } from "./safety/context";
@@ -446,6 +447,9 @@ export async function signConsultation(
       excludeUserId: actor.userId,
     }).catch(() => undefined);
   }
+
+  // The reviews a diagnosis rule or a stated follow-up brings, and the visit closing what it served (never fails the signature).
+  await safely(`recalls for signed consultation ${consultation.id}`, () => recallsOnConsultationSigned(tenantId, consultation.id, { id: actor.userId }, now));
 
   // Make the signed record retrievable by the assistant (fire-and-forget).
   ingestInBackground({ kind: "consultation", tenantId, id: consultation.id });

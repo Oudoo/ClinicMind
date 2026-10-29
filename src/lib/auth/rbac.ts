@@ -37,7 +37,10 @@ export type Permission =
   | "finance:read" // the finance dashboard (revenue by doctor is owner-only)
   | "prices:manage" // edit the price list (codes, units, prices from a date)
   | "concierge:read"
-  | "concierge:write"; // answer check-ins, acknowledge and resolve escalations
+  | "concierge:write" // answer check-ins, acknowledge and resolve escalations
+  | "recalls:read" // the recall worklist and a patient's recalls
+  | "recalls:write" // log calls and messages, book, snooze, decline, add a recall
+  | "recalls:manage"; // the recall rules (intervals, reviews, owners, channels)
 
 const ALL: Permission[] = [
   "platform:manage",
@@ -65,6 +68,9 @@ const ALL: Permission[] = [
   "prices:manage",
   "concierge:read",
   "concierge:write",
+  "recalls:read",
+  "recalls:write",
+  "recalls:manage",
 ];
 
 const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
@@ -97,6 +103,9 @@ const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
     "prices:manage",
     "concierge:read",
     "concierge:write",
+    "recalls:read",
+    "recalls:write",
+    "recalls:manage",
   ],
   DOCTOR: [
     "patients:read",
@@ -113,6 +122,8 @@ const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
     "conversations:write",
     "concierge:read",
     "concierge:write",
+    "recalls:read",
+    "recalls:write",
   ],
   NURSE: [
     "patients:read",
@@ -127,6 +138,8 @@ const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
     "payments:write",
     "concierge:read",
     "concierge:write",
+    "recalls:read",
+    "recalls:write",
   ],
   RECEPTIONIST: [
     "patients:read",
@@ -139,8 +152,10 @@ const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
     "leads:write",
     "payments:write",
     "concierge:read",
+    "recalls:read",
+    "recalls:write",
   ],
-  ASSISTANT: ["patients:read", "appointments:read", "conversations:read", "leads:read"],
+  ASSISTANT: ["patients:read", "appointments:read", "conversations:read", "leads:read", "recalls:read"],
 };
 
 /**

@@ -14,12 +14,14 @@ import { seedAppointmentNotes } from "./appointment-notes";
 import { seedReporting } from "./reporting";
 import { seedNotifications } from "./notifications";
 import { seedSafety } from "./safety";
+import { seedRecalls } from "./recalls";
 
 /**
  * The second half of the demo seed: everything the PM round-2 modules need
  * (the price list, CRM leads and conversations, procedures and payments, concierge
  * enrolments, intake links, dictated appointment notes, campaign costs,
- * review snapshots, alert rules, prescribing-safety overrides, notifications).
+ * review snapshots, alert rules, prescribing-safety overrides, notifications,
+ * recalls).
  * Runs after the core clinic
  * (staff, patients, appointments, visits) exists; each module reads what it
  * needs from the database and keeps its own deterministic random stream.
@@ -76,6 +78,8 @@ export async function seedRound2(ctx: SeedContext): Promise<void> {
     ["reporting", seedReporting],
     ["prescribing safety", seedSafety],
     ["notifications", seedNotifications],
+    // Last: replays every signed procedure and consultation, then sweeps up to today.
+    ["recalls", seedRecalls],
   ];
   for (const [name, fn] of steps) {
     const started = Date.now();

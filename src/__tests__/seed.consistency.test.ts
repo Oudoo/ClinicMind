@@ -367,4 +367,30 @@ describe("the seeded demo database (when DATABASE_URL points at one)", () => {
       WHERE p."tenantId" = ${tenantId} GROUP BY p.id, p.amount HAVING SUM(a.amount) > p.amount`;
     expect(over).toEqual([]);
   });
+  it("recalls each patient once per reason: no doubled review, a booked recall's visit ahead, every ended one dated", async (ctx) => {
+    if (!demo) return ctx.skip();
+    const tenantId = demo.id;
+    const active = await db.recall.findMany({ where: { tenantId, status: { in: ["OPEN", "CONTACTED", "SNOOZED", "BOOKED"] } }, select: { id: true, patientId: true, ruleId: true, dedupeKey: true, kind: true, procedureId: true, stage: true, status: true, bookedAppointmentId: true } });
+    // One rule's review of one day, one course's session, one contact recall at a time per patient.
+    const seen = new Map<string, string>();
+    const doubled: string[] = [];
+    for (const r of active) {
+      const key = r.ruleId && r.kind === "REVIEW" ? `${r.patientId}:${r.ruleId}:${r.dedupeKey.split(":").pop()}` : r.kind === "NEXT_SESSION" ? `${r.patientId}:${r.procedureId}:${r.stage}` : ["MISSED", "UNBOOKED", "LAPSED"].includes(r.kind) ? `${r.patientId}:contact` : r.id;
+      if (seen.has(key)) doubled.push(`${r.dedupeKey} and ${seen.get(key)}`);
+      seen.set(key, r.dedupeKey);
+    }
+    expect(doubled).toEqual([]);
+    // A booked recall's visit is still ahead (or today) and live.
+    const booked = active.filter((r) => r.status === "BOOKED");
+    const visits = await db.appointment.findMany({ where: { tenantId, id: { in: booked.map((r) => r.bookedAppointmentId!) } }, select: { id: true, status: true, endsAt: true } });
+    const live = new Map(visits.map((v) => [v.id, v]));
+    expect(booked.filter((r) => !["SCHEDULED", "CONFIRMED", "CHECKED_IN", "IN_PROGRESS"].includes(live.get(r.bookedAppointmentId!)?.status ?? "")).map((r) => r.dedupeKey)).toEqual([]);
+    // Ended ones say when, and a decline says why; nobody archived is still being recalled.
+    expect(await db.recall.count({ where: { tenantId, status: { in: ["DONE", "DECLINED", "UNREACHABLE"] }, closedAt: null } })).toBe(0);
+    expect(await db.recall.count({ where: { tenantId, status: "DECLINED", declineReason: null } })).toBe(0);
+    expect(await db.recall.count({ where: { tenantId, status: { in: ["OPEN", "CONTACTED", "SNOOZED", "BOOKED"] }, patient: { deletedAt: { not: null } } } })).toBe(0);
+    // Every kind is on the list somewhere, so the demo shows each.
+    const kinds = new Set((await db.recall.findMany({ where: { tenantId }, select: { kind: true }, distinct: ["kind"] })).map((r) => r.kind));
+    expect([...kinds].sort()).toEqual(["LAPSED", "MISSED", "NEXT_SESSION", "REVIEW", "UNBOOKED"]);
+  });
 });

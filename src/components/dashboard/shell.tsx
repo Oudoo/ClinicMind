@@ -27,6 +27,7 @@ import {
   FileText,
   Wallet,
   FileSpreadsheet,
+  PhoneCall,
 } from "lucide-react";
 import { BRAND } from "@/lib/brand";
 import { onAuthChange } from "@/lib/auth/browser-session";
@@ -52,6 +53,7 @@ const NAV: NavItem[] = [
   { href: "/dashboard", label: "Overview", icon: LayoutDashboard },
   { href: "/dashboard/patients", label: "Patients", icon: Users },
   { href: "/dashboard/appointments", label: "Appointments", icon: CalendarDays },
+  { href: "/dashboard/recalls", label: "Recalls", icon: PhoneCall, permission: "recalls:read" },
   { href: "/dashboard/leads", label: "Leads", icon: UserPlus, badge: "CRM", permission: "leads:read" },
   { href: "/dashboard/conversations", label: "Conversations", icon: MessagesSquare },
   { href: "/dashboard/consultations", label: "Consultations", icon: Stethoscope },

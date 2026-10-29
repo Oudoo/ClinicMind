@@ -49,6 +49,7 @@ const PATIENT_OF: Record<string, PatientLookup> = {
   CheckIn: (tenantId, id) => systemDb.checkIn.findFirst({ where: { id, tenantId }, select: { patientId: true } }),
   Document: (tenantId, id) => systemDb.document.findFirst({ where: { id, tenantId }, select: { patientId: true } }),
   Lead: (tenantId, id) => systemDb.lead.findFirst({ where: { id, tenantId }, select: { patientId: true } }),
+  Recall: (tenantId, id) => systemDb.recall.findFirst({ where: { id, tenantId }, select: { patientId: true } }),
   ConciergeTask: async (tenantId, id) => {
     const task = await systemDb.conciergeTask.findFirst({ where: { id, tenantId }, select: { enrolment: { select: { patientId: true } } } });
     return task ? { patientId: task.enrolment.patientId } : null;

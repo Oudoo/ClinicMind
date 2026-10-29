@@ -3,7 +3,7 @@
  * reply box fills them in the browser and the server refuses a reply that
  * still carries one (a patient must never receive "{{date}}").
  */
-export const TEMPLATE_PLACEHOLDERS = ["name", "clinic", "doctor", "date", "link"] as const;
+export const TEMPLATE_PLACEHOLDERS = ["name", "clinic", "doctor", "date", "link", "treatment"] as const;
 export type TemplatePlaceholder = (typeof TEMPLATE_PLACEHOLDERS)[number];
 
 export type TemplateVars = Partial<Record<TemplatePlaceholder, string | null | undefined>>;
@@ -14,6 +14,7 @@ export const PLACEHOLDER_HINTS: Record<TemplatePlaceholder, string> = {
   doctor: "The doctor of the patient's next appointment",
   date: "The date and time of the patient's next appointment",
   link: "A link for the patient (the clinic's public address by default)",
+  treatment: "What a recall brings the patient back for (recall messages; typed in the inbox)",
 };
 
 const PLACEHOLDER = /\{\{\s*([a-zA-Z_]+)\s*\}\}/g;

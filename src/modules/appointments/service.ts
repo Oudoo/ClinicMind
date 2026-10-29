@@ -796,6 +796,21 @@ function notifyLater(tenantId: string, build: (tz: string) => NotifyInput): void
     .catch((err) => console.error("[appointments] notification failed", err));
 }
 
+/**
+ * The patient's recalls follow their bookings: a booking ahead books them, a
+ * cancelled or missed one reopens them, a visit closes them (modules/recalls).
+ * Loaded on demand (the recalls module books through this one) and never
+ * fails the booking.
+ */
+async function syncRecalls(tenantId: string, patientId: string): Promise<void> {
+  try {
+    const { syncPatientRecalls } = await import("@/modules/recalls/engine");
+    await syncPatientRecalls(tenantId, patientId);
+  } catch (err) {
+    console.error(`[appointments] recall sync failed for patient ${patientId}`, err);
+  }
+}
+
 // ── Writes ───────────────────────────────────────────────────────────────────
 
 export async function createAppointment(tenantId: string, rawInput: unknown, actor: Actor = {}) {
@@ -858,6 +873,7 @@ export async function createAppointment(tenantId: string, rawInput: unknown, act
   });
   // The patient profile document lists upcoming appointments; refresh it.
   ingestInBackground({ kind: "patient", tenantId, id: input.patientId });
+  await syncRecalls(tenantId, input.patientId);
   notifyLater(tenantId, (tz) => ({
     kind: "BOOKING_CREATED",
     title: `${appointment.status === "WAITLISTED" ? "Waitlisted" : "New booking"}: ${appointment.patient.fullName}`,
@@ -929,6 +945,7 @@ export async function rescheduleAppointment(
   });
   // The patient profile document lists upcoming appointments; refresh it.
   ingestInBackground({ kind: "patient", tenantId, id: before.patientId });
+  if (slotChanged) await syncRecalls(tenantId, before.patientId);
 
   // A live booking at a new time ahead asks the patient to confirm it (unless the desk says they already did).
   let confirmation: ConfirmationRequest | null = null;
@@ -1134,6 +1151,7 @@ export async function transitionAppointment(
   });
   // The patient profile document lists upcoming appointments; refresh it.
   ingestInBackground({ kind: "patient", tenantId, id: before.patientId });
+  await syncRecalls(tenantId, before.patientId);
 
   if (input.status === "CANCELLED" || input.status === "NO_SHOW") {
     const cancelled = input.status === "CANCELLED";

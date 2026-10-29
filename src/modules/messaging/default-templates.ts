@@ -1,7 +1,10 @@
 /**
  * The reply templates every clinic starts with (booking confirmation, price
- * reply, follow-up nudge, intake link; Arabic and English). Pure data so the
- * seed can import it without the server stack; owners edit them in Settings.
+ * reply, follow-up nudge, intake link, and the recall messages; Arabic and
+ * English). Pure data so the seed can import it without the server stack;
+ * owners edit them in Settings. A recall message's {{treatment}} and {{date}}
+ * are what it is for and when it is due, in the patient's language
+ * (modules/recalls/messages.ts).
  */
 export interface DefaultTemplate {
   key: string;
@@ -68,5 +71,75 @@ export const DEFAULT_TEMPLATES: readonly DefaultTemplate[] = [
     language: "en",
     category: "intake",
     body: "Hi {{name}}, before your visit on {{date}} please fill in your details here: {{link}} — it takes two minutes and saves time at the clinic.",
+  },
+  {
+    key: "recall-review-ar",
+    name: "Recall: review (AR)",
+    language: "ar",
+    category: "recall",
+    body: "أهلاً {{name}}، معاك {{clinic}}. ميعاد {{treatment}} {{date}}. ابعتلنا اليوم اللي يناسبك وإحنا نحجزلك 🌿",
+  },
+  {
+    key: "recall-review-en",
+    name: "Recall: review (EN)",
+    language: "en",
+    category: "recall",
+    body: "Hi {{name}}, this is {{clinic}}. Your {{treatment}} is due {{date}}. Reply here with a day that suits you and we'll book you in.",
+  },
+  {
+    key: "recall-session-ar",
+    name: "Recall: next session (AR)",
+    language: "ar",
+    category: "recall",
+    body: "أهلاً {{name}}، معاك {{clinic}}. ميعاد {{treatment}} {{date}}. ابعتلنا اليوم والوقت المناسبين ونحجزهولك.",
+  },
+  {
+    key: "recall-session-en",
+    name: "Recall: next session (EN)",
+    language: "en",
+    category: "recall",
+    body: "Hi {{name}}, this is {{clinic}}. Your {{treatment}} is due {{date}}. Reply with a day and time that suit you and we'll book it.",
+  },
+  {
+    key: "recall-unbooked-ar",
+    name: "Recall: treatment not booked (AR)",
+    language: "ar",
+    category: "recall",
+    body: "أهلاً {{name}}، معاك {{clinic}}. لسه ما حجزناش {{treatment}}. تحب نشوفلك ميعاد مناسب؟ ابعتلنا هنا.",
+  },
+  {
+    key: "recall-unbooked-en",
+    name: "Recall: treatment not booked (EN)",
+    language: "en",
+    category: "recall",
+    body: "Hi {{name}}, this is {{clinic}}. Your {{treatment}} isn't booked yet. Shall we find you a time? Just reply here.",
+  },
+  {
+    key: "recall-missed-ar",
+    name: "Recall: missed visit (AR)",
+    language: "ar",
+    category: "recall",
+    body: "أهلاً {{name}}، معاك {{clinic}}. افتقدناك {{date}}. تحب نحجزلك ميعاد تاني؟ ابعتلنا هنا ونرتبه.",
+  },
+  {
+    key: "recall-missed-en",
+    name: "Recall: missed visit (EN)",
+    language: "en",
+    category: "recall",
+    body: "Hi {{name}}, this is {{clinic}}. We missed you {{date}}. Shall we book you another time? Reply here and we'll arrange it.",
+  },
+  {
+    key: "recall-lapsed-ar",
+    name: "Recall: no visit in a while (AR)",
+    language: "ar",
+    category: "recall",
+    body: "أهلاً {{name}}، بقالك فترة ما زرتناش في {{clinic}}. لو حابب تيجي للمتابعة ابعتلنا هنا ونحجزلك ميعاد.",
+  },
+  {
+    key: "recall-lapsed-en",
+    name: "Recall: no visit in a while (EN)",
+    language: "en",
+    category: "recall",
+    body: "Hi {{name}}, it's been a while since your last visit to {{clinic}}. If you'd like a check-up, reply here and we'll find you a time.",
   },
 ];

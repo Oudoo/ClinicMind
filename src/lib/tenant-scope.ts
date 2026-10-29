@@ -29,7 +29,9 @@ export type TenantScopedEntity =
   | "protocol"
   | "enrolment"
   | "intake_link"
-  | "escalation";
+  | "escalation"
+  | "recall"
+  | "recall_rule";
 
 /**
  * Thrown when a referenced row does not belong to the acting tenant (or does

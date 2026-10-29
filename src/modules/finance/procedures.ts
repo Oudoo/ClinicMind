@@ -6,6 +6,7 @@ import { requireTenantPatient, requireTenantUser, TenantScopeError } from "@/lib
 import { zDateTime, zOptionalText, zText } from "@/lib/validation";
 import { requireTenantTreatment } from "@/modules/treatments/service";
 import { enrolOnSignedProcedure } from "@/modules/concierge/service";
+import { recallsOnProcedureCancelled, recallsOnProcedureSigned, recallsOnProcedureStarted, recallsOnStageDone, safely } from "@/modules/recalls/engine";
 import { DISCOUNT_REASONS, MAX_AMOUNT, PAYMENT_METHODS, PROCEDURE_STATUSES, procedureBalance } from "./constants";
 import { FinanceError, ProcedureNotFoundError, ProcedureStateError } from "./errors";
 import { assertDiscountAllowed, DiscountReasonFields, discountReasonIssues } from "./discounts";
@@ -548,7 +549,7 @@ async function signInTx(tx: Client, tenantId: string, before: Chargeable, actor:
   return { after, doctorName, from: before.status };
 }
 
-/** After a signature: the audit row, and the concierge enrolment (its failure must not undo the signature). */
+/** After a signature: the audit row, the recalls it makes and the concierge enrolment (their failure must not undo the signature). */
 async function afterSigning(tenantId: string, signed: { after: ProcedureRecord; doctorName: string | null; from: string }, actor: Actor, now: Date) {
   await audit({
     tenantId,
@@ -561,6 +562,7 @@ async function afterSigning(tenantId: string, signed: { after: ProcedureRecord; 
     before: { status: signed.from },
     after: { status: "SIGNED", signedAt: now.toISOString(), signedById: actor.id ?? null, doctor: signed.doctorName },
   });
+  await safely(`recalls for signed procedure ${signed.after.id}`, () => recallsOnProcedureSigned(tenantId, signed.after.id, actor, now));
   return enrolOnSignedProcedure(tenantId, signed.after.id, actor).catch((err: unknown) => {
     console.error(`[finance] concierge enrolment failed for procedure ${signed.after.id}`, err);
     return null;
@@ -634,6 +636,7 @@ export async function startProcedure(tenantId: string, id: string, rawInput: unk
     before: { status: "PLANNED" },
     after: { status: "STARTED", startedAt: input.startedAt, stages: after.stages },
   });
+  await safely(`recalls for started procedure ${id}`, () => recallsOnProcedureStarted(tenantId, id, actor));
   const [view] = await attachPeople(tenantId, [after]);
   return view!;
 }
@@ -709,6 +712,7 @@ export async function completeStage(tenantId: string, id: string, rawInput: unkn
     entityId: id,
     after: { stage: result.stage, of: result.of, amount: result.amount, chargeId: result.chargeId, performedAt: performedAt.toISOString() },
   });
+  await safely(`recalls for session ${result.stage} of procedure ${id}`, () => recallsOnStageDone(tenantId, id, result.stage, performedAt, actor, now));
   const enrolment = result.signed ? await afterSigning(tenantId, result.signed, actor, now) : null;
   const [view] = await attachPeople(tenantId, [result.after]);
   return { procedure: view!, stage: result.stage, of: result.of, amount: result.amount, enrolment };
@@ -792,6 +796,7 @@ export async function cancelProcedure(
     before: { status: before.status },
     after: { status: "CANCELLED", reason: input.reason, ...(reversed ? { chargeReversed: reversed } : {}) },
   });
+  await safely(`recalls for cancelled procedure ${id}`, () => recallsOnProcedureCancelled(tenantId, id, input.reason, actor, now));
   const [view] = await attachPeople(tenantId, [after]);
   return view!;
 }
