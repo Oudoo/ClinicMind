@@ -31,3 +31,17 @@ jobs:
         env:
           HOSTINGER_API_TOKEN: ${{ secrets.HOSTINGER_API_TOKEN }}
         run: node scripts/hostinger-api.mjs deploy/hostinger/status.json
+
+      # Each stage of an HTTPS request (connect, TLS, first byte), against this
+      # site and the account's other Node.js sites for comparison.
+      - name: Time HTTPS requests
+        if: always()
+        run: |
+          domain=$(jq -r .domain deploy/hostinger/status.json)
+          for url in "https://$domain/api/health" "https://$domain/login" "https://growcdx.com/" "https://dawak.growcdx.com/"; do
+            for ip in 4 6; do
+              curl -sS -o /dev/null -$ip --max-time 20 \
+                -w "$url (IPv$ip) → %{http_code}  connect %{time_connect}s  tls %{time_appconnect}s  first byte %{time_starttransfer}s\n" "$url" \
+                || echo "$url (IPv$ip) → no answer"
+            done
+          done
