@@ -81,9 +81,9 @@ class HostingerApi {
     });
   }
 
-  /** One tool of the server: its JSON answer, or an error with the server's explanation. */
-  async call(name, args = {}, timeoutMs) {
-    const result = await this.#request("tools/call", { name, arguments: args }, timeoutMs);
+  /** One API operation (the server runs them through its `execute` tool): its JSON answer, or an error with the server's explanation. */
+  async call(operation, params = {}, timeoutMs) {
+    const result = await this.#request("tools/call", { name: "execute", arguments: { operation, params } }, timeoutMs);
     const text = (result?.content ?? []).filter((c) => c.type === "text").map((c) => c.text).join("\n");
     let data = text;
     try {
@@ -91,7 +91,7 @@ class HostingerApi {
     } catch {
       // plain text answer
     }
-    if (result?.isError) throw new Error(`${name}: ${typeof data === "string" ? data : JSON.stringify(data)}`.slice(0, 2000));
+    if (result?.isError) throw new Error(`${operation}: ${typeof data === "string" ? data : JSON.stringify(data)}`.slice(0, 2000));
     return data;
   }
 }
