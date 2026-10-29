@@ -11,4 +11,7 @@ export async function signIn(page: Page, email = DEMO_EMAIL, password = DEMO_PAS
   await page.getByLabel(/password/i).fill(password);
   await page.getByRole("button", { name: /sign in/i }).click();
   await expect(page).toHaveURL(/\/dashboard/);
+  // Signing in loads the dashboard as a new document. Until its scripts run, a click on a menu
+  // goes nowhere: on a live site that takes a second or so, on this machine no time at all.
+  await page.waitForLoadState("load");
 }

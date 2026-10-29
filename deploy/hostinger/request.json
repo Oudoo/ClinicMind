@@ -1,7 +1,5 @@
 {
-  "action": "deploy",
+  "action": "status",
   "domain": "cm.growcdx.com",
-  "app": ".hostinger/app",
-  "reseed": true,
-  "requestedAt": "2026-10-29T15:25Z"
+  "requestedAt": "2026-10-29T15:40Z"
 }
