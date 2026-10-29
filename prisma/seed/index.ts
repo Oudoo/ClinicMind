@@ -22,6 +22,7 @@ import { seedInstalmentReminders, seedInstalments } from "./instalments";
 import { seedDoctorPay } from "./doctor-pay";
 import { seedExpenses } from "./expenses";
 import { seedLab } from "./lab";
+import { seedClaims, seedInsuranceCover } from "./insurance";
 
 /**
  * The second half of the demo seed: everything the PM round-2 modules need
@@ -69,12 +70,16 @@ export interface SeedContext {
   today: Date;
   /** Cash the desk paid out of the drawer for expenses (the expenses step), put in its day's shift by the cash drawer step. */
   drawerPayouts?: { expenseId: string; amount: number; paidAt: Date; createdById: string }[];
+  /** A covered patient's share of work done on a day (the insurance step); null: not covered, they pay it all. */
+  insurance?: { patientShare: (patientId: string, work: { day: string; amount: number; category: string | null }) => number | null };
 }
 
 export async function seedRound2(ctx: SeedContext): Promise<void> {
   const steps: [string, (c: SeedContext) => Promise<void>][] = [
     ["treatments", seedTreatments],
     ["price list", seedPrices],
+    // Before the money: covered patients pay their share, the invoices claim the rest.
+    ["insurance and companies", seedInsuranceCover],
     ["crm", seedCrm],
     ["finance", seedFinance],
     ["courses", seedCourses],
@@ -89,6 +94,8 @@ export async function seedRound2(ctx: SeedContext): Promise<void> {
     ["expenses and suppliers", seedExpenses],
     // The labs' bills are expenses, and costs on the procedures for doctor pay.
     ["lab work", seedLab],
+    // The claims made with the invoices go to the payers, and their answers come back.
+    ["claims", seedClaims],
     // After every step that writes money: a day signed off takes no more.
     ["cash drawer", seedCash],
     ["concierge", seedConcierge],

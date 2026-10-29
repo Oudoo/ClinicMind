@@ -1,7 +1,8 @@
 import type { SeedContext } from "./index";
 import { ensureBranchCode, takeNumber } from "../../src/modules/finance/documents";
-import { allocateCredit } from "../../src/modules/finance/allocations";
+import { allocateCredit, refreshInvoiceStatus } from "../../src/modules/finance/allocations";
 import { billableCharges, cancelInvoice, createDraft, issueInvoice } from "../../src/modules/finance/invoices";
+import { applyContractDiscounts, claimInvoiceTx } from "../../src/modules/insurance/claims";
 
 /**
  * Receipts and invoices for the demo clinic, as if the clinic had always
@@ -77,8 +78,14 @@ export async function seedInvoices(ctx: SeedContext): Promise<void> {
         },
         select: { id: true, total: true },
       });
+      const issuedAt = new Date(day.getTime() + 2 * 3_600_000);
+      // A covered patient's work at the contract's price, and the payer's share claimed.
+      await applyContractDiscounts(tx, tenantId, invoice.id, reception.id, issuedAt);
       const { sequence, number } = await takeNumber(tx, tenantId, clinicId, "INVOICE");
-      await tx.invoice.update({ where: { id: invoice.id }, data: { status: "ISSUED", sequence, number, issuedAt: new Date(day.getTime() + 2 * 3_600_000), issuedById: reception.id } });
+      await tx.invoice.update({ where: { id: invoice.id }, data: { status: "ISSUED", sequence, number, issuedAt, issuedById: reception.id } });
+      await claimInvoiceTx(tx, tenantId, invoice.id, reception.id, issuedAt);
+      // What the claim settles shows on the invoice even before the patient's money is put towards it.
+      await refreshInvoiceStatus(tx, tenantId, invoice.id);
     });
     patients.add(patientId);
     issued++;

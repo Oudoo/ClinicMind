@@ -30,6 +30,7 @@ import {
   medicationStartDays,
 } from "../../prisma/seed/clinical";
 import { accountPosition } from "@/modules/finance/ledger";
+import { claimedOn, claimsSettling } from "@/modules/finance/allocations";
 import { END_AFTER_SILENT_DAYS, END_AFTER_WINDOW_DAYS } from "@/modules/recalls/constants";
 import { addDays, dateKeyInTz } from "@/lib/time";
 import { adjustmentsReport, balancesReport, branchReport, dayCloseReport, incomeReport, productionReport, providersReport, reportScope } from "@/modules/finance/reports";
@@ -260,14 +261,14 @@ describe("the seeded demo database (when DATABASE_URL points at one)", () => {
       if (position.balance !== position.dueOnInvoices + position.notInvoiced - position.credit || position.credit < 0) wrong.push(`${p.fullName}: ${JSON.stringify(position)}`);
     }
     expect(wrong).toEqual([]);
-    // Every invoice's status says what was settled on it: the money allocated to it and what was written off.
+    // Every invoice's status says what was settled on it: the money allocated to it, what was written off and what its claims settle.
     const invoices = await db.invoice.findMany({
       where: { tenantId, status: { in: ["ISSUED", "PART_PAID", "PAID"] } },
-      select: { number: true, status: true, total: true, allocations: { select: { amount: true } }, writeOffs: { where: { voidedAt: null }, select: { amount: true } } },
+      select: { number: true, status: true, total: true, allocations: { select: { amount: true } }, writeOffs: { where: { voidedAt: null }, select: { amount: true } }, claims: claimsSettling },
     });
     const misstated = invoices.filter((i) => {
-      const paid = [...i.allocations, ...i.writeOffs].reduce((s, a) => s + a.amount, 0);
-      return i.status !== (paid >= i.total ? "PAID" : paid > 0 ? "PART_PAID" : "ISSUED");
+      const paid = [...i.allocations, ...i.writeOffs].reduce((s, a) => s + a.amount, 0) + claimedOn(i.claims);
+      return i.status !== (paid >= i.total ? "PAID" : paid > 0 ? "PART_PAID" : "ISSUED") || paid > i.total;
     });
     expect(misstated.map((i) => i.number)).toEqual([]);
   });
@@ -341,7 +342,7 @@ describe("the seeded demo database (when DATABASE_URL points at one)", () => {
     const tz = (await db.clinic.findFirstOrThrow({ where: { tenantId }, orderBy: [{ createdAt: "asc" }, { id: "asc" }], select: { timezone: true } })).timezone;
     const scope = await reportScope(tenantId, { period: "custom", from: dateKeyInTz(addDays(new Date(), -365, tz), tz), to: dateKeyInTz(new Date(), tz) });
     const span = { gte: scope.period.from, lt: scope.period.to };
-    const [production, income, branches, providers, adjustments, balances, charged, fees, money] = await Promise.all([
+    const [production, income, branches, providers, adjustments, balances, charged, fees, money, fromPayers] = await Promise.all([
       productionReport(scope),
       incomeReport(scope),
       branchReport(scope),
@@ -351,12 +352,16 @@ describe("the seeded demo database (when DATABASE_URL points at one)", () => {
       db.charge.aggregate({ where: { tenantId, chargedAt: span }, _sum: { amount: true } }),
       db.payment.aggregate({ where: { tenantId, kind: "CONSULTATION_FEE", deletedAt: null, paidAt: span }, _sum: { amount: true } }),
       db.payment.findMany({ where: { tenantId, deletedAt: null, paidAt: span }, select: { kind: true, amount: true } }),
+      db.payerPayment.aggregate({ where: { tenantId, voidedAt: null, paidAt: span }, _sum: { amount: true } }),
     ]);
     const t = production.totals;
     expect(t.net).toBe((charged._sum.amount ?? 0) + (fees._sum.amount ?? 0));
     expect(t.gross + t.discounts + t.cancelled + t.fees).toBe(t.net);
     expect(production.days.reduce((s, d) => s + d.net, 0)).toBe(t.net);
-    expect(income.totals.net).toBe(money.reduce((s, p) => s + (p.kind === "REFUND" ? -p.amount : p.amount), 0));
+    // Income is the patients' money and what insurers and companies paid of their claims.
+    expect(fromPayers._sum.amount ?? 0).toBeGreaterThan(0);
+    expect(income.totals.insurers).toBe(fromPayers._sum.amount ?? 0);
+    expect(income.totals.net).toBe(money.reduce((s, p) => s + (p.kind === "REFUND" ? -p.amount : p.amount), 0) + (fromPayers._sum.amount ?? 0));
     expect(branches.rows.reduce((s, r) => s + r.net, 0)).toBe(t.net);
     expect(branches.totals.income).toBe(income.totals.net);
     expect(providers.rows.reduce((s, r) => s + r.net, 0)).toBe(t.net);
@@ -716,5 +721,92 @@ describe("the seeded demo database (when DATABASE_URL points at one)", () => {
     expect(orders.some((o) => o.status === "RECEIVED" && !o.expense)).toBe(true);
     expect(orders.some((o) => o.status === "CANCELLED")).toBe(true);
     expect(await db.timelineEvent.count({ where: { tenantId, kind: "LAB" } })).toBeGreaterThanOrEqual(orders.length);
+  });
+
+  it("claims from insurers and a company: each its member's covered work, sent once a month in order, answered within the claim; the patient paid at most their share", async (ctx) => {
+    if (!demo) return ctx.skip();
+    const tenantId = demo.id;
+    const tz = "Africa/Cairo";
+    const day = (d: Date) => dateKeyInTz(d, tz);
+    const payers = await db.payer.findMany({ where: { tenantId }, select: { id: true, kind: true, paymentDays: true, _count: { select: { contracts: true, coverages: true, claims: true } } } });
+    expect(payers.length).toBeGreaterThanOrEqual(3);
+    expect(payers.some((p) => p.kind === "COMPANY")).toBe(true);
+    expect(payers.filter((p) => !p._count.contracts || !p._count.coverages || !p._count.claims)).toEqual([]);
+    const claims = await db.claim.findMany({
+      where: { tenantId, status: { not: "CANCELLED" } },
+      select: {
+        number: true,
+        status: true,
+        amount: true,
+        patientShare: true,
+        payerId: true,
+        patientId: true,
+        clinicId: true,
+        claimedAt: true,
+        coverage: { select: { payerId: true, patientId: true, validFrom: true, validTo: true } },
+        invoice: { select: { patientId: true, status: true } },
+        batch: { select: { payerId: true, clinicId: true, sentAt: true } },
+        lines: {
+          select: {
+            procedureId: true,
+            workedAt: true,
+            patientShare: true,
+            payerShare: true,
+            answers: { where: { voidedAt: null }, select: { paid: true, refused: true, writeOff: { select: { reason: true, amount: true } }, payerPayment: { select: { payerId: true, paidAt: true, voidedAt: true } } } },
+          },
+        },
+      },
+    });
+    const wrong: string[] = [];
+    for (const c of claims) {
+      if (c.coverage.payerId !== c.payerId || c.coverage.patientId !== c.patientId || c.invoice.patientId !== c.patientId) wrong.push(`${c.number}: not the member's or not the payer's`);
+      if (c.invoice.status === "DRAFT" || c.invoice.status === "CANCELLED") wrong.push(`${c.number}: its invoice is ${c.invoice.status}`);
+      if (c.amount !== c.lines.reduce((s, l) => s + l.payerShare, 0) || c.patientShare !== c.lines.reduce((s, l) => s + l.patientShare, 0)) wrong.push(`${c.number}: the shares do not add up`);
+      for (const l of c.lines) {
+        const worked = day(l.workedAt);
+        if (worked < c.coverage.validFrom.toISOString().slice(0, 10) || (c.coverage.validTo && worked > c.coverage.validTo.toISOString().slice(0, 10))) wrong.push(`${c.number}: work of ${worked} outside the cover`);
+        if (l.workedAt > c.claimedAt) wrong.push(`${c.number}: claimed before the work was done`);
+        for (const a of l.answers) {
+          if (a.payerPayment.payerId !== c.payerId || a.payerPayment.voidedAt) wrong.push(`${c.number}: answered by another payer's payment, or a voided one`);
+          if (c.batch && a.payerPayment.paidAt < c.batch.sentAt) wrong.push(`${c.number}: paid before it was sent`);
+          if (a.writeOff && (a.writeOff.reason !== "PAYER_REFUSED" || a.writeOff.amount !== a.refused)) wrong.push(`${c.number}: a refusal written off for another amount or reason`);
+        }
+      }
+      const owed = c.lines.reduce((s, l) => s + l.payerShare - l.answers.reduce((t, a) => t + a.paid + a.refused, 0), 0);
+      if (owed < 0) wrong.push(`${c.number}: answered for more than was claimed`);
+      const expected = owed === 0 ? "SETTLED" : c.batch ? "SENT" : "OPEN";
+      if (c.status !== expected) wrong.push(`${c.number}: ${c.status} for ${expected}`);
+      if (c.batch && (c.batch.payerId !== c.payerId || c.batch.clinicId !== c.clinicId || c.batch.sentAt < c.claimedAt)) wrong.push(`${c.number}: in another payer's or branch's batch, or sent before it was made`);
+    }
+    expect(wrong).toEqual([]);
+    expect(claims.some((c) => c.status === "OPEN")).toBe(true);
+    expect(claims.some((c) => c.status === "SETTLED")).toBe(true);
+    // A refusal back to the patient and one written off; something owed past the payer's days to pay.
+    const answers = claims.flatMap((c) => c.lines.flatMap((l) => l.answers));
+    expect(answers.some((a) => a.refused > 0 && !a.writeOff)).toBe(true);
+    expect(answers.some((a) => a.refused > 0 && a.writeOff)).toBe(true);
+    const days = new Map(payers.map((p) => [p.id, p.paymentDays]));
+    expect(claims.some((c) => c.status === "SENT" && c.batch && c.batch.sentAt.getTime() + days.get(c.payerId)! * 86_400_000 < Date.now())).toBe(true);
+    // Batches numbered in the order they went; every payment exactly what its answers paid.
+    const batches = await db.claimBatch.findMany({ where: { tenantId }, orderBy: [{ sentAt: "asc" }, { sequence: "asc" }], select: { clinicId: true, sequence: true, sentAt: true } });
+    expect(batches.length).toBeGreaterThan(0);
+    for (const clinicId of new Set(batches.map((b) => b.clinicId))) {
+      const seqs = batches.filter((b) => b.clinicId === clinicId).map((b) => b.sequence);
+      expect(seqs).toEqual([...seqs].sort((a, b) => a - b));
+    }
+    expect(batches.every((b) => day(b.sentAt).endsWith("-05"))).toBe(true);
+    const payments = await db.payerPayment.findMany({ where: { tenantId, voidedAt: null }, select: { amount: true, answers: { where: { voidedAt: null }, select: { paid: true } } } });
+    expect(payments.length).toBeGreaterThan(0);
+    expect(payments.filter((p) => p.amount !== p.answers.reduce((s, a) => s + a.paid, 0))).toEqual([]);
+    // A covered patient paid their share of claimed work, never the payer's.
+    const procedureIds = claims.flatMap((c) => c.lines.map((l) => l.procedureId)).filter((id): id is string => Boolean(id));
+    const money = await db.payment.findMany({ where: { tenantId, deletedAt: null, procedureId: { in: procedureIds } }, select: { procedureId: true, kind: true, amount: true } });
+    const paidFor = new Map<string, number>();
+    for (const m of money) paidFor.set(m.procedureId!, (paidFor.get(m.procedureId!) ?? 0) + (m.kind === "REFUND" ? -m.amount : m.amount));
+    const overpaid = claims.flatMap((c) => c.lines.filter((l) => l.procedureId && (paidFor.get(l.procedureId) ?? 0) > l.patientShare).map((l) => `${c.number}: paid ${paidFor.get(l.procedureId!)} for a share of ${l.patientShare}`));
+    expect(overpaid).toEqual([]);
+    // Approvals asked of the payers: one waiting, one approved, one refused.
+    const approvals = await db.preApproval.groupBy({ by: ["status"], where: { tenantId }, _count: true });
+    expect(approvals.map((a) => a.status).sort()).toEqual(["APPROVED", "REFUSED", "REQUESTED"]);
   });
 });

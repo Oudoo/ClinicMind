@@ -9,6 +9,7 @@ import { getTenantTimezone } from "@/modules/appointments/service";
 import { MAX_AMOUNT, PAYMENT_METHODS, type PaymentMethodValue } from "./constants";
 import { FinanceError } from "./errors";
 import { voidExpenseTx } from "./expenses";
+import { payerMoneyIn } from "@/modules/insurance/money";
 import { procedureLabel } from "./charges";
 import { splitByWeight } from "./reports";
 import {
@@ -505,6 +506,11 @@ async function gatherWork(tenantId: string, doctorId: string, from: Date, end: D
           collections.set(key, [...(collections.get(key) ?? []), { amount, at }]);
         }
       }
+    }
+    // What insurers and companies paid of their claims: towards the work each claim line is for.
+    for (const m of await payerMoneyIn(db, tenantId, { lt: end }, { procedureIds: [...new Set(ours.values())] })) {
+      if (!m.procedureId) continue;
+      collections.set(m.procedureId, [...(collections.get(m.procedureId) ?? []), { amount: m.amount, at: m.at }]);
     }
   }
 

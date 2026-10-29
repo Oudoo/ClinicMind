@@ -28,6 +28,7 @@ const KIND_TONE: Record<TimelineKind, BadgeTone> = {
   INTAKE: "default",
   LEAD: "default",
   LAB: "accent",
+  INSURANCE: "accent",
 };
 
 const KIND_LABEL: Record<TimelineKind, string> = {
@@ -47,6 +48,7 @@ const KIND_LABEL: Record<TimelineKind, string> = {
   INTAKE: "Onboarding",
   LEAD: "Lead",
   LAB: "Lab work",
+  INSURANCE: "Insurance",
 };
 
 /** Chronological feed of a patient's `TimelineEvent`s, newest first. Server component. */

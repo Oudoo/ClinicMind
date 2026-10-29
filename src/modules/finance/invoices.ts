@@ -9,7 +9,8 @@ import { zOptionalText, zText } from "@/lib/validation";
 import { getTenantTimezone } from "@/modules/appointments/service";
 import { publicBaseUrl, looksLikeToken } from "@/modules/concierge/tokens";
 import { sendPatientMessage } from "@/modules/messaging/outbound";
-import { allocateCredit, allocateFor, payableBy, refreshInvoiceStatus } from "./allocations";
+import { applyContractDiscounts, cancelInvoiceClaimsTx, claimInvoiceTx } from "@/modules/insurance/claims";
+import { allocateCredit, allocateFor, claimedOn, claimsSettling, payableBy, refreshInvoiceStatus } from "./allocations";
 import { defaultClinicId, takeNumber } from "./documents";
 import { FinanceError } from "./errors";
 
@@ -22,6 +23,10 @@ import { FinanceError } from "./errors";
  * allocated, or cancelled with a reason and a numbered credit note, which
  * gives back what was allocated to it as credit. Printed and sent in Arabic
  * or English; the patient's copy is a link that needs no sign-in.
+ *
+ * A covered patient's draft takes the contract's discount on covered work;
+ * issuing it makes the claims for the payer's share (modules/insurance/claims.ts)
+ * before the patient's credit goes towards the rest.
  */
 
 type Tx = Prisma.TransactionClient;
@@ -127,6 +132,18 @@ const invoiceInclude = {
   },
   creditNote: { select: { number: true, amount: true, reason: true, issuedAt: true } },
   writeOffs: { where: { voidedAt: null }, orderBy: { writtenOffAt: "asc" }, select: { amount: true, reason: true, note: true, writtenOffAt: true } },
+  claims: {
+    orderBy: { createdAt: "asc" },
+    select: {
+      id: true,
+      number: true,
+      status: true,
+      amount: true,
+      payer: { select: { name: true } },
+      coverage: { select: { memberNumber: true } },
+      lines: { select: { payerShare: true, answers: { where: { voidedAt: null }, select: { paid: true, refused: true } } } },
+    },
+  },
 } as const;
 
 type InvoiceRow = Prisma.InvoiceGetPayload<{ include: typeof invoiceInclude }>;
@@ -155,6 +172,10 @@ export interface InvoiceDTO {
   lines: { id: string; chargeId: string; description: string; amount: number; chargedAt: string }[];
   payments: { receiptNumber: string | null; method: string; paidAt: string; amount: number }[];
   writeOffs: { amount: number; reason: string; note: string | null; writtenOffAt: string }[];
+  /** What the payers' claims settle of it: their shares, less what they refused. */
+  claimed: number;
+  /** The claims made for it (a cancelled one with a cancelled invoice). */
+  claims: { id: string; number: string; status: string; payerName: string; memberNumber: string; amount: number; paid: number; refused: number }[];
   creditNote: { number: string; amount: number; reason: string; issuedAt: string } | null;
   /** The charges on the lines that are discounts, and of what (so a draft's discount stays with its charge). */
   discountOf: Record<string, string>;
@@ -163,6 +184,7 @@ export interface InvoiceDTO {
 function toDTO(row: InvoiceRow, tenantName: string, timezone: string): InvoiceDTO {
   const paid = row.status === "CANCELLED" ? 0 : row.allocations.reduce((s, a) => s + a.amount, 0);
   const writtenOff = row.status === "CANCELLED" ? 0 : row.writeOffs.reduce((s, w) => s + w.amount, 0);
+  const claimed = row.status === "CANCELLED" ? 0 : claimedOn(row.claims.filter((c) => c.status !== "CANCELLED"));
   return {
     id: row.id,
     number: row.number,
@@ -171,7 +193,7 @@ function toDTO(row: InvoiceRow, tenantName: string, timezone: string): InvoiceDT
     total: row.total,
     paid,
     writtenOff,
-    due: row.status === "CANCELLED" || row.status === "DRAFT" ? 0 : Math.max(0, row.total - paid - writtenOff),
+    due: row.status === "CANCELLED" || row.status === "DRAFT" ? 0 : Math.max(0, row.total - paid - writtenOff - claimed),
     note: row.note,
     createdAt: row.createdAt.toISOString(),
     issuedAt: row.issuedAt?.toISOString() ?? null,
@@ -186,6 +208,17 @@ function toDTO(row: InvoiceRow, tenantName: string, timezone: string): InvoiceDT
     lines: row.lines.map(({ charge: _charge, ...l }) => ({ ...l, chargedAt: l.chargedAt.toISOString() })),
     payments: row.allocations.map((a) => ({ receiptNumber: a.payment.receiptNumber, method: a.payment.method, paidAt: a.payment.paidAt.toISOString(), amount: a.amount })),
     writeOffs: row.status === "CANCELLED" ? [] : row.writeOffs.map((w) => ({ amount: w.amount, reason: w.reason, note: w.note, writtenOffAt: w.writtenOffAt.toISOString() })),
+    claimed,
+    claims: row.claims.map((c) => ({
+      id: c.id,
+      number: c.number,
+      status: c.status,
+      payerName: c.payer.name,
+      memberNumber: c.coverage.memberNumber,
+      amount: c.amount,
+      paid: c.lines.reduce((s, l) => s + l.answers.reduce((t, a) => t + a.paid, 0), 0),
+      refused: c.lines.reduce((s, l) => s + l.answers.reduce((t, a) => t + a.refused, 0), 0),
+    })),
     creditNote: row.creditNote ? { ...row.creditNote, issuedAt: row.creditNote.issuedAt.toISOString() } : null,
     discountOf: Object.fromEntries(row.lines.filter((l) => l.charge.discountOfId).map((l) => [l.chargeId, l.charge.discountOfId!])),
   };
@@ -209,6 +242,8 @@ export interface InvoiceListRow {
   total: number;
   paid: number;
   writtenOff: number;
+  /** What the payers' claims settle of it. */
+  claimed: number;
   /** Left to pay (nothing on a draft or a cancelled invoice). */
   due: number;
   patientId: string;
@@ -243,6 +278,7 @@ export async function listInvoices(tenantId: string, rawQuery: unknown = {}) {
         patient: { select: { fullName: true } },
         allocations: { select: { amount: true } },
         writeOffs: { where: { voidedAt: null }, select: { amount: true } },
+        claims: claimsSettling,
       },
     }),
     db.invoice.count({ where }),
@@ -252,6 +288,7 @@ export async function listInvoices(tenantId: string, rawQuery: unknown = {}) {
       const live = r.status !== "CANCELLED";
       const paid = live ? r.allocations.reduce((s, a) => s + a.amount, 0) : 0;
       const writtenOff = live ? r.writeOffs.reduce((s, w) => s + w.amount, 0) : 0;
+      const claimed = live ? claimedOn(r.claims) : 0;
       return {
         id: r.id,
         number: r.number,
@@ -259,7 +296,8 @@ export async function listInvoices(tenantId: string, rawQuery: unknown = {}) {
         total: r.total,
         paid,
         writtenOff,
-        due: live && r.status !== "DRAFT" ? Math.max(0, r.total - paid - writtenOff) : 0,
+        claimed,
+        due: live && r.status !== "DRAFT" ? Math.max(0, r.total - paid - writtenOff - claimed) : 0,
         patientId: r.patientId,
         patientName: r.patient.fullName,
         issuedAt: r.issuedAt?.toISOString() ?? null,
@@ -320,6 +358,8 @@ export async function createDraft(tenantId: string, rawInput: unknown, actor: Ac
       },
       select: { id: true },
     });
+    // A covered patient's work at the contract's price.
+    await applyContractDiscounts(tx, tenantId, invoice.id, actor.id ?? null, new Date());
     return invoice.id;
   });
   await audit({ tenantId, actorId: actor.id, actorEmail: actor.email, ip: actor.ip, action: "invoice.draft", entity: "Invoice", entityId: id, after: { patientId: patient.id, lines: (input.chargeIds ?? []).length || undefined } });
@@ -398,26 +438,34 @@ export async function issueInvoice(tenantId: string, id: string, actor: Actor = 
         message: `A charge on this draft is on invoice ${elsewhere.invoice.number ?? ""} already: discard this draft.`,
       });
     }
-    const total = invoice.lines.reduce((s, l) => s + l.amount, 0);
+    // The contract's discounts as the patient's covers stand today (a cover added or ended since the draft).
+    await applyContractDiscounts(tx, tenantId, id, actor.id ?? null, now);
+    const total = (await tx.invoiceLine.aggregate({ where: { tenantId, invoiceId: id }, _sum: { amount: true } }))._sum.amount ?? 0;
     if (total <= 0) throw new FinanceError(409, "nothing_to_bill", "nothing to bill", { message: "There is nothing to bill on this draft." });
     const { sequence, number } = await takeNumber(tx, tenantId, invoice.clinicId, "INVOICE");
     await tx.invoice.update({ where: { id }, data: { status: "ISSUED", sequence, number, total, issuedAt: now, issuedById: actor.id ?? null } });
+    // The payers' shares first: the patient's credit goes towards what is left.
+    const claims = await claimInvoiceTx(tx, tenantId, id, actor.id ?? null, now);
     await allocateCredit(tx, tenantId, invoice.patientId, actor.id ?? null);
     await refreshInvoiceStatus(tx, tenantId, id);
     await tx.timelineEvent.create({
       data: { tenantId, patientId: invoice.patientId, kind: "PAYMENT", title: `Invoice ${number} issued — ${total.toLocaleString("en-US")} EGP`, refId: id, occurredAt: now },
     });
-    return { number, total };
+    return { number, total, claims };
   });
-  await audit({ tenantId, actorId: actor.id, actorEmail: actor.email, ip: actor.ip, action: "invoice.issue", entity: "Invoice", entityId: id, after: issued });
+  await audit({ tenantId, actorId: actor.id, actorEmail: actor.email, ip: actor.ip, action: "invoice.issue", entity: "Invoice", entityId: id, after: { number: issued.number, total: issued.total } });
+  for (const c of issued.claims) {
+    await audit({ tenantId, actorId: actor.id, actorEmail: actor.email, ip: actor.ip, action: "claim.create", entity: "Claim", entityId: c.id, after: { number: c.number, payer: c.payerName, amount: c.amount, invoice: issued.number } });
+  }
   return load(tenantId, id);
 }
 
 /**
  * Cancel an issued invoice with a reason: a credit note for its total, in the
  * branch's own credit-note sequence; what was allocated to it goes back to
- * the patient's credit (and on to their other open invoices), and its
- * charges can be billed again.
+ * the patient's credit (and on to their other open invoices), its claims are
+ * cancelled (not once a payer has paid any of them), and its charges can be
+ * billed again.
  */
 export async function cancelInvoice(tenantId: string, id: string, rawInput: unknown, actor: Actor = {}): Promise<InvoiceDTO> {
   const input = InvoiceCancelInput.parse(rawInput);
@@ -428,6 +476,8 @@ export async function cancelInvoice(tenantId: string, id: string, rawInput: unkn
     if (!invoice) throw new InvoiceNotFoundError(id);
     if (invoice.status === "DRAFT") throw invoiceState(invoice.status, "cancelled", "A draft has no number: discard it instead.");
     if (invoice.status === "CANCELLED") throw invoiceState(invoice.status, "cancelled again", "This invoice is cancelled already.");
+    // Its claims go with it, while the payer has paid nothing of them.
+    const claims = await cancelInvoiceClaimsTx(tx, tenantId, id, input.reason, now);
     const { sequence, number } = await takeNumber(tx, tenantId, invoice.clinicId, "CREDIT_NOTE");
     await tx.creditNote.create({
       data: { tenantId, clinicId: invoice.clinicId, invoiceId: id, sequence, number, amount: invoice.total, reason: input.reason, issuedAt: now, issuedById: actor.id ?? null },
@@ -443,7 +493,7 @@ export async function cancelInvoice(tenantId: string, id: string, rawInput: unkn
     await tx.timelineEvent.create({
       data: { tenantId, patientId: invoice.patientId, kind: "PAYMENT", title: `Invoice ${invoice.number} cancelled by credit note ${number}`, body: input.reason, refId: id, occurredAt: now },
     });
-    return { creditNote: number, amount: invoice.total, released };
+    return { creditNote: number, amount: invoice.total, released, claims };
   });
   await audit({ tenantId, actorId: actor.id, actorEmail: actor.email, ip: actor.ip, action: "invoice.cancel", entity: "Invoice", entityId: id, after: { ...cancelled, reason: input.reason } });
   return load(tenantId, id);

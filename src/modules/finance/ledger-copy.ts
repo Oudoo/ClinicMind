@@ -18,7 +18,7 @@ export const relationLabel = (relation: string | null | undefined, language: Led
   relation && (RELATIONS as readonly string[]).includes(relation) ? RELATION_LABELS[language][relation as RelationValue] : null;
 
 /** What moved the balance: work charged (or reversed), money in or out, or money a family member put in. */
-export const LEDGER_KINDS = ["CHARGE", "REVERSAL", "NO_CHARGE", "DISCOUNT", "CONSULTATION_FEE", "PAYMENT", "DEPOSIT", "REFUND", "WRITE_OFF", "PAID_BY", "PAID_FOR"] as const;
+export const LEDGER_KINDS = ["CHARGE", "REVERSAL", "NO_CHARGE", "DISCOUNT", "CONSULTATION_FEE", "PAYMENT", "DEPOSIT", "REFUND", "WRITE_OFF", "PAID_BY", "PAID_FOR", "CLAIMED", "REFUSED"] as const;
 export type LedgerKind = (typeof LEDGER_KINDS)[number];
 
 export interface LedgerEntry {
@@ -29,7 +29,7 @@ export interface LedgerEntry {
   /** Whose account the line is on (a family statement holds several). */
   patientId: string;
   patientName: string;
-  /** The receipt or refund voucher number; for a charge, the invoice that bills it. */
+  /** The receipt or refund voucher number; for a charge, the invoice that bills it; for a claim, its number. */
   reference: string | null;
   /** A charge's own wording. */
   description: string | null;
@@ -40,7 +40,7 @@ export interface LedgerEntry {
   note: string | null;
   /** A discount's or a write-off's reason (a key of the fixed list). */
   reason: string | null;
-  /** Who paid for this patient, or whom this patient paid for. */
+  /** Who paid for this patient, or whom this patient paid for; the insurer or company of a claim. */
   counterpart: string | null;
   invoiceNumber: string | null;
   /** Adds to what is owed. */
@@ -58,12 +58,18 @@ export const METHOD_WORDS: Record<LedgerLanguage, Record<string, string>> = {
 
 /** The reasons of the fixed lists, as a statement says them. */
 export const DISCOUNT_WORDS: Record<LedgerLanguage, Record<string, string>> = {
-  en: { LOYALTY: "returning patient", FAMILY: "family of a patient", STAFF: "staff", PROMOTION: "campaign offer", PACKAGE: "package price", GOODWILL: "goodwill", DOCTOR: "the doctor's decision", OTHER: "another reason" },
-  ar: { LOYALTY: "عميل دائم", FAMILY: "قريب لمريض", STAFF: "موظف أو قريب لموظف", PROMOTION: "عرض", PACKAGE: "سعر باقة", GOODWILL: "تقديرًا للمريض", DOCTOR: "بقرار الطبيب", OTHER: "سبب آخر" },
+  en: { LOYALTY: "returning patient", FAMILY: "family of a patient", STAFF: "staff", PROMOTION: "campaign offer", PACKAGE: "package price", GOODWILL: "goodwill", DOCTOR: "the doctor's decision", CONTRACT: "contract price", OTHER: "another reason" },
+  ar: { LOYALTY: "عميل دائم", FAMILY: "قريب لمريض", STAFF: "موظف أو قريب لموظف", PROMOTION: "عرض", PACKAGE: "سعر باقة", GOODWILL: "تقديرًا للمريض", DOCTOR: "بقرار الطبيب", CONTRACT: "سعر التعاقد", OTHER: "سبب آخر" },
 };
 export const WRITE_OFF_WORDS: Record<LedgerLanguage, Record<string, string>> = {
-  en: { BAD_DEBT: "bad debt", SMALL_BALANCE: "too small to chase", DISPUTE: "a dispute settled", GOODWILL: "goodwill", DECEASED: "the patient has died", OTHER: "another reason" },
-  ar: { BAD_DEBT: "دين معدوم", SMALL_BALANCE: "مبلغ صغير", DISPUTE: "تسوية خلاف", GOODWILL: "تقديرًا للمريض", DECEASED: "وفاة المريض", OTHER: "سبب آخر" },
+  en: { BAD_DEBT: "bad debt", SMALL_BALANCE: "too small to chase", DISPUTE: "a dispute settled", GOODWILL: "goodwill", DECEASED: "the patient has died", PAYER_REFUSED: "refused by the insurer", OTHER: "another reason" },
+  ar: { BAD_DEBT: "دين معدوم", SMALL_BALANCE: "مبلغ صغير", DISPUTE: "تسوية خلاف", GOODWILL: "تقديرًا للمريض", DECEASED: "وفاة المريض", PAYER_REFUSED: "رفضته جهة التأمين", OTHER: "سبب آخر" },
+};
+
+/** Why an insurer or a company refused (part of) a claim, as a statement says it. */
+export const REFUSAL_WORDS: Record<LedgerLanguage, Record<string, string>> = {
+  en: { NOT_COVERED: "not covered", NO_APPROVAL: "no approval", OVER_LIMIT: "over the limit", PRICE: "above the contract price", NOT_MEMBER: "not covered that day", PAPERS: "papers missing", DUPLICATE: "claimed twice", OTHER: "another reason" },
+  ar: { NOT_COVERED: "غير مشمول", NO_APPROVAL: "بدون موافقة", OVER_LIMIT: "تجاوز الحد", PRICE: "أعلى من سعر التعاقد", NOT_MEMBER: "غير مشمول في هذا اليوم", PAPERS: "مستندات ناقصة", DUPLICATE: "مطالبة مكررة", OTHER: "سبب آخر" },
 };
 
 /** A piece of a line's wording; `iso` pieces (names, numbers, English text) keep their own direction. */
@@ -120,6 +126,16 @@ export function describeEntry(e: Pick<LedgerEntry, "kind" | "description" | "met
       return ar
         ? [{ t: "دفعت عن " }, { t: e.counterpart ?? "", iso: "auto" }, { t: ": الفاتورة " }, { t: e.invoiceNumber ?? "", iso: "ltr" }]
         : [{ t: "Paid for " }, { t: e.counterpart ?? "", iso: "auto" }, { t: ": invoice " }, { t: e.invoiceNumber ?? "", iso: "ltr" }];
+    case "CLAIMED":
+      return ar
+        ? [{ t: "مطالبة على " }, { t: e.counterpart ?? "", iso: "auto" }, { t: ": الفاتورة " }, { t: e.invoiceNumber ?? "", iso: "ltr" }]
+        : [{ t: "Claimed from " }, { t: e.counterpart ?? "", iso: "auto" }, { t: ": invoice " }, { t: e.invoiceNumber ?? "", iso: "ltr" }];
+    case "REFUSED": {
+      const why = REFUSAL_WORDS[language][e.reason ?? ""] ?? REFUSAL_WORDS[language].OTHER!;
+      return ar
+        ? [{ t: "رفضتها " }, { t: e.counterpart ?? "", iso: "auto" }, { t: ` (${why}): الفاتورة ` }, { t: e.invoiceNumber ?? "", iso: "ltr" }]
+        : [{ t: "Refused by " }, { t: e.counterpart ?? "", iso: "auto" }, { t: ` (${why}): invoice ` }, { t: e.invoiceNumber ?? "", iso: "ltr" }];
+    }
   }
 }
 

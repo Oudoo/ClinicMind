@@ -9,6 +9,9 @@ import { NotForRole } from "@/components/clinicmind/report-shared";
 import { InvoiceDocument } from "@/components/clinicmind/invoice-document";
 import { InvoiceActions } from "@/components/clinicmind/invoice-actions";
 import { discountLimitOf } from "@/modules/finance/discounts";
+import { db } from "@/lib/db";
+import { splitInvoice } from "@/modules/insurance/claims";
+import { InvoiceSplitPanel } from "@/components/clinicmind/invoice-split";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Invoice" };
@@ -33,6 +36,8 @@ export default async function InvoicePage({ params }: { params: Promise<{ id: st
   if (!invoice) notFound();
   const canAct = can(ctx.role, "payments:write");
   const discountLimit = canAct && invoice.status === "DRAFT" ? await discountLimitOf(ctx.tenantId, ctx.role) : 0;
+  // A covered patient's draft: how it will be shared with the payer when issued.
+  const split = invoice.status === "DRAFT" && (await db.coverage.count({ where: { tenantId: ctx.tenantId, patientId: invoice.patient.id } })) ? await splitInvoice(db, ctx.tenantId, invoice.id) : null;
 
   return (
     <div className="mx-auto max-w-3xl space-y-4">
@@ -63,6 +68,7 @@ export default async function InvoicePage({ params }: { params: Promise<{ id: st
           />
         ) : null}
       </div>
+      {split ? <InvoiceSplitPanel split={split} /> : null}
       <InvoiceDocument invoice={invoice} />
     </div>
   );

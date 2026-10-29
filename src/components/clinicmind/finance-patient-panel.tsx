@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Badge, Card, EmptyState, SectionTitle } from "@/components/ui/primitives";
 import { useToast } from "@/components/ui/toast";
 import { formatDateInTz } from "@/lib/time";
-import { formatNumber } from "@/lib/utils";
+import { cn, formatNumber } from "@/lib/utils";
 import { RecordPaymentDialog } from "./payment-record-dialog";
 import { RecordProcedureDialog } from "./procedure-record-dialog";
 import { ProcedureCancelButton, ProcedureSignButton, ProcedureStageButton, ProcedureStartButton } from "./procedure-actions";
@@ -73,7 +73,7 @@ export function FinancePatientPanel({
   /** Paid ahead, not yet put towards an invoice. */
   credit?: number | null;
   /** The account as the ledger has it (for the roles that see payments): what was billed, received, and the balance. */
-  account?: { billed: number; received: number; balance: number } | null;
+  account?: { billed: number; received: number; balance: number; claimed?: number } | null;
   /** The largest discount the user's role may give (a percentage of the price). */
   discountLimit?: number;
   treatments: TreatmentOption[];
@@ -130,7 +130,7 @@ export function FinancePatientPanel({
           ) : null
         }
       />
-      <dl className="grid grid-cols-3 gap-2 rounded-lg bg-muted/60 p-3 text-center">
+      <dl className={cn("grid gap-2 rounded-lg bg-muted/60 p-3 text-center", account?.claimed ? "grid-cols-2 sm:grid-cols-4" : "grid-cols-3")}>
         <div>
           <dt className="data-label">Billed</dt>
           <dd className="font-mono text-sm tabular-nums">{formatNumber(billed)}</dd>
@@ -139,6 +139,12 @@ export function FinancePatientPanel({
           <dt className="data-label" title="Everything received for this patient, consultation fees and deposits included, net of refunds (and what family paid for them)">Received</dt>
           <dd className="font-mono text-sm tabular-nums">{paid === null ? "—" : formatNumber(paid)}</dd>
         </div>
+        {account?.claimed ? (
+          <div>
+            <dt className="data-label" title="Claimed from the patient's insurer or company, less what it refused">Claimed</dt>
+            <dd className="font-mono text-sm tabular-nums">{formatNumber(account.claimed)}</dd>
+          </div>
+        ) : null}
         <div>
           <dt className="data-label">Balance</dt>
           <dd className={owing > 0 ? "font-mono text-sm tabular-nums text-warning" : owing < 0 ? "font-mono text-sm tabular-nums text-accent" : "font-mono text-sm tabular-nums"}>{formatNumber(owing)}</dd>

@@ -2,6 +2,7 @@ import { randomBytes } from "node:crypto";
 import type { PaymentKind, PaymentMethod, Prisma } from "@prisma/client";
 import type { SeedContext, SeedPatient } from "./index";
 import { makeRandom, type Random } from "./util";
+import { dateKeyInTz } from "../../src/lib/time";
 
 /**
  * Procedures and money for the demo clinic, built on the core seed's
@@ -134,6 +135,7 @@ export async function seedFinance(ctx: SeedContext): Promise<void> {
     return;
   }
   const treatmentOf = (p: SeedPatient) => treatments.get(treatmentKeyFor(p)) ?? treatments.get("general-dermatology") ?? [...treatments.values()][0]!;
+  const categoryOf = new Map(treatmentRows.map((t) => [t.key, t.category]));
 
   const patients = new Map(ctx.patients.map((p) => [p.id, p]));
   const patientRows = await db.patient.findMany({ where: { tenantId }, select: { id: true, createdAt: true } });
@@ -250,16 +252,21 @@ export async function seedFinance(ctx: SeedContext): Promise<void> {
     return { id, net: price - discount };
   };
 
-  /** Deposit days before (transplant, PRP, pigmentation), then the balance: on the day mostly, sometimes in two parts, sometimes left owing. Returns what was paid. */
+  /**
+   * Deposit days before (transplant, PRP, pigmentation), then the balance: on the day mostly, sometimes in two parts,
+   * sometimes left owing. A covered patient pays only their share of covered work (the rest is claimed at the invoice).
+   * Returns what was paid.
+   */
   const payFor = (p: SeedPatient, t: TreatmentInfo, proc: { id: string; net: number }, o: { performedAt: Date; endsAt: Date; appointmentId?: string | null; owing?: number; partial?: number }): number => {
+    const due = ctx.insurance?.patientShare(p.id, { day: dateKeyInTz(o.performedAt, "Africa/Cairo"), amount: proc.net, category: categoryOf.get(t.key) ?? null }) ?? proc.net;
     let paid = 0;
     if (t.depositAmount > 0 && r.chance(t.key === "pigmentation" ? 0.5 : 0.92)) {
       const method = r.weighted(DEPOSIT_METHODS);
-      const dep = Math.min(t.depositAmount, proc.net);
+      const dep = Math.min(t.depositAmount, due);
       addPayment({ patientId: p.id, kind: "DEPOSIT", method, amount: dep, paidAt: clamp(o.performedAt.getTime() - r.between(2, 14) * DAY - r.between(0, 300) * MIN), procedureId: proc.id, appointmentId: o.appointmentId ?? null, reference: ref(method), towards: t.name });
       paid += dep;
     }
-    const balance = proc.net - paid;
+    const balance = due - paid;
     if (balance <= 0) return paid;
     const owing = o.owing ?? 0.09;
     const partial = o.partial ?? 0.12;
@@ -386,9 +393,13 @@ export async function seedFinance(ctx: SeedContext): Promise<void> {
     const proc = addSigned(o.p, t, { performedAt: o.at, signedAt: endsAt, doctorId });
     const leaveOwing = oldOwing < 3 && r.chance(0.04);
     if (leaveOwing) oldOwing += 1;
-    payFor(o.p, t, proc, { performedAt: o.at, endsAt, owing: leaveOwing ? 1 : 0, partial: 0 });
+    const paid = payFor(o.p, t, proc, { performedAt: o.at, endsAt, owing: leaveOwing ? 1 : 0, partial: 0 });
     if (!leaveOwing && r.chance(0.02)) {
-      addPayment({ patientId: o.p.id, kind: "REFUND", method: "CASH", amount: Math.max(100, Math.round((proc.net * 0.2) / 100) * 100), paidAt: new Date(o.at.getTime() + r.between(2, 9) * DAY), procedureId: proc.id, note: r.pick(REFUND_NOTES), towards: t.name });
+      const amount = Math.max(100, Math.round((proc.net * 0.2) / 100) * 100);
+      const paidAt = new Date(o.at.getTime() + r.between(2, 9) * DAY);
+      const note = r.pick(REFUND_NOTES);
+      // Only money that was paid goes back (a covered patient paid only their share).
+      if (amount <= paid) addPayment({ patientId: o.p.id, kind: "REFUND", method: "CASH", amount, paidAt, procedureId: proc.id, note, towards: t.name });
     }
   }
 

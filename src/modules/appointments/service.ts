@@ -187,8 +187,8 @@ export class BookingTimeError extends Error {
  * first non-deleted one wins for now. Falls back to Cairo when the stored
  * value is missing or unknown to this runtime.
  */
-export async function getTenantTimezone(tenantId: string): Promise<string> {
-  const clinic = await db.clinic.findFirst({
+export async function getTenantTimezone(tenantId: string, client: Pick<typeof db, "clinic"> = db): Promise<string> {
+  const clinic = await client.clinic.findFirst({
     where: { tenantId, ...notDeleted },
     orderBy: { createdAt: "asc" },
     select: { timezone: true },

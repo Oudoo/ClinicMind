@@ -111,6 +111,7 @@ enum TimelineKind {
   INTAKE
   LEAD
   LAB
+  INSURANCE
 }
 
 enum EmbeddingSource {
@@ -217,6 +218,16 @@ model Tenant {
   recurringExpenses       RecurringExpense[]
   labOrders               LabOrder[]
   labOrderFiles           LabOrderFile[]
+  payers                  Payer[]
+  payerContracts          PayerContract[]
+  payerRules              PayerRule[]
+  coverages               Coverage[]
+  preApprovals            PreApproval[]
+  claims                  Claim[]
+  claimLines              ClaimLine[]
+  claimBatches            ClaimBatch[]
+  payerPayments           PayerPayment[]
+  claimAnswers            ClaimAnswer[]
 
   @@index([status])
   @@map("tenants")
@@ -275,6 +286,8 @@ model Clinic {
   expensePayments   ExpensePayment[]
   recurringExpenses RecurringExpense[]
   labOrders         LabOrder[]
+  claims            Claim[]
+  claimBatches      ClaimBatch[]
 
   @@unique([tenantId, code])
   @@index([tenantId])
@@ -453,6 +466,9 @@ model Patient {
   quotes           Quote[]
   instalmentPlans  InstalmentPlan[]
   labOrders        LabOrder[]
+  coverages        Coverage[]
+  preApprovals     PreApproval[]
+  claims           Claim[]
 
   @@index([tenantId])
   @@index([tenantId, householdHeadId])
@@ -1291,6 +1307,7 @@ model Procedure {
   quoteItem QuoteItem?
   costs     ProcedureCost[]
   labOrders LabOrder[]
+  approvals PreApproval[]
 
   @@index([tenantId, performedAt])
   @@index([tenantId, patientId])
@@ -1336,6 +1353,7 @@ model Charge {
   createdAt     DateTime   @default(now())
 
   invoiceLines InvoiceLine[]
+  claimLines   ClaimLine[]
 
   @@index([tenantId, chargedAt])
   @@index([tenantId, patientId])
@@ -1393,6 +1411,7 @@ model Invoice {
   creditNote  CreditNote?
   allocations PaymentAllocation[]
   writeOffs   WriteOff[]
+  claims      Claim[]
 
   @@unique([tenantId, clinicId, sequence])
   @@unique([tenantId, number])
@@ -1480,6 +1499,8 @@ model WriteOff {
   createdById  String?
   voidedAt     DateTime?
   createdAt    DateTime  @default(now())
+
+  claimAnswer ClaimAnswer?
 
   @@index([tenantId, writtenOffAt])
   @@index([tenantId, patientId])
@@ -2015,6 +2036,7 @@ model PriceItem {
   prices     PriceItemPrice[]
   procedures Procedure[]
   quoteItems QuoteItem[]
+  payerRules PayerRule[]
 
   @@unique([tenantId, code])
   @@index([tenantId, category])
@@ -2873,4 +2895,348 @@ model LabOrderFile {
 
   @@index([tenantId, labOrderId])
   @@map("lab_order_files")
+}
+
+// ── Insurance and companies ──────────────────────────────────────────────────
+
+/// An insurance company (or the network that runs its cover), or a company paying for its staff.
+enum PayerKind {
+  INSURER
+  COMPANY
+}
+
+enum ApprovalStatus {
+  REQUESTED
+  APPROVED
+  REFUSED
+  CANCELLED
+}
+
+/// OPEN: made, not sent yet · SENT: in a batch sent to the payer, something still owed · SETTLED: every line paid or
+/// refused · CANCELLED: with its invoice.
+enum ClaimStatus {
+  OPEN
+  SENT
+  SETTLED
+  CANCELLED
+}
+
+/// Who pays for covered patients: an insurance company or a company paying for its staff. Never deleted: archived.
+model Payer {
+  id          String    @id @default(cuid())
+  tenantId    String
+  tenant      Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name        String
+  kind        PayerKind
+  contactName String?
+  phone       String?
+  email       String?
+  address     String?
+  /// Days it takes to pay a batch from the day it is sent, as its contract says.
+  paymentDays Int       @default(60)
+  notes       String?
+  archivedAt  DateTime?
+  createdById String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  contracts PayerContract[]
+  coverages Coverage[]
+  approvals PreApproval[]
+  claims    Claim[]
+  batches   ClaimBatch[]
+  payments  PayerPayment[]
+
+  @@index([tenantId])
+  @@map("payers")
+}
+
+/// A payer's terms over a span of days (no two overlap): what comes off the price list, the patient's share, the most
+/// it pays for one member in a contract year, the work that needs its approval first, and what it covers (by category
+/// of the price list or by item, else as `coveredByDefault` says). Claims keep the amounts worked out under it.
+model PayerContract {
+  id               String    @id @default(cuid())
+  tenantId         String
+  tenant           Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  payerId          String
+  payer            Payer     @relation(fields: [payerId], references: [id], onDelete: NoAction)
+  /// The contract's own number.
+  reference        String?
+  validFrom        DateTime  @db.Date
+  validTo          DateTime? @db.Date
+  /// Off the clinic's prices for covered work (percent): the contract's price.
+  discountPct      Int       @default(0)
+  /// The patient's share of covered work at the contract's price (percent).
+  copayPct         Int       @default(0)
+  /// The most the payer pays for one member in a contract year (whole EGP); null: no limit.
+  annualLimit      Int?
+  /// One piece of work above this (at the contract's price) needs the payer's approval first; null: only where a rule says.
+  approvalAbove    Int?
+  /// What it covers when no rule names the work.
+  coveredByDefault Boolean   @default(true)
+  note             String?
+  createdById      String?
+  createdAt        DateTime  @default(now())
+  updatedById      String?
+  updatedAt        DateTime  @updatedAt
+
+  rules      PayerRule[]
+  claimLines ClaimLine[]
+
+  @@index([tenantId, payerId, validFrom])
+  @@map("payer_contracts")
+}
+
+/// What a contract says of a category of the price list, or of one item (an item's rule comes before its category's).
+model PayerRule {
+  id            String        @id @default(cuid())
+  tenantId      String
+  tenant        Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  contractId    String
+  contract      PayerContract @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  /// hair | skin | laser | injectables | general — or one price-list item.
+  category      String?
+  priceItemId   String?
+  priceItem     PriceItem?    @relation(fields: [priceItemId], references: [id], onDelete: Cascade)
+  covered       Boolean
+  /// The patient's share of this work, when it is not the contract's (percent).
+  copayPct      Int?
+  /// The payer's approval is needed first, whatever the amount.
+  needsApproval Boolean       @default(false)
+
+  @@index([tenantId, contractId])
+  @@map("payer_rules")
+}
+
+/// A patient's cover by a payer: the card's number, the plan, whose card it is, the days it is valid. One cover at a
+/// time. Ended early with the reason; never deleted once it has claims.
+model Coverage {
+  id           String    @id @default(cuid())
+  tenantId     String
+  tenant       Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  patientId    String
+  patient      Patient   @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  payerId      String
+  payer        Payer     @relation(fields: [payerId], references: [id], onDelete: NoAction)
+  memberNumber String
+  /// The plan on the card (Gold, Staff…).
+  plan         String?
+  /// The company the patient (or the card's holder) works for, on an insurer's group cover.
+  employer     String?
+  /// Whose card it is: SELF, SPOUSE, CHILD, PARENT or OTHER (a family member on the holder's cover).
+  relation     String    @default("SELF")
+  validFrom    DateTime  @db.Date
+  validTo      DateTime? @db.Date
+  /// Why it ended before its day (the patient left the company…).
+  endReason    String?
+  endedAt      DateTime?
+  note         String?
+  createdById  String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  approvals PreApproval[]
+  claims    Claim[]
+
+  @@index([tenantId, patientId])
+  @@index([tenantId, payerId])
+  @@map("coverages")
+}
+
+/// The payer's approval asked for before work that needs it: what for, how much, and its answer (its number, the amount
+/// it approved and until when, or why it refused). A claim line that needs one uses the amount it approved.
+model PreApproval {
+  id             String         @id @default(cuid())
+  tenantId       String
+  tenant         Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  patientId      String
+  patient        Patient        @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  coverageId     String
+  coverage       Coverage       @relation(fields: [coverageId], references: [id], onDelete: Cascade)
+  payerId        String
+  payer          Payer          @relation(fields: [payerId], references: [id], onDelete: NoAction)
+  /// The planned work it is for, when there is one.
+  procedureId    String?
+  procedure      Procedure?     @relation(fields: [procedureId], references: [id], onDelete: SetNull)
+  description    String
+  /// What was asked (whole EGP).
+  amount         Int
+  requestedAt    DateTime
+  requestedById  String?
+  status         ApprovalStatus @default(REQUESTED)
+  approvalNumber String?
+  approvedAmount Int?
+  validUntil     DateTime?      @db.Date
+  refusalReason  String?
+  answeredAt     DateTime?
+  answeredById   String?
+  note           String?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  claimLines ClaimLine[]
+
+  @@index([tenantId, status])
+  @@index([tenantId, patientId])
+  @@map("pre_approvals")
+}
+
+/// The payer's share of an issued invoice of a covered patient, line by line, numbered in the branch's claim sequence.
+/// It settles that much of the invoice: the patient owes the rest, and owes again what the payer refuses unless the
+/// owner writes it off. Cancelled with its invoice while the payer has paid nothing of it.
+model Claim {
+  id           String      @id @default(cuid())
+  tenantId     String
+  tenant       Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  clinicId     String
+  clinic       Clinic      @relation(fields: [clinicId], references: [id], onDelete: NoAction)
+  payerId      String
+  payer        Payer       @relation(fields: [payerId], references: [id], onDelete: NoAction)
+  coverageId   String
+  coverage     Coverage    @relation(fields: [coverageId], references: [id], onDelete: NoAction)
+  patientId    String
+  patient      Patient     @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  invoiceId    String
+  invoice      Invoice     @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  sequence     Int
+  number       String
+  status       ClaimStatus @default(OPEN)
+  /// What the payer is asked for (its lines' shares), and what the patient pays of the same work.
+  amount       Int
+  patientShare Int
+  /// When it was made: the invoice's issue.
+  claimedAt    DateTime
+  batchId      String?
+  batch        ClaimBatch? @relation(fields: [batchId], references: [id], onDelete: NoAction)
+  cancelledAt  DateTime?
+  cancelReason String?
+  createdById  String?
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  lines ClaimLine[]
+
+  @@unique([tenantId, clinicId, sequence])
+  @@unique([tenantId, number])
+  @@unique([invoiceId, coverageId])
+  @@index([tenantId, payerId, status])
+  @@index([tenantId, patientId])
+  @@index([batchId])
+  @@map("claims")
+}
+
+/// One invoiced piece of work on a claim: what it came to after every discount (the contract's too), the patient's and
+/// the payer's shares, and the approval it uses. What the payer paid and refused of it are its answers.
+model ClaimLine {
+  id               String        @id @default(cuid())
+  tenantId         String
+  tenant           Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  claimId          String
+  claim            Claim         @relation(fields: [claimId], references: [id], onDelete: Cascade)
+  /// The work's charge; NoAction: checked at the end of the statement, so removing a whole tenant works.
+  chargeId         String
+  charge           Charge        @relation(fields: [chargeId], references: [id], onDelete: NoAction)
+  procedureId      String?
+  contractId       String
+  contract         PayerContract @relation(fields: [contractId], references: [id], onDelete: NoAction)
+  approvalId       String?
+  approval         PreApproval?  @relation(fields: [approvalId], references: [id], onDelete: NoAction)
+  description      String
+  /// The day the work was done.
+  workedAt         DateTime
+  /// The work after every discount on it, the contract's discount among them.
+  amount           Int
+  contractDiscount Int           @default(0)
+  patientShare     Int
+  payerShare       Int
+  position         Int
+
+  answers ClaimAnswer[]
+
+  @@index([tenantId, claimId])
+  @@index([chargeId])
+  @@index([approvalId])
+  @@map("claim_lines")
+}
+
+/// Claims sent to a payer together (usually a month's), from one branch: numbered in the branch's batch sequence, with
+/// the day they were sent. Its claims stay in it.
+model ClaimBatch {
+  id        String   @id @default(cuid())
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  clinicId  String
+  clinic    Clinic   @relation(fields: [clinicId], references: [id], onDelete: NoAction)
+  payerId   String
+  payer     Payer    @relation(fields: [payerId], references: [id], onDelete: NoAction)
+  sequence  Int
+  number    String
+  sentAt    DateTime
+  sentById  String?
+  /// The payer's own reference for it, when it gives one.
+  reference String?
+  note      String?
+  createdAt DateTime @default(now())
+
+  claims   Claim[]
+  payments PayerPayment[]
+
+  @@unique([tenantId, clinicId, sequence])
+  @@unique([tenantId, number])
+  @@index([tenantId, payerId])
+  @@map("claim_batches")
+}
+
+/// The payer's answer to claims: the money it paid (a transfer, a cheque) and what it refused, line by line. Voided by
+/// the owner with the reason (its answers with it).
+model PayerPayment {
+  id          String        @id @default(cuid())
+  tenantId    String
+  tenant      Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  payerId     String
+  payer       Payer         @relation(fields: [payerId], references: [id], onDelete: NoAction)
+  /// The batch it answers, when it answers one.
+  batchId     String?
+  batch       ClaimBatch?   @relation(fields: [batchId], references: [id], onDelete: NoAction)
+  /// What it paid (its lines' paid amounts); 0 for an answer that only refuses.
+  amount      Int
+  method      PaymentMethod @default(BANK_TRANSFER)
+  paidAt      DateTime
+  reference   String?
+  note        String?
+  voidedAt    DateTime?
+  voidedById  String?
+  voidReason  String?
+  createdById String?
+  createdAt   DateTime      @default(now())
+
+  answers ClaimAnswer[]
+
+  @@index([tenantId, payerId, paidAt])
+  @@index([tenantId, paidAt])
+  @@map("payer_payments")
+}
+
+/// What the payer paid and refused of a claim line, in one of its answers. A refused amount is owed by the patient again,
+/// unless the owner wrote it off (the write-off on the patient's invoice).
+model ClaimAnswer {
+  id             String       @id @default(cuid())
+  tenantId       String
+  tenant         Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  claimLineId    String
+  claimLine      ClaimLine    @relation(fields: [claimLineId], references: [id], onDelete: Cascade)
+  payerPaymentId String
+  payerPayment   PayerPayment @relation(fields: [payerPaymentId], references: [id], onDelete: Cascade)
+  paid           Int          @default(0)
+  refused        Int          @default(0)
+  /// Why it refused (a key of the fixed list, see insurance/constants.ts).
+  refusalReason  String?
+  writeOffId     String?      @unique
+  writeOff       WriteOff?    @relation(fields: [writeOffId], references: [id], onDelete: NoAction)
+  voidedAt       DateTime?
+  createdAt      DateTime     @default(now())
+
+  @@index([tenantId, claimLineId])
+  @@index([payerPaymentId])
+  @@map("claim_answers")
 }

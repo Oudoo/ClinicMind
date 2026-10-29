@@ -177,7 +177,7 @@ export async function recordPayment(tenantId: string, rawInput: unknown, actor: 
     if (invoice) {
       // Matched by hand: this invoice first, up to what it still needs.
       const settled = await settledOn(tx, tenantId, invoice.id);
-      const amount = Math.min(payment.amount, invoice.total - settled.paid - settled.writtenOff);
+      const amount = Math.min(payment.amount, invoice.total - settled.paid - settled.writtenOff - settled.claimed);
       if (amount > 0) {
         await tx.paymentAllocation.create({ data: { tenantId, paymentId: payment.id, invoiceId: invoice.id, amount, createdById: actor.id ?? null } });
         await refreshInvoiceStatus(tx, tenantId, invoice.id);

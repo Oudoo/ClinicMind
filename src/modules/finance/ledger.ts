@@ -6,7 +6,7 @@ import { TenantScopeError } from "@/lib/tenant-scope";
 import { addDays, dateKeyInTz, fromDateKey } from "@/lib/time";
 import { getTenantTimezone } from "@/modules/appointments/service";
 import type { NextAppointmentDTO } from "@/modules/appointments/dto";
-import { CREDITING_KINDS, OPEN_INVOICE_STATUSES, patientCredit } from "./allocations";
+import { claimedOn, claimsSettling, CREDITING_KINDS, OPEN_INVOICE_STATUSES, patientCredit } from "./allocations";
 import type { LedgerEntry, LedgerKind } from "./ledger-copy";
 
 /**
@@ -19,10 +19,14 @@ import type { LedgerEntry, LedgerKind } from "./ledger-copy";
  *
  *   balance = charges − deposits and payments + refunds − write-offs
  *             + paid for family members − paid by family members
+ *             − claimed from insurers and companies + what they refused
  *
  * A consultation fee is charged and paid at once, so it shows on both sides.
- * The same balance is also what is still due on open invoices, plus what is
- * not invoiced yet, minus the credit not yet put towards an invoice.
+ * A claim takes the payer's share off when its invoice is issued; what the
+ * payer refuses comes back on the day of its answer (a cancelled claim never
+ * counted). The same balance is also what is still due on open invoices,
+ * plus what is not invoiced yet, minus the credit not yet put towards an
+ * invoice.
  *
  * A family statement (the head and the members) leaves out what moved
  * between them: it shows the money that came in once, against every
@@ -87,10 +91,28 @@ async function transfersOf(client: Client, tenantId: string, ids: string[]): Pro
       AND (p."patientId" = ANY(${ids}) OR i."patientId" = ANY(${ids}))`;
 }
 
+/** Claims not cancelled, of the patients given: what each asked of its payer, and what the payer refused when. */
+async function claimsOf(client: Client, tenantId: string, ids: string[]) {
+  return client.claim.findMany({
+    where: { tenantId, patientId: { in: ids }, status: { not: "CANCELLED" } },
+    select: {
+      id: true,
+      patientId: true,
+      number: true,
+      amount: true,
+      claimedAt: true,
+      createdAt: true,
+      payer: { select: { name: true } },
+      invoice: { select: { number: true } },
+      lines: { select: { answers: { where: { voidedAt: null, refused: { gt: 0 } }, select: { id: true, refused: true, refusalReason: true, createdAt: true, payerPayment: { select: { paidAt: true } } } } } },
+    },
+  });
+}
+
 async function loadEntries(client: Client, tenantId: string, subjects: Subject[]): Promise<RawEntry[]> {
   const ids = subjects.map((s) => s.id);
   const name = new Map(subjects.map((s) => [s.id, s.fullName]));
-  const [charges, payments, transfers, writeOffs] = await Promise.all([
+  const [charges, payments, transfers, writeOffs, claims] = await Promise.all([
     client.charge.findMany({
       where: { tenantId, patientId: { in: ids } },
       select: {
@@ -126,6 +148,7 @@ async function loadEntries(client: Client, tenantId: string, subjects: Subject[]
       where: { tenantId, patientId: { in: ids }, voidedAt: null },
       select: { id: true, patientId: true, amount: true, reason: true, note: true, writtenOffAt: true, createdAt: true, invoice: { select: { number: true } } },
     }),
+    claimsOf(client, tenantId, ids),
   ]);
   const blank = { description: null, method: null, towards: null, note: null, reason: null, counterpart: null, invoiceNumber: null } as const;
   const entries: RawEntry[] = [];
@@ -164,6 +187,13 @@ async function loadEntries(client: Client, tenantId: string, subjects: Subject[]
       debit: 0,
       credit: w.amount,
     });
+  }
+  for (const c of claims) {
+    const common = { ...blank, patientId: c.patientId, patientName: name.get(c.patientId) ?? "", reference: c.number, invoiceNumber: c.invoice.number, counterpart: c.payer.name };
+    entries.push({ ...common, id: `claim:${c.id}`, at: c.claimedAt.toISOString(), createdAt: c.createdAt, kind: "CLAIMED", debit: 0, credit: c.amount });
+    for (const a of c.lines.flatMap((l) => l.answers)) {
+      entries.push({ ...common, id: `refused:${a.id}`, at: a.payerPayment.paidAt.toISOString(), createdAt: a.createdAt, kind: "REFUSED", reason: a.refusalReason, debit: a.refused, credit: 0 });
+    }
   }
   for (const p of payments) {
     const amount = p.amount;
@@ -212,14 +242,16 @@ export interface AccountPosition {
   balance: number;
   /** Charges and consultation fees. */
   billed: number;
-  /** Paid towards them: billed − balance. */
+  /** Paid towards them (and written off): billed − balance − claimed. */
   received: number;
+  /** Asked of insurers and companies (their claims, less what they refused). */
+  claimed: number;
   dueOnInvoices: number;
   /** Charges on no issued invoice yet (a draft bills nothing yet). */
   notInvoiced: number;
   /** Paid and not yet put towards an invoice. */
   credit: number;
-  openInvoices: { id: string; number: string | null; patientId: string; patientName: string; issuedAt: string | null; total: number; paid: number; writtenOff: number; due: number }[];
+  openInvoices: { id: string; number: string | null; patientId: string; patientName: string; issuedAt: string | null; total: number; paid: number; writtenOff: number; claimed: number; due: number }[];
 }
 
 /** Each patient's balance now, or as it stood just before `asOf` (patients with nothing on their account are 0). */
@@ -229,7 +261,7 @@ export async function patientBalances(client: Client, tenantId: string, ids: rea
   if (!unique.length) return balances;
   const add = (id: string, amount: number) => balances.set(id, (balances.get(id) ?? 0) + amount);
   const before = asOf ? { lt: asOf } : undefined;
-  const [charges, payments, transfers, writeOffs] = await Promise.all([
+  const [charges, payments, transfers, writeOffs, claims] = await Promise.all([
     client.charge.groupBy({ by: ["patientId"], where: { tenantId, patientId: { in: unique }, ...(before ? { chargedAt: before } : {}) }, _sum: { amount: true } }),
     client.payment.groupBy({
       by: ["patientId", "kind"],
@@ -238,8 +270,13 @@ export async function patientBalances(client: Client, tenantId: string, ids: rea
     }),
     transfersOf(client, tenantId, unique),
     client.writeOff.groupBy({ by: ["patientId"], where: { tenantId, patientId: { in: unique }, voidedAt: null, ...(before ? { writtenOffAt: before } : {}) }, _sum: { amount: true } }),
+    claimsOf(client, tenantId, unique),
   ]);
   for (const c of charges) add(c.patientId, c._sum.amount ?? 0);
+  for (const c of claims) {
+    if (!asOf || c.claimedAt.getTime() < asOf.getTime()) add(c.patientId, -c.amount);
+    for (const a of c.lines.flatMap((l) => l.answers)) if (!asOf || a.payerPayment.paidAt.getTime() < asOf.getTime()) add(c.patientId, a.refused);
+  }
   for (const w of writeOffs) add(w.patientId, -(w._sum.amount ?? 0));
   for (const p of payments) add(p.patientId, p.kind === "REFUND" ? (p._sum.amount ?? 0) : -(p._sum.amount ?? 0));
   for (const t of transfers) {
@@ -271,7 +308,7 @@ export async function nextWithBalances(tenantId: string, role: UserRole, next: N
 export async function accountPosition(tx: Tx, tenantId: string, subjects: Subject[]): Promise<AccountPosition> {
   const ids = subjects.map((s) => s.id);
   const name = new Map(subjects.map((s) => [s.id, s.fullName]));
-  const [balances, charged, fees, notInvoiced, invoices, credits] = await Promise.all([
+  const [balances, charged, fees, notInvoiced, invoices, credits, claims] = await Promise.all([
     patientBalances(tx, tenantId, ids),
     tx.charge.aggregate({ where: { tenantId, patientId: { in: ids } }, _sum: { amount: true } }),
     tx.payment.aggregate({ where: { tenantId, patientId: { in: ids }, deletedAt: null, kind: "CONSULTATION_FEE" }, _sum: { amount: true } }),
@@ -279,21 +316,34 @@ export async function accountPosition(tx: Tx, tenantId: string, subjects: Subjec
     tx.invoice.findMany({
       where: { tenantId, patientId: { in: ids }, status: { in: [...OPEN_INVOICE_STATUSES] } },
       orderBy: [{ issuedAt: "asc" }, { createdAt: "asc" }],
-      select: { id: true, number: true, patientId: true, issuedAt: true, total: true, allocations: { select: { amount: true } }, writeOffs: { where: { voidedAt: null }, select: { amount: true } } },
+      select: {
+        id: true,
+        number: true,
+        patientId: true,
+        issuedAt: true,
+        total: true,
+        allocations: { select: { amount: true } },
+        writeOffs: { where: { voidedAt: null }, select: { amount: true } },
+        claims: claimsSettling,
+      },
     }),
     Promise.all(ids.map((id) => patientCredit(tx, tenantId, id))),
+    claimsOf(tx, tenantId, ids),
   ]);
   const balance = [...balances.values()].reduce((s, b) => s + b, 0);
   const billed = (charged._sum.amount ?? 0) + (fees._sum.amount ?? 0);
+  const claimed = claims.reduce((s, c) => s + c.amount - c.lines.reduce((t, l) => t + l.answers.reduce((u, a) => u + a.refused, 0), 0), 0);
   const openInvoices = invoices.map((i) => {
     const paid = i.allocations.reduce((s, a) => s + a.amount, 0);
     const writtenOff = i.writeOffs.reduce((s, w) => s + w.amount, 0);
-    return { id: i.id, number: i.number, patientId: i.patientId, patientName: name.get(i.patientId) ?? "", issuedAt: i.issuedAt?.toISOString() ?? null, total: i.total, paid, writtenOff, due: Math.max(0, i.total - paid - writtenOff) };
+    const claimed = claimedOn(i.claims);
+    return { id: i.id, number: i.number, patientId: i.patientId, patientName: name.get(i.patientId) ?? "", issuedAt: i.issuedAt?.toISOString() ?? null, total: i.total, paid, writtenOff, claimed, due: Math.max(0, i.total - paid - writtenOff - claimed) };
   });
   return {
     balance,
     billed,
-    received: billed - balance,
+    received: billed - balance - claimed,
+    claimed,
     dueOnInvoices: openInvoices.reduce((s, i) => s + i.due, 0),
     notInvoiced: notInvoiced._sum.amount ?? 0,
     credit: credits.reduce((s, c) => s + c.credit, 0),

@@ -37,7 +37,15 @@ export type TenantScopedEntity =
   | "quote"
   | "instalment_plan"
   | "procedure_cost"
-  | "supplier";
+  | "supplier"
+  | "payer"
+  | "payer_contract"
+  | "coverage"
+  | "approval"
+  | "claim"
+  | "claim_line"
+  | "claim_batch"
+  | "payer_payment";
 
 /**
  * Thrown when a referenced row does not belong to the acting tenant (or does

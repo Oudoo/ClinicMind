@@ -363,16 +363,17 @@ function ProductionKpis({ t }: { t: ProductionTotals }) {
 
 async function Income({ scope, day }: { scope: ReportScope; day: (key: string) => string }) {
   const r = await incomeReport(scope);
-  const days = r.days.filter((d) => d.receipts > 0);
+  const days = r.days.filter((d) => d.receipts > 0 || d.insurers > 0);
   const t = r.totals;
   const drawer = (date: string) => `/dashboard/finance/cash?${new URLSearchParams({ date, ...(scope.clinicId ? { clinicId: scope.clinicId } : {}) }).toString()}`;
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-5">
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-3 xl:grid-cols-6">
         <Kpi label="Net income · EGP" value={egp(t.net)} tone="accent" hint={`${formatNumber(t.receipts)} receipts`} />
         <Kpi label="Payments · EGP" value={egp(t.payments)} hint="towards invoices and credit" />
         <Kpi label="Deposits · EGP" value={egp(t.deposits)} hint="taken ahead of procedures" />
         <Kpi label="Consultation fees · EGP" value={egp(t.fees)} hint="paid at the visit" />
+        <Kpi label="Insurers · EGP" value={egp(t.insurers)} hint="paid towards their claims" />
         <Kpi label="Refunds · EGP" value={egp(t.refunds)} tone={t.refunds < 0 ? "warning" : "default"} hint="money paid back" />
       </div>
       <Card className="overflow-hidden p-0">
@@ -384,6 +385,7 @@ async function Income({ scope, day }: { scope: ReportScope; day: (key: string) =
                 <TH className="hidden text-right sm:table-cell">Payments</TH>
                 <TH className="hidden text-right md:table-cell">Deposits</TH>
                 <TH className="hidden text-right md:table-cell">Fees</TH>
+                <TH className="hidden text-right lg:table-cell">Insurers</TH>
                 <TH className="hidden text-right md:table-cell">Refunds</TH>
                 {r.methods.map((m) => (
                   <TH key={m.method} className="hidden text-right 2xl:table-cell">
@@ -401,12 +403,13 @@ async function Income({ scope, day }: { scope: ReportScope; day: (key: string) =
                     {day(d.date)}
                     <span className="block text-xs text-muted-foreground">
                       {d.receipts} receipt{d.receipts === 1 ? "" : "s"}
-                      <span className="sm:hidden"> · {d.signedOff === "yes" ? "signed off" : d.signedOff === "partly" ? "partly signed off" : "not signed off"}</span>
+                      {d.signedOff ? <span className="sm:hidden"> · {d.signedOff === "yes" ? "signed off" : d.signedOff === "partly" ? "partly signed off" : "not signed off"}</span> : null}
                     </span>
                   </TD>
                   <TD className={cn(NUM, "hidden sm:table-cell")}>{egp(d.payments)}</TD>
                   <TD className={cn(NUM, "hidden md:table-cell")}>{egp(d.deposits)}</TD>
                   <TD className={cn(NUM, "hidden md:table-cell")}>{egp(d.fees)}</TD>
+                  <TD className={cn(NUM, "hidden lg:table-cell")}>{egp(d.insurers)}</TD>
                   <TD className={cn(NUM, "hidden md:table-cell")}>{egp(d.refunds)}</TD>
                   {r.methods.map((m) => (
                     <TD key={m.method} className={cn(NUM, "hidden 2xl:table-cell")}>
@@ -415,9 +418,13 @@ async function Income({ scope, day }: { scope: ReportScope; day: (key: string) =
                   ))}
                   <TD className={cn(NUM, "font-medium")}>{egp(d.net)}</TD>
                   <TD className="hidden sm:table-cell">
-                    <Link href={drawer(d.date)} className="underline-offset-2 hover:underline">
-                      {d.signedOff === "yes" ? <Badge tone="success">Signed off</Badge> : d.signedOff === "partly" ? <Badge tone="warning">Partly signed off</Badge> : <Badge tone="warning">Not signed off</Badge>}
-                    </Link>
+                    {d.signedOff === null ? (
+                      <span className="text-xs text-muted-foreground">No drawer money</span>
+                    ) : (
+                      <Link href={drawer(d.date)} className="underline-offset-2 hover:underline">
+                        {d.signedOff === "yes" ? <Badge tone="success">Signed off</Badge> : d.signedOff === "partly" ? <Badge tone="warning">Partly signed off</Badge> : <Badge tone="warning">Not signed off</Badge>}
+                      </Link>
+                    )}
                   </TD>
                 </TR>
               ))}
@@ -426,6 +433,7 @@ async function Income({ scope, day }: { scope: ReportScope; day: (key: string) =
                 <TD className={cn(NUM, "hidden sm:table-cell")}>{egp(t.payments)}</TD>
                 <TD className={cn(NUM, "hidden md:table-cell")}>{egp(t.deposits)}</TD>
                 <TD className={cn(NUM, "hidden md:table-cell")}>{egp(t.fees)}</TD>
+                <TD className={cn(NUM, "hidden lg:table-cell")}>{egp(t.insurers)}</TD>
                 <TD className={cn(NUM, "hidden md:table-cell")}>{egp(t.refunds)}</TD>
                 {r.methods.map((m) => (
                   <TD key={m.method} className={cn(NUM, "hidden 2xl:table-cell")}>

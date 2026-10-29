@@ -34,6 +34,7 @@ import {
   HandCoins,
   Receipt,
   FlaskConical,
+  ShieldCheck,
 } from "lucide-react";
 import { BRAND } from "@/lib/brand";
 import { onAuthChange } from "@/lib/auth/browser-session";
@@ -75,6 +76,7 @@ const NAV: NavItem[] = [
   { href: "/dashboard/finance", label: "Finance", icon: Banknote, permission: "finance:read" },
   { href: "/dashboard/finance/invoices", label: "Invoices", icon: FileText, permission: "payments:write" },
   { href: "/dashboard/finance/instalments", label: "Instalments", icon: CalendarClock, permission: "payments:write" },
+  { href: "/dashboard/finance/insurance", label: "Insurance", icon: ShieldCheck, permission: "insurance:read" },
   { href: "/dashboard/finance/prices", label: "Price list", icon: Tags, permission: "patients:write" },
   { href: "/dashboard/finance/unbilled", label: "Not billed", icon: ClipboardCheck, permission: "payments:write" },
   { href: "/dashboard/finance/cash", label: "Cash drawer", icon: Wallet, permission: "payments:write" },

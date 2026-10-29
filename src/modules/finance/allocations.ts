@@ -13,6 +13,10 @@ import type { Prisma } from "@prisma/client";
  * left across the family (the head's own invoices included), oldest first.
  * A member's money never pays the head's or another member's invoices.
  *
+ * Insurance and companies: an invoice's claims settle the payer's share of
+ * it, less what the payer refused (the patient owes that again, unless the
+ * owner writes it off); the patient's money goes towards the rest.
+ *
  * These helpers run inside the caller's transaction.
  */
 
@@ -63,21 +67,33 @@ export async function payableBy(tx: Tx, tenantId: string, patientId: string): Pr
   return [patientId, ...members.map((m) => m.id)];
 }
 
-/** What is settled on an invoice: the money allocated to it and what was written off on it. */
-export async function settledOn(tx: Tx, tenantId: string, invoiceId: string): Promise<{ paid: number; writtenOff: number }> {
-  const [paid, writtenOff] = await Promise.all([
+/** An invoice's claims, as far as they settle it: select them with this, add them up with `claimedOn`. */
+export const claimsSettling = {
+  where: { status: { not: "CANCELLED" } },
+  select: { lines: { select: { payerShare: true, answers: { where: { voidedAt: null }, select: { refused: true } } } } },
+} as const;
+
+/** What claims settle of an invoice: the payers' shares, less what they refused. */
+export function claimedOn(claims: readonly { lines: readonly { payerShare: number; answers: readonly { refused: number }[] }[] }[]): number {
+  return claims.reduce((s, c) => s + c.lines.reduce((t, l) => t + l.payerShare - l.answers.reduce((u, a) => u + a.refused, 0), 0), 0);
+}
+
+/** What is settled on an invoice: the money allocated to it, what was written off on it and what its claims settle. */
+export async function settledOn(tx: Tx, tenantId: string, invoiceId: string): Promise<{ paid: number; writtenOff: number; claimed: number }> {
+  const [paid, writtenOff, claims] = await Promise.all([
     tx.paymentAllocation.aggregate({ where: { tenantId, invoiceId }, _sum: { amount: true } }),
     tx.writeOff.aggregate({ where: { tenantId, invoiceId, voidedAt: null }, _sum: { amount: true } }),
+    tx.claim.findMany({ where: { tenantId, invoiceId, ...claimsSettling.where }, select: claimsSettling.select }),
   ]);
-  return { paid: paid._sum.amount ?? 0, writtenOff: writtenOff._sum.amount ?? 0 };
+  return { paid: paid._sum.amount ?? 0, writtenOff: writtenOff._sum.amount ?? 0, claimed: claimedOn(claims) };
 }
 
 /** Set an issued invoice's status from what is settled on it. */
 export async function refreshInvoiceStatus(tx: Tx, tenantId: string, invoiceId: string): Promise<void> {
   const invoice = await tx.invoice.findFirst({ where: { id: invoiceId, tenantId }, select: { status: true, total: true } });
   if (!invoice || (invoice.status !== "ISSUED" && invoice.status !== "PART_PAID" && invoice.status !== "PAID")) return;
-  const { paid: money, writtenOff } = await settledOn(tx, tenantId, invoiceId);
-  const paid = money + writtenOff;
+  const { paid: money, writtenOff, claimed } = await settledOn(tx, tenantId, invoiceId);
+  const paid = money + writtenOff + claimed;
   const status = paid >= invoice.total ? "PAID" : paid > 0 ? "PART_PAID" : "ISSUED";
   if (status !== invoice.status) await tx.invoice.update({ where: { id: invoiceId }, data: { status } });
 }
@@ -94,6 +110,7 @@ async function allocateFrom(tx: Tx, tenantId: string, payerId: string, patientId
       total: true,
       allocations: { select: { amount: true } },
       writeOffs: { where: { voidedAt: null }, select: { amount: true } },
+      claims: claimsSettling,
       lines: { select: { charge: { select: { procedureId: true } } } },
     },
   });
@@ -106,7 +123,7 @@ async function allocateFrom(tx: Tx, tenantId: string, payerId: string, patientId
   const left = new Map(payments.map((p) => [p.id, p.amount - total(p.allocations)]));
   let allocated = 0;
   for (const invoice of invoices) {
-    let due = invoice.total - total(invoice.allocations) - total(invoice.writeOffs);
+    let due = invoice.total - total(invoice.allocations) - total(invoice.writeOffs) - claimedOn(invoice.claims);
     const billed = new Set(invoice.lines.map((l) => l.charge.procedureId).filter((id): id is string => Boolean(id)));
     for (const p of payments) {
       if (due <= 0 || available <= 0) break;

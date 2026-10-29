@@ -225,7 +225,7 @@ describe.skipIf(!dbTestsEnabled)("finance report routes", () => {
 
   it("counts income from the money in, less refunds, by method; voided payments never count", async () => {
     const { json: r } = await report("income");
-    expect(r.totals).toEqual({ payments: 5_000, deposits: 2_000, fees: 500, refunds: -300, net: 7_200, methods: { CASH: 4_700, BANK_TRANSFER: 2_000, CARD: 500 }, receipts: 4 });
+    expect(r.totals).toEqual({ payments: 5_000, deposits: 2_000, fees: 500, insurers: 0, refunds: -300, net: 7_200, methods: { CASH: 4_700, BANK_TRANSFER: 2_000, CARD: 500 }, receipts: 4 });
     expect(r.methods.map((m: { method: string }) => m.method)).toEqual(["CASH", "CARD", "BANK_TRANSFER"]);
     const today = (r.days as { date: string; net: number; signedOff: string | null }[]).filter((d) => d.net !== 0);
     expect(today.every((d) => d.signedOff === "no")).toBe(true);

@@ -6,15 +6,17 @@ import { KIND_LABELS, METHOD_LABELS, PAYMENT_METHODS, type PaymentMethodValue } 
 import { accountPosition, patientBalances, type AccountPosition } from "./ledger";
 import { listPayments, type PaymentListQuery } from "./payments";
 import { balancesReport, financeReportCsv, previousOf, productionReport, providersReport, scopeForPeriod } from "./reports";
+import { payerMoneyIn, payersOwed } from "@/modules/insurance/money";
 
 /**
  * The finance dashboard: production (the work charged, after discounts and
  * cancellations, and consultation fees: the reports' net production), money
  * in and out (payments by paidAt; "collected" is everything received,
- * deposits included, net of refunds), what patients owe (their accounts'
- * balances, as the ledger keeps them), and the breakdowns by doctor,
- * treatment, day and method. Every figure carries the same figure for the
- * comparison period.
+ * deposits and insurers' and companies' payments included, net of refunds),
+ * what patients owe (their accounts' balances, as the ledger keeps them) and
+ * what insurers and companies owe, and the breakdowns by doctor, treatment,
+ * day and method. Every figure carries the same figure for the comparison
+ * period.
  */
 
 export interface MoneyPair {
@@ -49,8 +51,12 @@ export interface FinanceSummary {
   deposits: MoneyPair;
   refunds: MoneyPair;
   consultationFees: MoneyPair;
+  /** Paid by insurers and companies towards their claims (in `collected` too). */
+  fromPayers: MoneyPair;
   /** Owed now on patients' accounts; `previousAmount` is what was owed when the comparison period ended. */
   outstanding: { amount: number; patients: number; previousAmount: number };
+  /** Owed now by insurers and companies on their claims. */
+  owedByPayers: number;
   byDoctor: NamedAmount[];
   byTreatment: NamedAmount[];
   collectedPerBucket: { label: string; value: number; compare: number | undefined }[];
@@ -67,7 +73,7 @@ const netCash = (p: { kind: string; amount: number }) => (moneyIn(p.kind) ? p.am
 export async function getFinanceSummary(tenantId: string, period: ResolvedPeriod, timeZone: string): Promise<FinanceSummary> {
   const scope = await scopeForPeriod(tenantId, period, timeZone);
   const previousScope = { ...scope, period: previousOf(period, timeZone) };
-  const [production, previousProduction, providers, balances, payments] = await Promise.all([
+  const [production, previousProduction, providers, balances, payments, payerMoney, owedByPayers] = await Promise.all([
     productionReport(scope),
     productionReport(previousScope),
     providersReport(scope),
@@ -77,6 +83,8 @@ export async function getFinanceSummary(tenantId: string, period: ResolvedPeriod
       select: { kind: true, method: true, amount: true, paidAt: true },
       take: 50_000,
     }),
+    payerMoneyIn(db, tenantId, { gte: period.previous.from, lt: period.to }),
+    payersOwed(db, tenantId),
   ]);
   const owing = balances.rows.filter((r) => r.balance > 0);
   // What was owed when the comparison period ended: every account as it stood then.
@@ -93,12 +101,14 @@ export async function getFinanceSummary(tenantId: string, period: ResolvedPeriod
     }
     return { current, previous };
   };
-  const payRows = payments.map((p) => ({ ...p, at: p.paidAt }));
+  // The insurers' and companies' money as payments too: it is money in.
+  const payRows = [...payments.map((p) => ({ ...p, at: p.paidAt })), ...payerMoney.map((m) => ({ kind: "PAYMENT" as const, method: m.method, amount: m.amount, paidAt: m.at, at: m.at, payer: true }))];
   // Collected: everything received in the period (deposits included) net of refunds.
   const collected = pair(payRows, netCash);
   const deposits = pair(payRows, (p) => (p.kind === "DEPOSIT" ? p.amount : 0));
   const refunds = pair(payRows, (p) => (p.kind === "REFUND" ? p.amount : 0));
   const consultationFees = pair(payRows, (p) => (p.kind === "CONSULTATION_FEE" ? p.amount : 0));
+  const fromPayers = pair(payRows, (p) => ("payer" in p ? p.amount : 0));
 
   // Collected per day (or week) against the previous period, aligned by bucket index.
   const buckets = periodBuckets(period, timeZone);
@@ -119,7 +129,9 @@ export async function getFinanceSummary(tenantId: string, period: ResolvedPeriod
     deposits,
     refunds,
     consultationFees,
+    fromPayers,
     outstanding: { amount: balances.totals.owed, patients: balances.totals.owing, previousAmount },
+    owedByPayers,
     byDoctor: providers.rows.filter((r) => r.net !== 0 || r.procedures).map((r) => ({ id: r.doctorId ?? "none", label: r.name, amount: r.net, count: r.procedures })).sort(byAmount),
     byTreatment: production.byTreatment.map((t) => ({ id: t.name, label: t.name, amount: t.net, count: t.procedures })).sort(byAmount),
     collectedPerBucket,

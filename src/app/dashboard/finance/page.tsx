@@ -118,7 +118,7 @@ export default async function FinancePage({ searchParams }: { searchParams: Prom
           label="Collected · EGP"
           value={tile(s.collected.current)}
           delta={<DeltaChip current={s.collected.current} previous={s.collected.previous} goodWhen="up" format={fmtEgp} />}
-          hint="all money in, net of refunds"
+          hint={s.fromPayers.current ? `all money in, net of refunds · ${fmtEgp(s.fromPayers.current)} from insurers` : "all money in, net of refunds"}
         />
         <Kpi
           label="Deposits · EGP"
@@ -144,7 +144,7 @@ export default async function FinancePage({ searchParams }: { searchParams: Prom
           value={tile(s.outstanding.amount)}
           tone={s.outstanding.amount > 0 ? "warning" : "default"}
           delta={<DeltaChip current={s.outstanding.amount} previous={s.outstanding.previousAmount} goodWhen="down" format={fmtEgp} />}
-          hint={`${s.outstanding.patients} patients · was ${fmtEgp(s.outstanding.previousAmount)}`}
+          hint={`${s.outstanding.patients} patients · was ${fmtEgp(s.outstanding.previousAmount)}${s.owedByPayers ? ` · insurers owe ${fmtEgp(s.owedByPayers)} more` : ""}`}
         />
       </div>
 

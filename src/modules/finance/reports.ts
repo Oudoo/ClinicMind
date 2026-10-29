@@ -7,22 +7,22 @@ import { zOptionalText } from "@/lib/validation";
 import { getTenantTimezone } from "@/modules/appointments/service";
 import { toCsv, type CsvCell } from "@/modules/reporting/csv";
 import { resolvePeriod, type ResolvedPeriod } from "@/modules/reporting/period";
-import { OPEN_INVOICE_STATUSES } from "./allocations";
+import { claimedOn, claimsSettling, OPEN_INVOICE_STATUSES } from "./allocations";
 import { getCashDay } from "./cash";
 import { stageShare, summarizeCharges } from "./charges";
 import {
-  DISCOUNT_REASON_LABELS,
+  discountReasonLabel,
   METHOD_LABELS,
   PAYMENT_METHODS,
   PROCEDURE_STATUSES,
   PROCEDURE_STATUS_LABELS,
   WRITE_OFF_REASON_LABELS,
-  type DiscountReasonValue,
   type PaymentMethodValue,
   type ProcedureStatusValue,
   type WriteOffReasonValue,
 } from "./constants";
 import { patientBalances } from "./ledger";
+import { payerMoneyIn } from "@/modules/insurance/money";
 
 /**
  * The owner's financial reports, as Dentalore keeps them: the money that came
@@ -389,6 +389,8 @@ export interface IncomeTotals {
   payments: number;
   deposits: number;
   fees: number;
+  /** Paid by insurers and companies towards their claims. */
+  insurers: number;
   /** Money paid back (negative). */
   refunds: number;
   net: number;
@@ -410,7 +412,7 @@ export interface IncomeReport {
   methods: { method: PaymentMethodValue; label: string }[];
 }
 
-const zeroIncome = (): IncomeTotals => ({ payments: 0, deposits: 0, fees: 0, refunds: 0, net: 0, methods: {}, receipts: 0 });
+const zeroIncome = (): IncomeTotals => ({ payments: 0, deposits: 0, fees: 0, insurers: 0, refunds: 0, net: 0, methods: {}, receipts: 0 });
 
 function addPayment(t: IncomeTotals, p: { kind: PaymentKind; method: PaymentMethod; amount: number }): void {
   const signed = p.kind === "REFUND" ? -p.amount : p.amount;
@@ -423,10 +425,17 @@ function addPayment(t: IncomeTotals, p: { kind: PaymentKind; method: PaymentMeth
   t.receipts += 1;
 }
 
+function addPayerMoney(t: IncomeTotals, m: { method: PaymentMethod; amount: number }): void {
+  t.insurers += m.amount;
+  t.net += m.amount;
+  t.methods[m.method] = (t.methods[m.method] ?? 0) + m.amount;
+}
+
 export async function incomeReport(scope: ReportScope): Promise<IncomeReport> {
-  const [payments, closes] = await Promise.all([
+  const [payments, closes, payerMoney] = await Promise.all([
     db.payment.findMany({ where: { tenantId: scope.tenantId, deletedAt: null, paidAt: span(scope) }, select: { kind: true, method: true, amount: true, paidAt: true, clinicId: true } }),
     db.dayClose.findMany({ where: { tenantId: scope.tenantId, day: { gte: scope.period.fromKey, lte: scope.period.toKey } }, select: { clinicId: true, day: true } }),
+    payerMoneyIn(db, scope.tenantId, span(scope)),
   ]);
   const closed = new Set(closes.map((c) => `${c.clinicId}|${c.day}`));
   const days = new Map(daysOf(scope).map((d) => [d, { date: d, ...zeroIncome(), signedOff: null as IncomeDay["signedOff"] }]));
@@ -440,6 +449,13 @@ export async function incomeReport(scope: ReportScope): Promise<IncomeReport> {
     addPayment(totals, p);
     const branch = branchOf(scope, p.clinicId);
     if (branch) branchesOn.set(key, (branchesOn.get(key) ?? new Set()).add(branch));
+  }
+  // Insurers' and companies' money comes into the bank, not the drawer: it has no day close of its own.
+  for (const m of payerMoney) {
+    if (!inBranch(scope, m.clinicId)) continue;
+    const day = days.get(dayOf(scope, m.at));
+    if (day) addPayerMoney(day, m);
+    addPayerMoney(totals, m);
   }
   for (const day of days.values()) {
     const branches = [...(branchesOn.get(day.date) ?? [])];
@@ -464,11 +480,12 @@ export interface BranchRow extends ProductionTotals {
 /** Every branch side by side (the branch filter does not apply). */
 export async function branchReport(scope: ReportScope): Promise<{ rows: BranchRow[]; totals: Omit<BranchRow, "clinicId" | "name"> }> {
   const all = { ...scope, clinicId: null };
-  const [charges, fees, payments, writeOffs] = await Promise.all([
+  const [charges, fees, payments, writeOffs, payerMoney] = await Promise.all([
     chargesIn(all),
     feesIn(all),
     db.payment.findMany({ where: { tenantId: scope.tenantId, deletedAt: null, paidAt: span(scope) }, select: { kind: true, amount: true, clinicId: true } }),
     db.writeOff.findMany({ where: { tenantId: scope.tenantId, voidedAt: null, writtenOffAt: span(scope) }, select: { amount: true, invoice: { select: { clinicId: true } } } }),
+    payerMoneyIn(db, scope.tenantId, span(scope)),
   ]);
   const rows = new Map<string, BranchRow>(scope.clinics.map((c) => [c.id, { clinicId: c.id, name: c.name, ...zeroProduction(), income: 0, writtenOff: 0 }]));
   const totals = { ...zeroProduction(), income: 0, writtenOff: 0 };
@@ -497,6 +514,11 @@ export async function branchReport(scope: ReportScope): Promise<{ rows: BranchRo
     const r = rowOf(branchOf(all, p.clinicId));
     if (r) r.income += signed;
     totals.income += signed;
+  }
+  for (const m of payerMoney) {
+    const r = rowOf(m.clinicId);
+    if (r) r.income += m.amount;
+    totals.income += m.amount;
   }
   for (const w of writeOffs) {
     const r = rowOf(w.invoice.clinicId);
@@ -530,7 +552,7 @@ export interface AdjustmentsReport {
 }
 
 const discountWords = (key: string | null, note: string | null) => {
-  const label = key ? (DISCOUNT_REASON_LABELS[key as DiscountReasonValue] ?? key) : null;
+  const label = key ? discountReasonLabel(key) : null;
   return label && note ? `${label}: ${note}` : (label ?? note);
 };
 
@@ -643,6 +665,8 @@ export interface InvoiceRow {
   total: number;
   paid: number;
   writtenOff: number;
+  /** What insurers' and companies' claims settle of it. */
+  claimed: number;
   due: number;
 }
 
@@ -650,7 +674,7 @@ export interface BalancesReport {
   asOf: string;
   totals: { owed: number; owing: number; credit: number; inCredit: number; dueOnInvoices: number; notInvoiced: number; aging: [number, number, number, number] };
   rows: BalanceRow[];
-  invoices: { issued: number; issuedTotal: number; paid: number; writtenOff: number; due: number; cancelled: number; rows: InvoiceRow[] };
+  invoices: { issued: number; issuedTotal: number; paid: number; writtenOff: number; claimed: number; due: number; cancelled: number; rows: InvoiceRow[] };
 }
 
 const BILLED = ["ISSUED", "PART_PAID", "PAID"] as const;
@@ -667,20 +691,30 @@ export async function balancesReport(scope: ReportScope, now: Date = new Date())
     db.payment.groupBy({ by: ["patientId"], where: { tenantId: t, deletedAt: null } }),
     db.invoice.findMany({
       where: { tenantId: t, status: { in: [...OPEN_INVOICE_STATUSES] } },
-      select: { patientId: true, issuedAt: true, total: true, allocations: { select: { amount: true } }, writeOffs: { where: { voidedAt: null }, select: { amount: true } } },
+      select: { patientId: true, issuedAt: true, total: true, allocations: { select: { amount: true } }, writeOffs: { where: { voidedAt: null }, select: { amount: true } }, claims: claimsSettling },
     }),
     db.charge.groupBy({ by: ["patientId"], where: { tenantId: t, invoiceLines: { none: { invoice: { status: { in: [...BILLED] } } } } }, _sum: { amount: true } }),
     db.invoice.findMany({
       where: { tenantId: t, issuedAt: span(scope), ...(scope.clinicId ? { clinicId: scope.clinicId } : {}) },
       orderBy: [{ issuedAt: "asc" }, { sequence: "asc" }],
-      select: { id: true, number: true, patientId: true, issuedAt: true, status: true, total: true, allocations: { select: { amount: true } }, writeOffs: { where: { voidedAt: null }, select: { amount: true } } },
+      select: {
+        id: true,
+        number: true,
+        patientId: true,
+        issuedAt: true,
+        status: true,
+        total: true,
+        allocations: { select: { amount: true } },
+        writeOffs: { where: { voidedAt: null }, select: { amount: true } },
+        claims: claimsSettling,
+      },
     }),
   ]);
   const ids = [...new Set([...chargedIds.map((r) => r.patientId), ...paidIds.map((r) => r.patientId)])];
   const [balances, patients] = await Promise.all([patientBalances(db, t, ids), patientNames(t, [...ids, ...issued.map((i) => i.patientId)])]);
   const due = new Map<string, { total: number; aging: [number, number, number, number]; oldest: Date | null }>();
   for (const i of open) {
-    const owed = Math.max(0, i.total - i.allocations.reduce((s, a) => s + a.amount, 0) - i.writeOffs.reduce((s, w) => s + w.amount, 0));
+    const owed = Math.max(0, i.total - i.allocations.reduce((s, a) => s + a.amount, 0) - i.writeOffs.reduce((s, w) => s + w.amount, 0) - claimedOn(i.claims));
     if (!owed) continue;
     const age = i.issuedAt ? Math.floor((now.getTime() - i.issuedAt.getTime()) / 86_400_000) : 0;
     const bucket = age <= 30 ? 0 : age <= 60 ? 1 : age <= 90 ? 2 : 3;
@@ -718,6 +752,7 @@ export async function balancesReport(scope: ReportScope, now: Date = new Date())
     const live = i.status !== "CANCELLED";
     const paid = live ? i.allocations.reduce((s, a) => s + a.amount, 0) : 0;
     const writtenOff = live ? i.writeOffs.reduce((s, w) => s + w.amount, 0) : 0;
+    const claimed = live ? claimedOn(i.claims) : 0;
     return {
       id: i.id,
       number: i.number,
@@ -728,7 +763,8 @@ export async function balancesReport(scope: ReportScope, now: Date = new Date())
       total: i.total,
       paid,
       writtenOff,
-      due: live ? Math.max(0, i.total - paid - writtenOff) : 0,
+      claimed,
+      due: live ? Math.max(0, i.total - paid - writtenOff - claimed) : 0,
     };
   });
   const live = invoiceRows.filter((i) => i.status !== "CANCELLED");
@@ -741,6 +777,7 @@ export async function balancesReport(scope: ReportScope, now: Date = new Date())
       issuedTotal: live.reduce((s, i) => s + i.total, 0),
       paid: live.reduce((s, i) => s + i.paid, 0),
       writtenOff: live.reduce((s, i) => s + i.writtenOff, 0),
+      claimed: live.reduce((s, i) => s + i.claimed, 0),
       due: live.reduce((s, i) => s + i.due, 0),
       cancelled: invoiceRows.length - live.length,
       rows: invoiceRows,
@@ -1118,11 +1155,11 @@ export async function financeReportCsv(scope: ReportScope, key: FinanceReportKey
   if (key === "income") {
     const r = await incomeReport(scope);
     const methods = PAYMENT_METHODS.filter((m) => r.totals.methods[m] !== undefined);
-    const cells = (x: IncomeTotals): CsvCell[] => [x.payments, x.deposits, x.fees, x.refunds, x.net, ...methods.map((m) => x.methods[m] ?? 0), x.receipts];
+    const cells = (x: IncomeTotals): CsvCell[] => [x.payments, x.deposits, x.fees, x.insurers, x.refunds, x.net, ...methods.map((m) => x.methods[m] ?? 0), x.receipts];
     return {
       filename,
       csv: toCsv(
-        ["Date", "Payments (EGP)", "Deposits (EGP)", "Consultation fees (EGP)", "Refunds (EGP)", "Net income (EGP)", ...methods.map((m) => `${METHOD_LABELS[m]} (EGP)`), "Receipts", "Signed off"],
+        ["Date", "Payments (EGP)", "Deposits (EGP)", "Consultation fees (EGP)", "Insurers and companies (EGP)", "Refunds (EGP)", "Net income (EGP)", ...methods.map((m) => `${METHOD_LABELS[m]} (EGP)`), "Receipts", "Signed off"],
         [...r.days.map((d) => [d.date, ...cells(d), d.signedOff ?? ""]), ["Total", ...cells(r.totals), ""]],
       ),
     };

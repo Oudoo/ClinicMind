@@ -51,8 +51,15 @@ export const DISCOUNT_REASON_LABELS: Record<DiscountReasonValue, string> = {
   OTHER: "Another reason",
 };
 
+/** The discount an insurer's or a company's contract takes off covered work: put on the invoice for it, chosen by no one. */
+export const CONTRACT_DISCOUNT = "CONTRACT";
+
+/** Every discount's reason as the reports name it: the fixed list's, and the contract's. */
+export const discountReasonLabel = (key: string): string =>
+  key === CONTRACT_DISCOUNT ? "Insurance or company contract" : (DISCOUNT_REASON_LABELS[key as DiscountReasonValue] ?? key);
+
 /** Why what is left on an invoice is written off (the owner's decision). */
-export const WRITE_OFF_REASONS = ["BAD_DEBT", "SMALL_BALANCE", "DISPUTE", "GOODWILL", "DECEASED", "OTHER"] as const;
+export const WRITE_OFF_REASONS = ["BAD_DEBT", "SMALL_BALANCE", "DISPUTE", "GOODWILL", "DECEASED", "PAYER_REFUSED", "OTHER"] as const;
 export type WriteOffReasonValue = (typeof WRITE_OFF_REASONS)[number];
 
 export const WRITE_OFF_REASON_LABELS: Record<WriteOffReasonValue, string> = {
@@ -61,6 +68,7 @@ export const WRITE_OFF_REASON_LABELS: Record<WriteOffReasonValue, string> = {
   DISPUTE: "A dispute settled",
   GOODWILL: "Goodwill",
   DECEASED: "The patient has died",
+  PAYER_REFUSED: "Refused by the insurer or the company",
   OTHER: "Another reason",
 };
 

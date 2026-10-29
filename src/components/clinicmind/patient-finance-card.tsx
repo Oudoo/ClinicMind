@@ -98,7 +98,7 @@ export async function PatientFinanceCard({ tenantId, role, patientId, canWrite }
       invoices={invoiceItems}
       billable={billable ? { count: billable.charges.length, total: billable.total } : null}
       credit={position ? position.credit : null}
-      account={position ? { billed: position.billed, received: position.received, balance: position.balance } : null}
+      account={position ? { billed: position.billed, received: position.received, balance: position.balance, claimed: position.claimed } : null}
       discountLimit={discountLimit}
       treatments={treatments.map((t) => ({ id: t.id, key: t.key, name: t.name, priceFrom: t.priceFrom, priceTo: t.priceTo, depositAmount: t.depositAmount }))}
       priceItems={prices ? toPriceOptions(prices.items) : []}

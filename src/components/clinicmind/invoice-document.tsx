@@ -24,6 +24,11 @@ const COPY = {
     total: "Total",
     paid: "Paid",
     writtenOff: "Written off",
+    claimed: "Claimed from the insurer",
+    claims: "Insurance claims",
+    claim: "Claim",
+    card: "card",
+    claimCancelled: "cancelled",
     closedWrittenOff: "Closed: written off",
     due: "To pay",
     payments: "Payments",
@@ -47,6 +52,11 @@ const COPY = {
     total: "الإجمالي",
     paid: "المدفوع",
     writtenOff: "مشطوب",
+    claimed: "تتحمله جهة التأمين",
+    claims: "مطالبات التأمين",
+    claim: "مطالبة",
+    card: "بطاقة",
+    claimCancelled: "ملغاة",
     closedWrittenOff: "مغلقة: مشطوبة",
     due: "المتبقي",
     payments: "المدفوعات",
@@ -165,6 +175,14 @@ export function InvoiceDocument({ invoice }: { invoice: InvoiceDTO }) {
                 {money(invoice.paid)}
               </dd>
             </div>
+            {invoice.claimed > 0 ? (
+              <div className="flex justify-between gap-4 text-muted-foreground">
+                <dt>{t.claimed}</dt>
+                <dd className="font-mono tabular-nums" dir="ltr">
+                  {money(invoice.claimed)}
+                </dd>
+              </div>
+            ) : null}
             {invoice.writtenOff > 0 ? (
               <div className="flex justify-between gap-4 text-muted-foreground">
                 <dt>{t.writtenOff}</dt>
@@ -198,6 +216,32 @@ export function InvoiceDocument({ invoice }: { invoice: InvoiceDTO }) {
                 </span>
                 <span className="shrink-0 font-mono tabular-nums" dir="ltr">
                   {money(p.amount)}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+
+      {invoice.claims.length ? (
+        <section className="space-y-1" data-testid="invoice-claims">
+          <p className="data-label">{t.claims}</p>
+          <ul className="space-y-0.5 text-xs text-muted-foreground">
+            {invoice.claims.map((c) => (
+              <li key={c.id} className="flex items-start justify-between gap-2">
+                <span className="min-w-0">
+                  {t.claim}{" "}
+                  <span className="font-mono" dir="ltr">
+                    {c.number}
+                  </span>{" "}
+                  · <bdi>{c.payerName}</bdi> · {t.card}{" "}
+                  <span className="font-mono" dir="ltr">
+                    {c.memberNumber}
+                  </span>
+                  {c.status === "CANCELLED" ? ` · ${t.claimCancelled}` : ""}
+                </span>
+                <span className="shrink-0 font-mono tabular-nums" dir="ltr">
+                  {money(c.amount)}
                 </span>
               </li>
             ))}

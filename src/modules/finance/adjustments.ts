@@ -5,7 +5,7 @@ import { audit } from "@/lib/audit";
 import { zOptionalText, zText } from "@/lib/validation";
 import { postCharge } from "./charges";
 import { refreshInvoiceStatus, settledOn } from "./allocations";
-import { DISCOUNT_REASONS, MAX_AMOUNT, WRITE_OFF_REASON_LABELS, WRITE_OFF_REASONS } from "./constants";
+import { CONTRACT_DISCOUNT, DISCOUNT_REASONS, MAX_AMOUNT, WRITE_OFF_REASON_LABELS, WRITE_OFF_REASONS } from "./constants";
 import { DISCOUNT_WORDS } from "./ledger-copy";
 import { assertDiscountAllowed } from "./discounts";
 import { FinanceError } from "./errors";
@@ -73,12 +73,14 @@ export async function discountDraftLine(tenantId: string, invoiceId: string, raw
     if (charge.amount <= 0 || charge.reversalOfId || charge.discountOfId) {
       throw new FinanceError(409, "not_discountable", "only a charge for work done is discounted", { message: "Only a charge for work done can be discounted." });
     }
-    // All the discounts on this charge together stay within the charge, and within the role's limit for it.
-    const before = -((await tx.charge.aggregate({ where: { tenantId, discountOfId: charge.id }, _sum: { amount: true } }))._sum.amount ?? 0);
+    // All the discounts on this charge together stay within the charge; the desk's (not a contract's) within the role's limit for it.
+    const discounts = await tx.charge.findMany({ where: { tenantId, discountOfId: charge.id, reversedBy: { is: null } }, select: { amount: true, reason: true } });
+    const before = -discounts.reduce((s, d) => s + d.amount, 0);
+    const given = -discounts.filter((d) => d.reason !== CONTRACT_DISCOUNT).reduce((s, d) => s + d.amount, 0);
     if (before + input.amount > charge.amount) {
       throw amountIssue(before ? `At most ${(charge.amount - before).toLocaleString("en-US")} EGP more can come off this line` : "A discount cannot be more than the line");
     }
-    await assertDiscountAllowed(tenantId, actor.role, charge.amount, before + input.amount, tx);
+    await assertDiscountAllowed(tenantId, actor.role, charge.amount, given + input.amount, tx);
     const lines = await tx.invoiceLine.findMany({ where: { tenantId, invoiceId }, select: { amount: true, position: true } });
     const total = lines.reduce((s, l) => s + l.amount, 0) - input.amount;
     if (total <= 0) {
@@ -120,7 +122,7 @@ export async function writeOffInvoice(tenantId: string, invoiceId: string, rawIn
       throw invoiceState(invoice.status, "written off", invoice.status === "DRAFT" ? "Issue the invoice first: a draft is not owed yet." : invoice.status === "PAID" ? "Nothing is left to pay on this invoice." : "A cancelled invoice is not owed.");
     }
     const settled = await settledOn(tx, tenantId, invoiceId);
-    const left = invoice.total - settled.paid - settled.writtenOff;
+    const left = invoice.total - settled.paid - settled.writtenOff - settled.claimed;
     const amount = input.amount ?? left;
     if (amount > left) throw amountIssue(`At most ${left.toLocaleString("en-US")} EGP is left to pay on it`);
     await tx.writeOff.create({

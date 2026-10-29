@@ -50,7 +50,10 @@ export type Permission =
   | "expenses:read" // the clinic's expenses, bills to pay and suppliers (salaries are the owner's alone)
   | "expenses:write" // record an expense or a bill, pay it (cash out of the drawer too), attach its receipt, add a supplier
   | "lab:read" // lab orders, where they stand and which are late (their results: clinicians only, see canReadLabResults)
-  | "lab:write"; // send a lab order, record its result, cancel it
+  | "lab:write" // send a lab order, record its result, cancel it
+  | "insurance:read" // payers, patients' covers, approvals, claims and what each payer owes
+  | "insurance:write" // add or end a patient's cover, ask for and record an approval, send claims in a batch
+  | "insurance:manage"; // payers and their contracts, the payers' answers and money, writing off what they refuse
 
 const ALL: Permission[] = [
   "platform:manage",
@@ -91,6 +94,9 @@ const ALL: Permission[] = [
   "expenses:write",
   "lab:read",
   "lab:write",
+  "insurance:read",
+  "insurance:write",
+  "insurance:manage",
 ];
 
 const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
@@ -136,6 +142,9 @@ const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
     "expenses:write",
     "lab:read",
     "lab:write",
+    "insurance:read",
+    "insurance:write",
+    "insurance:manage",
   ],
   DOCTOR: [
     "patients:read",
@@ -183,6 +192,8 @@ const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
     "expenses:write",
     "lab:read",
     "lab:write",
+    "insurance:read",
+    "insurance:write",
   ],
   RECEPTIONIST: [
     "patients:read",
@@ -203,6 +214,8 @@ const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
     "expenses:write",
     "lab:read",
     "lab:write",
+    "insurance:read",
+    "insurance:write",
   ],
   ASSISTANT: ["patients:read", "appointments:read", "conversations:read", "leads:read", "recalls:read"],
 };

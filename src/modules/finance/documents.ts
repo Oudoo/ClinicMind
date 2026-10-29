@@ -2,19 +2,19 @@ import type { Prisma } from "@prisma/client";
 
 /**
  * Document numbers: each branch numbers its invoices, credit notes, receipts,
- * refund vouchers and quotes in sequences of its own ("ZAM-INV-000042",
- * "ZAM-QT-000007"). A number is taken inside the transaction that issues the
- * document: the sequence row is locked until it commits, and rolled back
- * with it, so a number is spent only when the document exists. No gaps, no
- * repeats.
+ * refund vouchers, quotes, insurance claims and claim batches in sequences of
+ * its own ("ZAM-INV-000042", "ZAM-QT-000007", "ZAM-CL-000003"). A number is
+ * taken inside the transaction that issues the document: the sequence row is
+ * locked until it commits, and rolled back with it, so a number is spent only
+ * when the document exists. No gaps, no repeats.
  */
 
 type Tx = Prisma.TransactionClient;
 
-export const DOCUMENT_KINDS = ["INVOICE", "CREDIT_NOTE", "RECEIPT", "REFUND", "QUOTE"] as const;
+export const DOCUMENT_KINDS = ["INVOICE", "CREDIT_NOTE", "RECEIPT", "REFUND", "QUOTE", "CLAIM", "CLAIM_BATCH"] as const;
 export type DocumentKind = (typeof DOCUMENT_KINDS)[number];
 
-const PREFIX: Record<DocumentKind, string> = { INVOICE: "INV", CREDIT_NOTE: "CN", RECEIPT: "RC", REFUND: "RF", QUOTE: "QT" };
+const PREFIX: Record<DocumentKind, string> = { INVOICE: "INV", CREDIT_NOTE: "CN", RECEIPT: "RC", REFUND: "RF", QUOTE: "QT", CLAIM: "CL", CLAIM_BATCH: "CB" };
 
 /** "Aura Clinic — Zamalek" → "ZAM": the letters of the place after the dash, else of the name (as the migration does). */
 export function deriveBranchCode(name: string): string {
