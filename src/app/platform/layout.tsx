@@ -25,7 +25,7 @@ export default async function PlatformLayout({ children }: { children: React.Rea
           productName={branding?.productName}
           logoUrl={branding?.logoUrl ?? null}
           platform
-          user={{ email: ctx.email, fullName: ctx.fullName, role: ctx.role, canSignOut: ctx.auth.method === "session" }}
+          user={{ email: ctx.email, fullName: ctx.fullName, role: ctx.role, isClinician: ctx.isClinician, canSignOut: ctx.auth.method === "session" }}
         >
           {children}
         </DashboardShell>

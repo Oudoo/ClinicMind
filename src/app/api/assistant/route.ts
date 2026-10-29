@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { getActingContext } from "@/lib/auth/session";
-import { assertCan } from "@/lib/auth/rbac";
+import { assertCanUseAssistant } from "@/lib/auth/rbac";
 import { clientIp, crossOriginRejected, isSameOrigin, userAgent } from "@/lib/auth/request";
 import { resolveTenantAi } from "@/lib/ai/tenant-config";
 import { requireTenantPatient } from "@/lib/tenant-scope";
@@ -19,7 +19,7 @@ const Body = z.object({
 });
 
 /**
- * Doctor AI assistant — tenant-scoped, permission `ai:assistant`.
+ * Doctor AI assistant — tenant-scoped, permission `ai:assistant` and the clinician mark.
  *
  * Body: `{ query, patientId?, page? }`.
  *
@@ -40,7 +40,8 @@ export async function POST(req: Request) {
     if (!isSameOrigin(req)) return crossOriginRejected();
     const ctx = await getActingContext(req);
     if (!ctx) return unauthorized();
-    assertCan(ctx.role, "ai:assistant");
+    // Clinicians only, checked on every request (the AI lead and the platform admin are not).
+    assertCanUseAssistant(ctx);
 
     const { query, patientId, page } = Body.parse(await req.json());
     // A client-supplied patient id must belong to the acting tenant (SEC-4);

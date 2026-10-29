@@ -112,7 +112,8 @@ export default async function ClinicAiPage() {
             ["A microphone in every free-text field", "/dashboard/appointments", "Reason, notes, summary, address, the assistant's question: the transcript lands at the caret."],
             ["Transcript to signed record", "/dashboard/consultations", "Extract, review with medication reconciliation, sign; nothing reaches the record unsigned."],
             ["History from a dictated note", "/dashboard/patients", "Edit history → Dictate the history: suggested conditions, allergies, diagnoses and surgeries for review."],
-            ["Grounded assistant", "/dashboard/assistant", "Answers only from this clinic's records, with citations, or an honest \"no matching records\"."],
+            ["Grounded assistant", "/dashboard/assistant", "Answers only from this clinic's records, with citations, or an honest \"no matching records\". Clinicians only."],
+            ["Evidence panel", "/dashboard/evidence", "Beside the consultation review: answers only from the clinic's approved library, each statement with its source, or \"no good source\". Clinicians only."],
             ["AI providers per clinic", "/platform", "Gemini, OpenAI or Anthropic per tenant with the client's own keys; every call logged with cost."],
           ].map(([title, href, text]) => (
             <li key={title} className="rounded-lg border border-border p-3">

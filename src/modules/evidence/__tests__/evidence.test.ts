@@ -109,6 +109,15 @@ describe("searching", () => {
     expect(units.filter((u) => u.concept)).toHaveLength(2);
   });
 
+  it("a question naming a drug is about that drug: a passage about the condition alone does not answer it", () => {
+    const passages: CandidatePassage[] = [
+      { id: "ladder", sourceId: "l", title: "Acne treatment ladder", heading: "Moderate acne", content: "Women: a combined oral contraceptive or spironolactone can be added for acne that flares with the cycle." },
+      { id: "iso", sourceId: "i", title: ISO, heading: "Before starting", content: "Women who could become pregnant: a negative pregnancy test before the first prescription." },
+    ];
+    expect(answerablePassages("Spironolactone dose for acne in women?", passages).map((c) => c.item.id)).toEqual(["ladder"]);
+    expect(analyzeQuestion("Spironolactone dose for acne in women?").units.filter((u) => u.concept).map((u) => u.kind)).toEqual(["drug", "condition"]);
+  });
+
   it("the source's title counts: a passage of the isotretinoin protocol is about isotretinoin", () => {
     expect(ids("isotretinoin monitoring")).toEqual(["iso-1"]);
   });
@@ -196,13 +205,13 @@ describe("answering", () => {
 
 describe("what leaves the clinic with the question", () => {
   it("takes the patient's name words, long numbers and e-mail addresses out of the question", () => {
-    const ids = ["Mervat", "Adel", "+201001234567", "29801011234567", "mervat@example.com"];
-    expect(redactQuestion("Can Mervat Adel (+20 100 123 4567, ID 29801011234567, mervat@example.com) take doxycycline?", ids)).toBe(
+    const mervat = { fullName: "Mervat Adel", phone: "+201001234567", nationalId: "29801011234567", email: "mervat@example.com" };
+    expect(redactQuestion("Can Mervat Adel (+20 100 123 4567, ID 29801011234567, mervat@example.com) take doxycycline?", mervat)).toBe(
       "Can the patient ([number], ID [number], [email]) take doxycycline?",
     );
-    expect(redactQuestion("هل ميرفت تقدر تاخد روكيوتان؟", ["ميرفت", "عادل"])).toBe("هل the patient تقدر تاخد روكيوتان؟");
+    expect(redactQuestion("هل ميرفت تقدر تاخد روكيوتان؟", { fullName: "ميرفت عادل" })).toBe("هل the patient تقدر تاخد روكيوتان؟");
     // Doses and short numbers stay: they are part of the question.
-    expect(redactQuestion("Is 20 mg of isotretinoin a day enough at 55 kg?", ["Mervat"])).toBe("Is 20 mg of isotretinoin a day enough at 55 kg?");
+    expect(redactQuestion("Is 20 mg of isotretinoin a day enough at 55 kg?", { fullName: "Mervat" })).toBe("Is 20 mg of isotretinoin a day enough at 55 kg?");
   });
 });
 

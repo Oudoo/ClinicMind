@@ -4,6 +4,7 @@ import { getActingContext } from "@/lib/auth/session";
 import { assertCan } from "@/lib/auth/rbac";
 import { clientIp, crossOriginRejected, isSameOrigin } from "@/lib/auth/request";
 import { extractClinicalData } from "@/lib/ai/extraction";
+import { deidentifyForPatient } from "@/lib/ai/identities";
 import { chatProvider, type TenantAiOverrides } from "@/lib/ai/provider";
 import { resolveTenantAi } from "@/lib/ai/tenant-config";
 import { db } from "@/lib/db";
@@ -45,7 +46,9 @@ export async function POST(req: Request) {
     if (appointmentId) await requireTenantAppointmentOfPatient(ctx.tenantId, patientId, appointmentId);
 
     const tenantAi = await resolveTenantAi(ctx.tenantId);
-    const [extraction, summary] = await Promise.all([extractClinicalData(transcript, { tenantAi }), summarize(transcript, tenantAi)]);
+    // The transcript leaves the clinic without the patient's name, numbers or e-mail (the record keeps it whole).
+    const sent = await deidentifyForPatient(ctx.tenantId, patientId, transcript);
+    const [extraction, summary] = await Promise.all([extractClinicalData(sent, { tenantAi }), summarize(sent, tenantAi)]);
     const empty = Boolean(extraction.empty);
 
     const consultation = await db.consultation.create({
@@ -69,7 +72,7 @@ export async function POST(req: Request) {
           kind: "extraction",
           provider: extraction.provider,
           model: extraction.model,
-          rawPrompt: transcript.slice(0, 4000),
+          rawPrompt: sent.slice(0, 4000),
           generatedOutput: extraction.raw,
           status: "SUCCEEDED",
           latencyMs: extraction.latencyMs,

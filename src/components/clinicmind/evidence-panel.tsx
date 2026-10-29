@@ -7,11 +7,14 @@ import { Button } from "@/components/ui/button";
 import { Alert } from "@/components/ui/field";
 import { Textarea } from "@/components/ui/input";
 import { Badge } from "@/components/ui/primitives";
+import { AnswerRating } from "@/components/clinicmind/answer-rating";
+import { deidentify } from "@/lib/ai/deidentify";
 import { apiFetch, ApiError, fieldErrors } from "@/lib/http";
 import type { EvidenceAnswerDTO, EvidenceCitationDTO } from "@/modules/evidence/dto";
 
 const QUESTION_MAX = 1_000;
 const ARABIC = /[؀-ۿ]/;
+const OPENEVIDENCE = "https://www.openevidence.com/";
 
 /**
  * The evidence panel beside the consultation review: the doctor asks in
@@ -19,8 +22,10 @@ const ARABIC = /[؀-ۿ]/;
  * name, phone, ID or date of birth (listed here before asking), and the
  * answer comes only from the clinic's approved library, each statement
  * marked with the passage it comes from. "No good source" is said plainly.
+ * "Ask OpenEvidence" opens OpenEvidence in a new tab with the question
+ * copied, the patient's name and numbers taken out.
  */
-export function EvidencePanel({ patientId }: { patientId: string | null }) {
+export function EvidencePanel({ patientId, patientName = null }: { patientId: string | null; patientName?: string | null }) {
   const id = useId();
   const [context, setContext] = useState<string[] | null>(null);
   const [contextError, setContextError] = useState<string | null>(null);
@@ -28,6 +33,7 @@ export function EvidencePanel({ patientId }: { patientId: string | null }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [answer, setAnswer] = useState<{ asked: string; result: EvidenceAnswerDTO } | null>(null);
+  const [external, setExternal] = useState<{ text: string; copied: boolean | null } | null>(null);
 
   useEffect(() => {
     if (!patientId) return;
@@ -62,6 +68,24 @@ export function EvidencePanel({ patientId }: { patientId: string | null }) {
     } finally {
       setBusy(false);
     }
+  }
+
+  /** OpenEvidence is outside the clinic: the question goes without the patient's name or numbers, and the copy is logged. */
+  function askOpenEvidence() {
+    if (trimmed.length < 3) return;
+    const text = deidentify(trimmed, patientName ? { fullName: patientName } : null);
+    // Opened inside the click, so no pop-up blocker stops it.
+    window.open(OPENEVIDENCE, "_blank", "noopener,noreferrer");
+    setExternal({ text, copied: null });
+    if (navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(text).then(
+        () => setExternal({ text, copied: true }),
+        () => setExternal({ text, copied: false }),
+      );
+    } else {
+      setExternal({ text, copied: false });
+    }
+    void apiFetch("/api/evidence/external", { method: "POST", body: { question: trimmed, ...(patientId ? { patientId } : {}) } }).catch(() => undefined);
   }
 
   function onKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
@@ -122,14 +146,34 @@ export function EvidencePanel({ patientId }: { patientId: string | null }) {
           placeholder="Can doxycycline be given with isotretinoin? · ينفع دوكسيسيكلين مع روكيتان؟"
           disabled={busy}
         />
-        <div className="flex items-center justify-between gap-2">
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <span className="text-xs text-muted-foreground">Arabic or English.</span>
-          <Button type="submit" size="sm" disabled={!canAsk}>
-            {busy ? <Loader2 className="animate-spin" /> : <Search />}
-            Ask the library
-          </Button>
+          <span className="flex flex-wrap justify-end gap-2">
+            <Button type="button" size="sm" variant="outline" onClick={askOpenEvidence} disabled={trimmed.length < 3}>
+              <ExternalLink />
+              Ask OpenEvidence
+            </Button>
+            <Button type="submit" size="sm" disabled={!canAsk}>
+              {busy ? <Loader2 className="animate-spin" /> : <Search />}
+              Ask the library
+            </Button>
+          </span>
         </div>
       </form>
+
+      {external ? (
+        <div role="status" className="space-y-1 rounded-md border border-border px-3 py-2 text-xs" data-testid="openevidence-notice">
+          <p className="font-medium text-foreground">
+            {external.copied === false
+              ? "OpenEvidence opened in a new tab. Copy the question from here, without the patient's name:"
+              : "OpenEvidence opened in a new tab; the question is copied without the patient's name. Paste it there:"}
+          </p>
+          <p dir="auto" className="select-all rounded bg-muted/60 px-2 py-1 font-mono text-[11px] text-foreground">
+            {external.text}
+          </p>
+          <p className="text-muted-foreground">OpenEvidence is outside the clinic: never paste a name, phone number or ID into it.</p>
+        </div>
+      ) : null}
 
       {error ? <Alert>{error}</Alert> : null}
       {answer ? <EvidenceAnswer key={answer.result.runId ?? answer.asked} asked={answer.asked} result={answer.result} /> : null}
@@ -181,6 +225,7 @@ function EvidenceAnswer({ asked, result }: { asked: string; result: EvidenceAnsw
           </span>
         </Alert>
       )}
+      <AnswerRating runId={result.runId} />
     </div>
   );
 }

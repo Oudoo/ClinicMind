@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DictationField } from "@/components/clinicmind/dictate-field";
+import { AnswerRating } from "@/components/clinicmind/answer-rating";
 import { Badge } from "@/components/ui/primitives";
 import { apiFetch, ApiError } from "@/lib/http";
 
@@ -94,6 +95,8 @@ interface AssistantResponse {
   clarify?: ClarifyPayload;
   scope?: { label: string; patients: number | null } | null;
   notices?: string[];
+  /** The log entry of this answer: the doctor rates it. */
+  aiRunId?: string | null;
 }
 
 export interface PatientOption {
@@ -123,6 +126,8 @@ interface ChatTurn {
   loadingMore?: boolean;
   /** Loading the next page failed (shown inline: the chat also runs in the embed, without toasts). */
   moreError?: string | null;
+  /** The log entry of this answer, for the doctor's rating. */
+  runId?: string | null;
 }
 
 /**
@@ -203,6 +208,7 @@ export function AssistantChat({ initialPatient = null }: { initialPatient?: Pati
           notices: data.notices ?? [],
           question: text,
           patient: context,
+          runId: data.aiRunId ?? null,
         },
       ]);
     } catch (err) {
@@ -587,6 +593,7 @@ function RagAnswer({ turn }: { turn: ChatTurn }) {
         </div>
       ) : null}
       <AnswerFooter turn={turn} />
+      <AnswerRating runId={turn.runId} />
     </div>
   );
 }

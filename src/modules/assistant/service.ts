@@ -503,12 +503,15 @@ async function ragOutcome(
   }
 
   const allowed = scope.cohort ? scope.cohort.ids : null;
+  // The patients the question is about or names: labelled like the context's before anything leaves the clinic.
+  const people = [...(scope.patient ? [scope.patient] : []), ...(await patientsNamedIn(tenantId, parsed.question))];
   const rag = await answerWithRag(tenantId, parsed.question, {
     patientId: scope.patient?.id ?? null,
     patientIds: allowed,
     scope: scopeLabel,
     listQuestion: scope.listy,
     tenantAi: opts.tenantAi,
+    people,
   });
 
   // Grounding: the patients the answer names must be the patients it cites.

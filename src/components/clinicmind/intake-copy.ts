@@ -67,6 +67,8 @@ export interface IntakeCopy {
     title: string;
     processing: string;
     processingDetail: string;
+    /** The privacy notice on AI: it assists the doctor, never sees who the patient is. */
+    ai: string;
     whatsappUpdates: string;
     review: string;
   };
@@ -150,6 +152,7 @@ export const INTAKE_COPY: Record<IntakeLanguage, IntakeCopy> = {
       title: "Consent",
       processing: "I agree that the clinic stores and processes the information in this form to prepare and deliver my care.",
       processingDetail: "Your details are seen only by the clinic team and kept in your medical record. You can ask the clinic to correct or delete them at any time.",
+      ai: "AI assists your doctor: it helps write up your visit, check your prescriptions and look up the clinic's guidance. Your name, phone number and ID are removed before anything is sent to an AI service, and your doctor reviews and decides everything. A consultation is recorded only with your agreement; the recording is turned into text by a speech-to-text service and the audio is not kept.",
       whatsappUpdates: "The clinic may send me appointment reminders and updates on WhatsApp.",
       review: "Please check your answers before sending.",
     },
@@ -239,6 +242,7 @@ export const INTAKE_COPY: Record<IntakeLanguage, IntakeCopy> = {
       title: "الموافقة",
       processing: "أوافق على أن تحتفظ العيادة بالبيانات الواردة في هذا النموذج وتعالجها لإعداد رعايتي وتقديمها.",
       processingDetail: "بياناتك يطّلع عليها فريق العيادة فقط وتُحفظ في ملفك الطبي. يمكنك طلب تصحيحها أو حذفها في أي وقت.",
+      ai: "الذكاء الاصطناعي يساعد طبيبك: في كتابة ملخص زيارتك ومراجعة أدويتك والبحث في إرشادات العيادة. يُحذف اسمك ورقم هاتفك ورقمك القومي قبل إرسال أي شيء إلى خدمة ذكاء اصطناعي، وطبيبك يراجع كل شيء ويقرر بنفسه. لا يُسجَّل الكشف إلا بموافقتك، ويُحوَّل التسجيل إلى نص بخدمة تحويل الكلام إلى نص ولا يُحتفظ بالصوت.",
       whatsappUpdates: "يمكن للعيادة إرسال تذكيرات بالمواعيد وتحديثات عبر واتساب.",
       review: "من فضلك راجع إجاباتك قبل الإرسال.",
     },

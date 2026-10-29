@@ -16,6 +16,7 @@ import { GET as listSources, POST as createSource } from "@/app/api/evidence/sou
 import { GET as getSource, PATCH as patchSource } from "@/app/api/evidence/sources/[id]/route";
 import { GET as contextRoute } from "@/app/api/evidence/context/route";
 import { POST as ask } from "@/app/api/evidence/ask/route";
+import { POST as external } from "@/app/api/evidence/external/route";
 import { POST as createPatient } from "@/app/api/patients/route";
 import { PATCH as updatePatient } from "@/app/api/patients/[id]/route";
 import { POST as safetyCheck } from "@/app/api/consultations/[id]/safety-check/route";
@@ -233,6 +234,18 @@ describe.skipIf(!dbTestsEnabled)("the evidence library and panel", () => {
       expect((await contextRoute(request(`/api/evidence/context?patientId=${mervat}`, { cookie: doctorB }))).status).toBe(404);
       const res = await question(doctorB, { question: "Can doxycycline be given with isotretinoin?" });
       expect(res.json.grounded).toBe(false);
+    });
+
+    it("logs a question taken to OpenEvidence as it left: without the patient's name, numbers or e-mail; clinicians only", async () => {
+      const body = { patientId: mervat, question: "Mervat Adel, 01001234567: isotretinoin and acne relapse after a first course?" };
+      for (const cookie of [nurse, reception, aiLead]) expect((await external(request("/api/evidence/external", { cookie, body }))).status).toBe(403);
+      const res = await json(await external(request("/api/evidence/external", { cookie: doctor, body })));
+      expect(res.status).toBe(200);
+      expect(res.json.sentQuestion).toBe("the patient, [number]: isotretinoin and acne relapse after a first course?");
+      const row = await db.auditLog.findFirstOrThrow({ where: { tenantId: a, action: "evidence.openevidence" }, orderBy: { createdAt: "desc" } });
+      expect(row).toMatchObject({ actorId: doctorId, entityId: mervat });
+      expect(row.after).toEqual({ question: res.json.sentQuestion, service: "OpenEvidence" });
+      expect((await external(request("/api/evidence/external", { cookie: doctorB, body }))).status).toBe(404);
     });
 
     it("validates the question", async () => {

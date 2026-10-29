@@ -11,6 +11,8 @@ export interface ShellUser {
   email: string | null;
   fullName: string | null;
   role: string;
+  /** Doctors and owners with the clinician mark: they see the clinical AI. */
+  isClinician: boolean;
   /** False for embed-token sessions, which have nothing to sign out of here. */
   canSignOut: boolean;
 }

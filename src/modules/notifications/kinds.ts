@@ -25,6 +25,7 @@ export const NOTIFICATION_KINDS = [
   "ALERT_RULE",
   "WEEKLY_BRIEF",
   "SAFETY_OVERRIDE",
+  "AI_REVIEW",
   "SYSTEM",
 ] as const satisfies readonly NotificationKind[];
 
@@ -47,6 +48,7 @@ export const KIND_LABELS: Record<NotificationKind, string> = {
   ALERT_RULE: "Metric alert",
   WEEKLY_BRIEF: "Weekly brief",
   SAFETY_OVERRIDE: "Prescribing safety override",
+  AI_REVIEW: "Monthly AI review",
   SYSTEM: "System",
 };
 
@@ -68,6 +70,7 @@ export const KIND_HINTS: Record<NotificationKind, string> = {
   ALERT_RULE: "A metric crossed one of the thresholds in Reports.",
   WEEKLY_BRIEF: "The Monday summary of the week behind and ahead.",
   SAFETY_OVERRIDE: "A clinician signed a prescription over a safety stop, with a reason.",
+  AI_REVIEW: "On the first of the month: the questions asked of the clinic's AI last month, how they were answered and rated.",
   SYSTEM: "Account, digest and test notifications.",
 };
 

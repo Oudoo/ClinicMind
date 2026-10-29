@@ -4,6 +4,7 @@ import { assertCan } from "@/lib/auth/rbac";
 import { clientIp, crossOriginRejected, isSameOrigin } from "@/lib/auth/request";
 import { handleApiError, notFound, ok, unauthorized } from "@/lib/api";
 import { extractHistory } from "@/lib/ai/history-extraction";
+import { deidentifyForPatient } from "@/lib/ai/identities";
 import { resolveTenantAi } from "@/lib/ai/tenant-config";
 import { db, notDeleted } from "@/lib/db";
 import { audit } from "@/lib/audit";
@@ -31,7 +32,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     if (!patient) return notFound("patient");
 
     const tenantAi = await resolveTenantAi(ctx.tenantId);
-    const result = await extractHistory(text, { tenantAi });
+    // The note leaves the clinic without the patient's name, numbers or e-mail.
+    const sent = await deidentifyForPatient(ctx.tenantId, patient.id, text);
+    const result = await extractHistory(sent, { tenantAi });
 
     await db.aiRun
       .create({
@@ -41,7 +44,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
           kind: "history_extraction",
           provider: result.provider,
           model: result.model,
-          rawPrompt: text.slice(0, 4000),
+          rawPrompt: sent.slice(0, 4000),
           generatedOutput: result.raw,
           status: "SUCCEEDED",
           latencyMs: result.latencyMs,

@@ -54,6 +54,9 @@ describe.skipIf(!dbTestsEnabled)("POST /api/assistant", () => {
       const u = await createUser({ tenantId: f.tenantId, role, fullName: `${role} user` });
       forbidden[role] = await sessionCookieFor(u.id);
     }
+    // The Clinic AI lead: an owner without the clinician mark asks no clinical questions.
+    const lead = await createUser({ tenantId: f.tenantId, role: "CLINIC_OWNER", isClinician: false, fullName: "AI lead" });
+    forbidden["AI lead"] = await sessionCookieFor(lead.id);
   }, 120_000);
 
   afterAll(async () => {
@@ -74,7 +77,7 @@ describe.skipIf(!dbTestsEnabled)("POST /api/assistant", () => {
     expect((await post({ query: "Which patients are allergic to penicillin?" }, "")).status).toBe(401);
   });
 
-  it("is forbidden to reception, nurses and assistants (no ai:assistant permission)", async () => {
+  it("is forbidden to reception, nurses and assistants (no ai:assistant permission) and to the AI lead (not a clinician)", async () => {
     for (const [role, cookie] of Object.entries(forbidden)) {
       const res = await post({ query: "Which patients are allergic to penicillin?" }, cookie);
       expect(res.status, role).toBe(403);

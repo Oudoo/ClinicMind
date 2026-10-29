@@ -401,7 +401,7 @@ export function ConsultationReview(props: ConsultationReviewProps) {
         />
       </div>
 
-      {canAskEvidence ? <EvidencePanel patientId={patient.id} /> : null}
+      {canAskEvidence ? <EvidencePanel patientId={patient.id} patientName={patient.fullName} /> : null}
 
       {formError ? <Alert>{formError}</Alert> : null}
 

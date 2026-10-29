@@ -9,8 +9,9 @@ import { analyzeQuestion, rank, speaksOf, tokenize, type Scored } from "./search
  *
  * Which passages may answer: those speaking of at least half of what the
  * question asks about (all of it, for a question of one or two things; a drug
- * counts once, by any of its names), of the drug, condition or procedure it
- * names when it names one, and scoring within reach of the best. The source's
+ * counts once, by any of its names), of a drug it names when it names one
+ * (otherwise of the condition or procedure it names), and scoring within reach
+ * of the best. The source's
  * title counts as part of each of its passages. None: "no good source",
  * plainly.
  *
@@ -68,7 +69,9 @@ export function answerablePassages(question: string, passages: CandidatePassage[
     terms,
   );
   const need = units.length <= 2 ? units.length : Math.ceil(units.length / 2);
-  const named = units.filter((u) => u.concept);
+  // A question naming a drug is about that drug: "spironolactone for acne" is not answered by the isotretinoin protocol.
+  const drugs = units.filter((u) => u.kind === "drug");
+  const named = drugs.length ? drugs : units.filter((u) => u.concept);
   const kept = ranked.filter((r) => units.filter((u) => speaksOf(u, r.matched)).length >= need && (!named.length || named.some((u) => speaksOf(u, r.matched))));
   const top = kept[0]?.score ?? 0;
   return kept

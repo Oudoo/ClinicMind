@@ -5,6 +5,7 @@ import { audit } from "@/lib/audit";
 import { TenantScopeError } from "@/lib/tenant-scope";
 import { zOptionalText, zText } from "@/lib/validation";
 import { chatProvider } from "@/lib/ai/provider";
+import type { AiProvider } from "@/lib/ai/types";
 import { resolveTenantAi } from "@/lib/ai/tenant-config";
 import { answerablePassages, answerQuestion, libraryAnswer, noGoodSource, type CandidatePassage, type EvidenceAnswer } from "./answer";
 import { EVIDENCE_KIND_LABEL, EVIDENCE_KINDS, EVIDENCE_STATUS_LABEL } from "./constants";
@@ -217,12 +218,28 @@ export async function questionContext(tenantId: string, patientId: string, now: 
   return context.lines;
 }
 
-export async function askEvidence(tenantId: string, raw: unknown, actor: Actor = {}, now: Date = new Date()): Promise<EvidenceAnswerDTO> {
+/**
+ * A question the doctor takes to OpenEvidence (outside the clinic): the
+ * browser copies it without the patient's name and opens OpenEvidence; this
+ * logs who took which question out, as it left (the patient's name, numbers
+ * and e-mail taken out here too).
+ */
+export async function logExternalQuestion(tenantId: string, raw: unknown, actor: Actor = {}, now: Date = new Date()): Promise<{ sentQuestion: string }> {
+  const input = EvidenceQuestionInput.parse(raw);
+  const context = input.patientId ? await evidenceContext(tenantId, input.patientId, now) : null;
+  if (input.patientId && !context) throw new TenantScopeError("patient", input.patientId);
+  const sentQuestion = redactQuestion(input.question, context?.identity);
+  await audit({ tenantId, actorId: actor.id, actorEmail: actor.email, ip: actor.ip, action: "evidence.openevidence", entity: "Patient", entityId: input.patientId ?? null, after: { question: sentQuestion, service: "OpenEvidence" } });
+  return { sentQuestion };
+}
+
+/** `opts.provider`: the model to answer with instead of the clinic's (the demo seed answers offline). */
+export async function askEvidence(tenantId: string, raw: unknown, actor: Actor = {}, now: Date = new Date(), opts: { provider?: AiProvider } = {}): Promise<EvidenceAnswerDTO> {
   const input = EvidenceQuestionInput.parse(raw);
   const started = Date.now();
   const context = input.patientId ? await evidenceContext(tenantId, input.patientId, now) : null;
   if (input.patientId && !context) throw new TenantScopeError("patient", input.patientId);
-  const sent = redactQuestion(input.question, context?.identifiers);
+  const sent = redactQuestion(input.question, context?.identity);
 
   const rows = await db.evidencePassage.findMany({
     where: { tenantId, source: { status: "APPROVED" } },
@@ -236,7 +253,7 @@ export async function askEvidence(tenantId: string, raw: unknown, actor: Actor =
   let answer: EvidenceAnswer;
   let error: string | null = null;
   try {
-    answer = await answerQuestion(sent, passages, { provider: chatProvider(undefined, await resolveTenantAi(tenantId)), titles, context: context?.lines ?? [] });
+    answer = await answerQuestion(sent, passages, { provider: opts.provider ?? chatProvider(undefined, await resolveTenantAi(tenantId)), titles, context: context?.lines ?? [] });
   } catch (err) {
     // The model failed: the library's own sentences still answer, said as such.
     error = err instanceof Error ? err.message : String(err);
@@ -270,12 +287,19 @@ export async function askEvidence(tenantId: string, raw: unknown, actor: Actor =
         model: answer.model,
         // What left the clinic, if anything: the question without identifiers, and the passages.
         rawPrompt: answer.prompt ?? `Question: ${sent}`,
-        retrievedContext: { patientId: input.patientId ?? null, context: context?.lines ?? [], passages: answer.cited.map((c) => ({ passageId: c.item.id, sourceId: c.item.sourceId, score: Math.round(c.score * 1000) / 1000, matched: c.matched })) } as Prisma.InputJsonObject,
+        retrievedContext: {
+          patientId: input.patientId ?? null,
+          question: sent,
+          context: context?.lines ?? [],
+          passages: answer.cited.map((c) => ({ passageId: c.item.id, sourceId: c.item.sourceId, score: Math.round(c.score * 1000) / 1000, matched: c.matched })),
+        } as Prisma.InputJsonObject,
         generatedOutput: answer.grounded ? answer.statements.map((s) => `${s.text} ${s.cites.map((n) => `[${n}]`).join("")}`).join("\n") : noGoodSource(sent),
-        citations: citations.map((c) => ({ n: c.n, sourceId: c.sourceId, passageId: c.passageId, title: c.title })),
+        // The cited words themselves, kept with the answer: a source edited later does not change what was quoted.
+        citations: citations.map((c) => ({ n: c.n, sourceId: c.sourceId, passageId: c.passageId, title: c.title, heading: c.heading, passage: c.passage })),
         status: error ? "FAILED" : "SUCCEEDED",
         error,
         latencyMs: Date.now() - started,
+        createdAt: now,
       },
       select: { id: true },
     })

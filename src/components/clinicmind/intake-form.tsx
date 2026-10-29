@@ -379,6 +379,9 @@ export function IntakeForm({ token, intake }: { token: string; intake: PublicInt
                       {field("consent")}
                     </p>
                   ) : null}
+                  <p className="rounded-lg bg-muted/60 p-3 text-xs text-muted-foreground" data-testid="intake-ai-notice">
+                    {copy.consent.ai}
+                  </p>
                   <label className="flex items-start gap-3 rounded-lg border border-border p-3 text-sm">
                     <Checkbox className="mt-0.5 h-5 w-5 shrink-0" checked={values.whatsappUpdates} onChange={(e) => set("whatsappUpdates", e.target.checked)} />
                     <span>{copy.consent.whatsappUpdates}</span>

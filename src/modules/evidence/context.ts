@@ -1,6 +1,6 @@
 import { db } from "@/lib/db";
+import { deidentify, type Identity } from "@/lib/ai/deidentify";
 import { getTenantTimezone } from "@/modules/appointments/service";
-import { toAsciiDigits } from "@/modules/assistant/text";
 import { loadSafetyRecord } from "@/modules/consultations/safety/context";
 import { ageInYears } from "@/modules/consultations/safety/engine";
 import { pregnancyLine } from "@/modules/patients/pregnancy";
@@ -16,8 +16,8 @@ import { pregnancyLine } from "@/modules/patients/pregnancy";
 export interface EvidenceContext {
   /** Shown to the doctor before asking and sent with the question. */
   lines: string[];
-  /** The patient's name words, numbers and e-mail: taken out of the question. */
-  identifiers: string[];
+  /** Who the question is about: their name, numbers, e-mail and date of birth are taken out of it. */
+  identity: Identity;
 }
 
 export async function evidenceContext(tenantId: string, patientId: string, now: Date = new Date()): Promise<EvidenceContext | null> {
@@ -40,22 +40,11 @@ export async function evidenceContext(tenantId: string, patientId: string, now: 
       : "No medications recorded",
     conditions.length ? `Conditions: ${conditions.join("; ")}` : "No conditions recorded",
   ];
-  const identifiers = [
-    ...patient.fullName.split(/\s+/).filter((w) => w.length >= 3),
-    ...[patient.phone, patient.whatsapp, patient.nationalId, patient.email].filter((v): v is string => Boolean(v)),
-  ];
-  return { lines, identifiers };
+  const identity: Identity = { id: patientId, fullName: patient.fullName, phone: patient.phone, whatsapp: patient.whatsapp, nationalId: patient.nationalId, email: patient.email, dateOfBirth: record.dateOfBirth };
+  return { lines, identity };
 }
 
-const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-
-/** The question with the patient's name words, any long number (phone, ID) and any e-mail address taken out. */
-export function redactQuestion(question: string, identifiers: string[] = []): string {
-  let out = toAsciiDigits(question).replace(/[\p{L}\p{N}._%+-]+@[\p{L}\p{N}.-]+\.\p{L}{2,}/gu, "[email]");
-  out = out.replace(/\+?\d[\d\s-]{5,}\d/g, "[number]");
-  for (const id of identifiers) {
-    if (/\d/.test(id) || id.includes("@")) continue;
-    out = out.replace(new RegExp(`(?<![\\p{L}\\p{N}])${escape(id)}(?![\\p{L}\\p{N}])`, "giu"), "the patient");
-  }
-  return out.replace(/(the patient)(\s+the patient)+/gi, "$1");
+/** The question with the patient's name, any long number (phone, ID) and any e-mail address taken out. */
+export function redactQuestion(question: string, identity?: Identity | null): string {
+  return deidentify(question, identity);
 }

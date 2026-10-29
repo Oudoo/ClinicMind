@@ -1,8 +1,11 @@
+import Link from "next/link";
 import type { Metadata } from "next";
+import { ChartColumn } from "lucide-react";
 import { getActingContext } from "@/lib/auth/session";
 import { can, canApproveEvidence } from "@/lib/auth/rbac";
 import { listSources } from "@/modules/evidence/service";
 import { EvidenceLibrary } from "@/components/clinicmind/evidence-library";
+import { Button } from "@/components/ui/button";
 import { Card, EmptyState, SectionTitle } from "@/components/ui/primitives";
 
 export const dynamic = "force-dynamic";
@@ -23,6 +26,16 @@ export default async function EvidencePage({ searchParams }: { searchParams: Pro
     <SectionTitle
       title="Evidence library"
       description="What the evidence panel may quote, word for word: guidelines, drug information and the clinic's own protocols. Doctors add sources; the owner approves them."
+      action={
+        canApproveEvidence(ctx) ? (
+          <Button asChild variant="outline" size="sm">
+            <Link href="/dashboard/evidence/review">
+              <ChartColumn className="h-4 w-4" aria-hidden="true" />
+              Monthly review
+            </Link>
+          </Button>
+        ) : undefined
+      }
     />
   );
   if (!can(ctx.role, "evidence:read")) {

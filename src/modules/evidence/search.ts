@@ -57,7 +57,9 @@ interface Name {
   words: string[];
 }
 
-let NAMES: { names: Name[]; phrases: Map<string, string[][]> } | null = null;
+type ConceptKind = "drug" | "condition" | "procedure";
+
+let NAMES: { names: Name[]; phrases: Map<string, string[][]>; kinds: Map<string, ConceptKind> } | null = null;
 /**
  * Every name the vocabulary knows for a drug, condition or procedure, as
  * words; and each one's phrases as the index keeps them, the generic name
@@ -75,6 +77,7 @@ function vocabulary(): NonNullable<typeof NAMES> {
           return [c.id, all.filter((p, i) => all.findIndex((q) => q.join(" ") === p.join(" ")) === i)];
         }),
       ),
+      kinds: new Map(concepts.map((c) => [c.id, c.kind as ConceptKind])),
     };
   }
   return NAMES;
@@ -90,6 +93,8 @@ export interface QuestionUnit {
   phrases: string[][];
   /** A drug, condition or procedure (the passage must speak of one of them). */
   concept: boolean;
+  /** Which, for a concept: a question naming a drug is about that drug first. */
+  kind?: ConceptKind;
 }
 
 export interface QuestionTerms {
@@ -101,7 +106,7 @@ export interface QuestionTerms {
 
 export function analyzeQuestion(question: string): QuestionTerms {
   const words = normalizeText(question).replace(/[^\p{L}\p{N}\s]/gu, " ").split(/\s+/).filter(Boolean);
-  const { names, phrases } = vocabulary();
+  const { names, phrases, kinds } = vocabulary();
   const concepts = new Map<string, { phrases: string[][]; spans: [number, number][] }>();
   const named = new Set<string>();
   for (const n of names) {
@@ -125,9 +130,9 @@ export function analyzeQuestion(question: string): QuestionTerms {
   // A name inside a longer one ("hair loss" in "female pattern hair loss", "الحمل" in "حبوب منع الحمل") is the longer one's.
   const inside = ([a, b]: [number, number], self: string) =>
     [...concepts].some(([id, o]) => id !== self && o.spans.some(([c, d]) => c <= a && b <= d && d - c > b - a));
-  const conceptUnits = [...concepts].filter(([id, c]) => !c.spans.every((s) => inside(s, id))).map(([, c]) => c.phrases);
+  const conceptUnits = [...concepts].filter(([id, c]) => !c.spans.every((s) => inside(s, id))).map(([id, c]) => ({ phrases: c.phrases, concept: true, kind: kinds.get(id) }));
   const plain = [...new Set(tokenize(question).filter((t) => !named.has(t)))];
-  const units: QuestionUnit[] = [...plain.map((t) => ({ phrases: [[t]], concept: false })), ...conceptUnits.map((phrases) => ({ phrases, concept: true }))];
+  const units: QuestionUnit[] = [...plain.map((t) => ({ phrases: [[t]], concept: false })), ...conceptUnits];
   const terms = [...new Set(units.flatMap((u) => u.phrases.flat()))];
   return { terms, units };
 }

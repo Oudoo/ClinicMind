@@ -200,6 +200,7 @@ model Tenant {
   recallActivities        RecallActivity[]
   evidenceSources         EvidenceSource[]
   evidencePassages        EvidencePassage[]
+  aiFeedback              AiFeedback[]
 
   @@index([status])
   @@map("tenants")
@@ -297,6 +298,7 @@ model User {
   notificationPreference NotificationPreference?
   savedViews             SavedView[]
   safetyOverrides        SafetyOverride[]
+  aiFeedback             AiFeedback[]
   cashShifts             CashShift[]
 
   @@unique([tenantId, email])
@@ -587,11 +589,11 @@ model Consultation {
 /// Every AI invocation is recorded immutably — prompt, retrieved context, output
 /// and confidence. History is append-only; rows are never overwritten.
 model AiRun {
-  id               String      @id @default(cuid())
+  id               String       @id @default(cuid())
   tenantId         String
-  tenant           Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant           Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   authorId         String?
-  author           User?       @relation(fields: [authorId], references: [id])
+  author           User?        @relation(fields: [authorId], references: [id])
   kind             String // "assistant_chat" | "summary" | "extraction" | "briefing"
   provider         String
   model            String
@@ -600,13 +602,34 @@ model AiRun {
   generatedOutput  String?
   citations        Json?
   confidenceScore  Float?
-  status           AiRunStatus @default(PENDING)
+  status           AiRunStatus  @default(PENDING)
   latencyMs        Int?
   error            String?
-  createdAt        DateTime    @default(now())
+  createdAt        DateTime     @default(now())
+  feedback         AiFeedback[]
 
   @@index([tenantId, kind, createdAt])
   @@map("ai_runs")
+}
+
+/// A doctor's rating of an AI answer they asked for (Phase 4). Kept for good,
+/// like the runs: a new rating is a new row, the latest one counts.
+model AiFeedback {
+  id        String   @id @default(cuid())
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  runId     String
+  run       AiRun    @relation(fields: [runId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  helpful   Boolean
+  /// What was wrong (or right), in the doctor's words.
+  comment   String?
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, createdAt])
+  @@index([runId])
+  @@map("ai_feedback")
 }
 
 // ── Conversations (AI receptionist & voice agent) ────────────────────────────
@@ -946,6 +969,7 @@ enum NotificationKind {
   ALERT_RULE
   WEEKLY_BRIEF
   SAFETY_OVERRIDE
+  AI_REVIEW
   SYSTEM
 }
 

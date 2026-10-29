@@ -1,5 +1,7 @@
 import { db, notDeleted } from "@/lib/db";
 import { Prisma } from "@prisma/client";
+import { Pseudonyms, type Identity } from "./deidentify";
+import { patientIdentities, staffNames } from "./identities";
 import { chatProvider, embeddingProvider, type TenantAiOverrides } from "./provider";
 import type { AiMessage } from "./types";
 import { toVectorLiteral } from "./vectors";
@@ -35,6 +37,8 @@ export interface ChunkMetadata {
   provider?: string;
   patientName?: string | null;
   chunkCount?: number;
+  /** The vector was made from the text without the patient's name, numbers or e-mail; older ones are made again. */
+  deidentified?: boolean;
 }
 
 export interface RetrievedChunk {
@@ -86,6 +90,8 @@ export interface RetrieveOptions {
    * nothing. Chunks without a patient are excluded whenever a set is given.
    */
   patientIds?: string[] | null;
+  /** Patients the question names (or is about): their names never reach the embedding provider. */
+  people?: Identity[];
 }
 
 export interface AnswerOptions {
@@ -98,6 +104,8 @@ export interface AnswerOptions {
   listQuestion?: boolean;
   preferProvider?: string;
   tenantAi?: TenantAiOverrides;
+  /** Patients the question names (or is about), beside those whose records are retrieved: labelled too. */
+  people?: Identity[];
 }
 
 /** Below this combined score a chunk does not count as a "strong" match. */
@@ -150,8 +158,10 @@ export async function retrieve(tenantId: string, query: string, opts: RetrieveOp
   const filter = patientFilterSql(opts.patientId ?? null, opts.patientIds ?? null);
   const terms = extractLexicalTerms(query);
 
+  // The question leaves the clinic only to be embedded: without the patients it names, their numbers or e-mail.
+  // The lexical pass runs here, on the question as asked, and still finds a record by name.
   const [vectorRows, lexicalRows] = await Promise.all([
-    vectorSearch(tenantId, query, filter, topK * 2),
+    vectorSearch(tenantId, new Pseudonyms(opts.people ?? [], { single: true }).scrub(query), filter, topK * 2),
     terms.length ? lexicalSearch(tenantId, terms, filter, topK * 2) : Promise.resolve([] as LexicalRow[]),
   ]);
 
@@ -293,7 +303,7 @@ export function computeConfidence(input: { chunks: { score: number }[]; answer: 
 export async function answerWithRag(tenantId: string, query: string, opts: AnswerOptions = {}): Promise<RagAnswer> {
   const started = Date.now();
   const allowed = opts.patientIds ? new Set(opts.patientIds) : null;
-  const retrieved = (await retrieve(tenantId, query, { topK: opts.topK ?? 8, patientId: opts.patientId, patientIds: opts.patientIds }))
+  const retrieved = (await retrieve(tenantId, query, { topK: opts.topK ?? 8, patientId: opts.patientId, patientIds: opts.patientIds, people: opts.people }))
     .filter((c) => c.score >= CONTEXT_SCORE_FLOOR)
     // Defence in depth: never let a chunk about another patient through a restriction.
     .filter((c) => (!opts.patientId || c.patientId === opts.patientId) && (!allowed || (c.patientId !== null && allowed.has(c.patientId))))
@@ -317,25 +327,33 @@ export async function answerWithRag(tenantId: string, query: string, opts: Answe
     };
   }
 
-  const contextBlock = retrieved.map((c, i) => `[${i + 1}] ${headingFor(c, names)}\n${c.content}`).join("\n\n");
+  // What reaches the provider: each patient as a label (Patient A, B…), their numbers, e-mail and date of
+  // birth out, staff names kept; the answer comes back with the real names (lib/ai/deidentify.ts).
+  const [identities, staff] = await Promise.all([
+    patientIdentities(tenantId, [...retrieved.map((c) => c.patientId ?? ""), ...(opts.people ?? []).map((p) => p.id ?? "")]),
+    staffNames(tenantId),
+  ]);
+  const pseudonyms = new Pseudonyms(identities, { keep: staff });
+  const contextBlock = retrieved.map((c, i) => `[${i + 1}] ${pseudonyms.scrub(headingFor(c, pseudonyms))}\n${pseudonyms.scrub(c.content)}`).join("\n\n");
   const system: AiMessage = {
     role: "system",
     content: buildSystemPrompt({
       contextBlock,
       singlePatient: Boolean(opts.patientId),
-      scope: opts.scope ?? null,
+      scope: opts.scope ? pseudonyms.scrub(opts.scope) : null,
       listQuestion: Boolean(opts.listQuestion),
     }),
   };
 
   const provider = chatProvider(opts.preferProvider, opts.tenantAi);
-  const result = await provider.chat([system, { role: "user", content: query }], { temperature: 0.1, maxTokens: 800 });
+  const result = await provider.chat([system, { role: "user", content: pseudonyms.scrub(query) }], { temperature: 0.1, maxTokens: 800 });
+  const answer = pseudonyms.restore(result.content);
 
-  const confidence = computeConfidence({ chunks: retrieved, answer: result.content });
-  const citations = buildCitations(retrieved, names, result.content);
+  const confidence = computeConfidence({ chunks: retrieved, answer });
+  const citations = buildCitations(retrieved, names, answer);
 
   return {
-    answer: result.content,
+    answer,
     citations,
     chunks: retrieved,
     provider: result.provider,
@@ -362,7 +380,7 @@ export function buildSystemPrompt(input: { contextBlock: string; singlePatient: 
     "Grounding rule for patients: name a patient only if their record is in the CONTEXT, put the [n] marker of that patient's record next to the name every time, and never mention any other patient. The patients you name must be exactly the patients you cite.",
     "If a question states criteria (sex, age, an allergy, a condition, a medication), never name a patient whose record does not show that they meet every one of them.",
     "If the context does not contain the answer, or only partly answers, say so plainly (for example: \"The records do not contain …\") instead of guessing.",
-    "Be concise and clinical. Keep patient names exactly as they appear in the context. Answer in the language of the question.",
+    "Be concise and clinical. Patients are named by labels (Patient A, Patient B…): use the labels exactly as they appear and never guess a real name. Answer in the language of the question.",
     input.singlePatient ? "The question is about a single patient; the context is restricted to that patient's records." : "",
     input.scope ? `Every record in the CONTEXT belongs to a patient who matches: ${input.scope}. Do not describe anyone outside that group.` : "",
     input.listQuestion
@@ -461,11 +479,11 @@ const STOPWORDS = new Set([
   "taking", "take", "takes", "still", "ever", "again", "out", "off", "per", "via", "these", "those", "here",
 ]);
 
-function headingFor(chunk: RetrievedChunk, names: Map<string, string>): string {
+function headingFor(chunk: RetrievedChunk, pseudonyms: Pseudonyms): string {
   const parts = [chunk.source];
   if (chunk.metadata?.title) parts.push(chunk.metadata.title);
-  const name = chunk.patientId ? (names.get(chunk.patientId) ?? chunk.metadata?.patientName) : null;
-  if (name) parts.push(`patient: ${name}`);
+  const label = chunk.patientId ? pseudonyms.labelOf(chunk.patientId) : null;
+  if (label) parts.push(`patient: ${label}`);
   if (chunk.metadata?.occurredAt) parts.push(chunk.metadata.occurredAt.slice(0, 10));
   return parts.join(" · ");
 }

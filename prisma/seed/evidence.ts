@@ -1,6 +1,9 @@
 import type { EvidenceKind, EvidenceStatus } from "@prisma/client";
+import { EchoProvider } from "../../src/lib/ai/echo";
+import { sendMonthlyReview } from "../../src/modules/ai-log/review";
 import { checkPrescribing } from "../../src/modules/consultations/safety/engine";
 import { splitPassages } from "../../src/modules/evidence/passages";
+import { askEvidence } from "../../src/modules/evidence/service";
 import type { SeedContext } from "./index";
 import { daysBefore } from "./util";
 
@@ -238,6 +241,25 @@ No tetracyclines with isotretinoin. No vitamin A supplements.`,
   },
 ];
 
+/**
+ * Questions the doctors asked the panel over the last six weeks, answered from
+ * the library as it stood (offline, as the demo has no model), some rated:
+ * last month's review has something in it, and its notification went out.
+ */
+const QUESTIONS: { question: string; by: "derm" | "hair" | "owner"; daysAgo: number; rating?: { helpful: boolean; comment?: string } }[] = [
+  { question: "What dose of tranexamic acid for melasma?", by: "derm", daysAgo: 44 },
+  { question: "Botox while breastfeeding?", by: "owner", daysAgo: 41, rating: { helpful: true } },
+  { question: "Can a pregnant woman have a chemical peel?", by: "derm", daysAgo: 38, rating: { helpful: true } },
+  { question: "When can minoxidil restart after a hair transplant?", by: "hair", daysAgo: 36, rating: { helpful: true } },
+  { question: "Spironolactone dose for acne in women?", by: "derm", daysAgo: 34, rating: { helpful: false, comment: "It names spironolactone but gives no dose: the clinic needs a sheet with doses." } },
+  { question: "Can doxycycline be given with isotretinoin?", by: "derm", daysAgo: 33, rating: { helpful: true } },
+  { question: "What monitoring is needed during isotretinoin?", by: "owner", daysAgo: 31 },
+  { question: "How long between laser hair removal sessions?", by: "hair", daysAgo: 30 },
+  { question: "ينفع دوكسيسيكلين مع روكيوتان؟", by: "derm", daysAgo: 12, rating: { helpful: true } },
+  { question: "Is finasteride safe for women?", by: "hair", daysAgo: 9 },
+  { question: "Which acne treatments are safe in pregnancy?", by: "derm", daysAgo: 4, rating: { helpful: true } },
+];
+
 const strings = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : []);
 
 function ageOn(dob: Date | null, now: Date): number | null {
@@ -323,13 +345,41 @@ export async function seedEvidence(ctx: SeedContext): Promise<void> {
       "the isotretinoin override",
     );
   }
-  // A woman whose draft waits for review: excluded last week, so the evidence panel shows it.
-  await record(
-    women.find((w) => !used.has(w.id) && childbearing(w) && w.consultations.length > 0),
-    "NOT_PREGNANT",
-    9,
-    "a draft with pregnancy excluded",
-  );
+  // The evidence panel's scenario: a young woman whose acne still flares on doxycycline and adapalene; the
+  // draft waiting for review starts isotretinoin, her pregnancy test was negative three days ago. The safety
+  // panel stops on the tetracycline (stopped in the review) and warns about contraception; the evidence
+  // panel answers "Can doxycycline be given with isotretinoin?" from the clinic's protocol.
+  const on = (w: (typeof women)[number], name: RegExp) => w.medications.some((m) => name.test(m.name));
+  const acne = women.find((w) => !used.has(w.id) && childbearing(w) && w.age! <= 40 && on(w, /doxycycline/i) && on(w, /adapalene/i) && !w.consultations.length);
+  await record(acne, "NOT_PREGNANT", 3, "the isotretinoin draft");
+  if (acne) {
+    const mariam = doctor("derm");
+    const medication = { name: "Isotretinoin", dosage: "20 mg", frequency: "Once daily" };
+    await db.consultation.create({
+      data: {
+        tenantId,
+        patientId: acne.id,
+        doctorId: mariam.id,
+        status: "PENDING_REVIEW",
+        transcript: [
+          "Doctor: How has the acne been on the doxycycline and the gel?",
+          "Patient: Still new painful lumps every week, and the marks are not fading.",
+          "Doctor: Three months of doxycycline without control, and it is scarring: time for isotretinoin, 20 mg a day to start. Your pregnancy test on Monday was negative. Lipids and liver tests first.",
+          "Patient: Okay. Do I keep taking the doxycycline?",
+          "Doctor: I will confirm that before you leave.",
+        ].join("\n"),
+        extraction: {
+          symptoms: ["New painful nodules every week", "Scarring"],
+          diagnoses: ["Nodular acne with scarring"],
+          medications: [medication],
+          tests: ["Fasting lipids", "Liver function tests"],
+          followUps: ["Review in 4 weeks with a pregnancy test"],
+        },
+        summary: "Nodular acne with scarring despite three months of doxycycline and adapalene. Plan: isotretinoin 20 mg once daily after baseline lipids and liver tests; pregnancy test negative. Review in 4 weeks with a pregnancy test.",
+        createdAt: daysBefore(now, 0.08),
+      },
+    });
+  }
   // Excluded, but too long ago to count (the checks treat her as unknown again).
   await record(
     women.find((w) => !used.has(w.id) && childbearing(w)),
@@ -356,5 +406,22 @@ export async function seedEvidence(ctx: SeedContext): Promise<void> {
     "a pregnancy",
   );
 
-  console.log(`   · evidence: ${SOURCES.length} sources (${passages} passages); pregnancy recorded for ${used.size} women`);
+  // ── Questions asked, rated; last month's review announced ─────────────────
+  const offline = new EchoProvider();
+  const askers = { derm: doctor("derm"), hair: doctor("hair"), owner };
+  let answered = 0;
+  for (const q of QUESTIONS) {
+    const at = daysBefore(now, q.daysAgo);
+    const asker = askers[q.by];
+    const answer = await askEvidence(tenantId, { question: q.question }, { id: asker.id, email: asker.email }, at, { provider: offline });
+    if (answer.grounded) answered += 1;
+    if (q.rating && answer.runId) {
+      await db.aiFeedback.create({ data: { tenantId, runId: answer.runId, userId: asker.id, helpful: q.rating.helpful, comment: q.rating.comment ?? null, createdAt: daysBefore(at, -0.02) } });
+    }
+  }
+  const review = await sendMonthlyReview(tenantId, now);
+
+  console.log(
+    `   · evidence: ${SOURCES.length} sources (${passages} passages); pregnancy recorded for ${used.size} women; the isotretinoin draft for ${acne?.fullName ?? "nobody"}; ${QUESTIONS.length} questions asked (${answered} answered); last month's review: ${review}`,
+  );
 }

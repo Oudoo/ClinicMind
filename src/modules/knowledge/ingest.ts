@@ -1,5 +1,6 @@
 import { Prisma, type EmbeddingSource } from "@prisma/client";
 import { db, notDeleted, withTenant } from "@/lib/db";
+import { scrubberFor } from "@/lib/ai/identities";
 import { embeddingProvider } from "@/lib/ai/provider";
 import type { ChunkMetadata } from "@/lib/ai/rag";
 import { toVectorLiteral } from "@/lib/ai/vectors";
@@ -391,14 +392,17 @@ export async function syncDocument(tenantId: string, doc: KnowledgeDocument): Pr
 
   const stale = chunks.filter((c) => {
     const e = byIndex.get(c.index);
-    return !e || !e.hasEmbedding || e.contentHash !== c.hash || embeddingModelOf(e.metadata) !== model;
+    return !e || !e.hasEmbedding || e.contentHash !== c.hash || embeddingModelOf(e.metadata) !== model || !deidentifiedOf(e.metadata);
   });
 
-  // Embed outside the transaction so a slow provider never holds DB locks.
+  // Embed outside the transaction so a slow provider never holds DB locks. What the provider is
+  // given has no patient name, number or e-mail; the store keeps the text whole for the lexical
+  // search and the citations.
   const vectors = new Map<number, number[]>();
   if (stale.length) {
+    const scrub = await scrubberFor(tenantId, doc.patientId);
     const { vectors: embedded } = await provider.embed(
-      stale.map((c) => c.content),
+      stale.map((c) => scrub(c.content)),
       { kind: "document" },
     );
     stale.forEach((c, i) => {
@@ -418,6 +422,7 @@ export async function syncDocument(tenantId: string, doc: KnowledgeDocument): Pr
           provider: provider.name,
           patientName: doc.patientName,
           chunkCount: chunks.length,
+          deidentified: true,
         };
         const row = await tx.knowledgeEmbedding.upsert({
           where: {
@@ -475,6 +480,10 @@ export async function syncDocument(tenantId: string, doc: KnowledgeDocument): Pr
 async function removeDocument(tenantId: string, source: EmbeddingSource, refId: string): Promise<IngestResult> {
   const result = await db.knowledgeEmbedding.deleteMany({ where: { tenantId, source, refId } });
   return { source, refId, chunks: 0, embedded: 0, skipped: 0, deleted: result.count };
+}
+
+function deidentifiedOf(metadata: unknown): boolean {
+  return Boolean(metadata && typeof metadata === "object" && !Array.isArray(metadata) && (metadata as { deidentified?: unknown }).deidentified === true);
 }
 
 function embeddingModelOf(metadata: unknown): string | null {

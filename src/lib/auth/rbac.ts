@@ -231,6 +231,22 @@ export function assertCanSignClinical(actor: { role: UserRole; isClinician: bool
 }
 
 /**
+ * The AI assistant answers clinical questions over patient records: the
+ * role's ai:assistant permission AND the clinician mark. The Clinic AI lead
+ * and the platform administrator ask no clinical questions, whatever their
+ * role; nurses and reception have no ai:assistant at all.
+ */
+export function canUseAssistant(actor: { role: UserRole; isClinician: boolean }): boolean {
+  return actor.isClinician && can(actor.role, "ai:assistant");
+}
+
+export function assertCanUseAssistant(actor: { role: UserRole; isClinician: boolean }): void {
+  if (!canUseAssistant(actor)) {
+    throw new RbacError(actor.isClinician ? `Role ${actor.role} lacks permission ai:assistant` : "Only clinicians may ask clinical questions");
+  }
+}
+
+/**
  * Asking the evidence panel a clinical question needs the role's evidence:ask
  * permission AND the person's clinician mark, as signing does: the Clinic AI
  * lead and the platform administrator do not ask clinical questions, whatever

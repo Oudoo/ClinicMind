@@ -32,6 +32,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
             email: ctx.email,
             fullName: ctx.fullName,
             role: ctx.role,
+            isClinician: ctx.isClinician,
             canSignOut: ctx.auth.method === "session",
           }}
         >
