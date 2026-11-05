@@ -6,8 +6,8 @@ ClinicMind is a multi-tenant clinic platform: patients, appointments and
 consultations in one place, a retrieval-grounded AI assistant over the clinic's
 own records, and a consultation workflow in which a transcript becomes a
 structured note that a clinician reviews and signs. Every clinic runs as an
-isolated, white-labeled tenant on its own domain, and the assistant can be
-embedded in the clinic's website or portal.
+isolated, white-labeled tenant on its own domain, and the application can be
+embedded in the clinic's website or another portal.
 
 ---
 
@@ -36,10 +36,6 @@ embedded in the clinic's website or portal.
 | **Audit and data safety** | Append-only audit log enforced by a database trigger, soft delete, tenant isolation in every query and Postgres Row-Level Security policies. |
 | **Operations** | Health endpoint, Prisma migrations, Docker images, Compose stacks for development and production (TLS, backups), CI with dependency audit, tests, build and end-to-end smoke. |
 
-Planned next (see [`docs/SPEC_ANALYSIS.md`](docs/SPEC_ANALYSIS.md)): audio
-capture and transcription, the all-in-one inbox integration (WhatsApp, voice),
-Arabic/RTL, reporting, background jobs.
-
 ---
 
 ## Tech stack
@@ -61,8 +57,7 @@ fresh secrets, starts PostgreSQL in Docker when nothing answers at
 http://localhost:3000 and the click-through prototype on http://localhost:8787,
 and prints the accounts. `--reseed` centres the schedule on today, `--rebuild`
 rebuilds after new code, `--dev` runs the development server. Put
-`GEMINI_API_KEY` in `.env` for live AI. The step-by-step runbook for a client
-demo is the *ClinicMind Client Demo Runbook* document.
+`GEMINI_API_KEY` in `.env` for live AI.
 
 Prerequisites: Node 22, Docker (for Postgres with pgvector), `openssl`.
 
@@ -88,7 +83,7 @@ all indexed for the assistant. It ends by printing the sign-in details:
 | Account | Who | Role |
 |---|---|---|
 | `owner@demo.clinic` | Dr. Layla Hassan | Clinic owner (physician-owner) |
-| `ai@demo.clinic` | Nadia Youssef | The Clinic AI module only: the spec's six modules and the AI rules |
+| `ai@demo.clinic` | Nadia Youssef | Clinic AI lead: an owner without the clinician mark |
 | `doctor@demo.clinic` | Dr. Omar Fahmy | Doctor |
 | `mariam@demo.clinic` | Dr. Mariam Tarek | Doctor |
 | `nurse@demo.clinic` | Heba Mostafa | Nurse |
@@ -96,13 +91,11 @@ all indexed for the assistant. It ends by printing the sign-in details:
 | `platform@demo.clinic` | Platform Admin | Platform administrator (system owner, `/platform`) |
 
 All seven share one password: `SEED_DEMO_PASSWORD` if set, otherwise a random one
-printed by the seed. In the application the Clinic AI lead lands on the
-**Clinic AI** page (the module map and the link to the walk-through); the
-module's own screens live in the prototype until their phase ships. Re-running the seed rebuilds the demo clinic. There is no
-development bypass: every `/dashboard` and `/api/*` request needs a session or
-an embed token.
-
-A guided tour for a live demo is in [`docs/DEMO_SCENARIO.md`](docs/DEMO_SCENARIO.md).
+printed by the seed. The Clinic AI lead sees the owner's screens but signs
+nothing and asks no clinical questions; the **Clinic AI** page shows which
+providers answer the clinic and where each AI feature is. Re-running the seed
+rebuilds the demo clinic. There is no development bypass: every `/dashboard`
+and `/api/*` request needs a session or an embed token.
 
 ### Full stack in Docker
 
@@ -207,8 +200,7 @@ secret once. In production, create the first administrator with:
 npm run platform:bootstrap -- --email admin@example.com --name "Full Name"
 ```
 
-Details, the API and the growcdx.com developer-page plan are in
-[`docs/PLATFORM.md`](docs/PLATFORM.md).
+Details and the API are in [`docs/PLATFORM.md`](docs/PLATFORM.md).
 
 Invite staff from *Settings → Team* (or `POST /api/users`); the invitee receives
 a single-use link (7 days) to choose a password, which is also shown to the
@@ -228,8 +220,7 @@ messages are written to the server log.
 - **Integrity:** append-only audit log enforced by a trigger, soft delete, clinical writes only through signed consultations, Zod validation on every input.
 - **Configuration:** production refuses to start on an invalid configuration or on development-looking secrets.
 
-Details and rationale: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) and the
-Phase 1 audit in [`docs/PHASE1_AUDIT.md`](docs/PHASE1_AUDIT.md).
+Details and rationale: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
 ---
 
@@ -254,34 +245,26 @@ end-to-end suite.
 
 ---
 
-## Click-through prototype (Phase 1 testing)
+## Click-through prototype
 
-`demo/` is a self-contained, browser-only build of the product for software
-testers and sales demos: no server, no database, no AI key. It is published by
-`.github/workflows/pages.yml` on every push to `main` that touches `demo/`:
+`demo/` is a self-contained, browser-only mock-up of the product for software
+testers and sales demos: no server, no database, no AI key. It is a separate
+set of static files, not the application, and shares no code with it.
+`.github/workflows/pages.yml` publishes it on every push to `main` that
+touches `demo/`:
 
 **https://oudoo.github.io/ClinicMind/**
 
-Every button, form and menu responds; the seeded clinic (Aura Derma & Hair
-Clinic, Cairo), the platform console and the tenant white-label flow are all
-there. The prototype also carries the **Clinic AI Implementation Spec as a
-module**: sign in as `ai@demo.clinic` (the Clinic AI lead) and the workspace is
-the spec itself, one entry per module (AI front desk, consultation preparation,
-documentation copilot, photography, concierge, the CEO dashboard, AI rules),
-with seeded leads, intakes, briefs, documents, photo timelines, protocols,
-prompts and evaluation gates. The CEO dashboard (Module 6) computes the spec's
-thirteen metric definitions from a 26-week reporting schema seeded in
-`demo/assets/data-reporting.js`: six screens, period and comparison selectors,
-the weekly brief, anomaly alerts, natural-language questions and the
-success-metrics targets table. The owner reaches the same module from
-the navigation; the platform console switches it on or off per tenant. Data lives in the browser's `localStorage` (account menu → *Reset demo
-data* rebuilds it). Sign in with any seeded account and the password
-`Demo-Clinic-2026!`; `platform@demo.clinic` opens the platform console.
-
-Transcript extraction in the prototype is heuristic (it recognises common
-dermatology drugs and conditions); the application runs an LLM with a strict
-schema. To rebuild the stylesheet after editing `demo/src/input.css` or the
-scripts:
+Every button, form and menu responds from seeded data (Aura Derma & Hair
+Clinic, Cairo), including the platform console. Signed in as `ai@demo.clinic`
+it also shows the screens of the Clinic AI module (the AI front desk,
+consultation preparation, documentation copilot, photography, concierge, the
+CEO dashboard and the AI rules); some of those screens, such as photography and
+the AI rules, exist only in the mock-up. Data lives in the browser's
+`localStorage` (account menu → *Reset demo data* rebuilds it); every account
+uses the password `Demo-Clinic-2026!`. Transcript extraction there is a
+heuristic; the application runs an LLM with a strict schema. To rebuild the
+stylesheet after editing `demo/src/input.css` or the scripts:
 
 ```bash
 npx tailwindcss -c demo/tailwind.config.cjs -i demo/src/input.css -o demo/assets/styles.css --minify
@@ -289,21 +272,18 @@ npx tailwindcss -c demo/tailwind.config.cjs -i demo/src/input.css -o demo/assets
 
 ## Deployment
 
-`docker-compose.prod.yml` runs Caddy (automatic HTTPS, with on-demand
-certificates for tenant subdomains and verified custom domains), PostgreSQL with
-pgvector, a one-shot migration service, the standalone web server, an optional
-demo seed and a nightly `pg_dump` with retention. The *Release image* workflow
-publishes the images to GitHub Container Registry once CI is green; the
-*Deploy* workflow updates a server over SSH; `scripts/server-setup.sh` prepares
-a fresh Ubuntu server in one command; the *Provision Hostinger* workflow sets
-up a Hostinger KVM VPS and its DNS records in one run. Configuration, the cm.growcdx.com
-checklist, upgrades, backups, secret rotation, monitoring and troubleshooting
-are in [`docs/RUNBOOK.md`](docs/RUNBOOK.md).
-
-For a demo on Hostinger's Node.js web hosting (Business or Cloud plans, with
-PostgreSQL elsewhere), `scripts/hostinger-package.sh` makes the zip to upload and
-the *Hostinger* workflow deploys it through the Hostinger API: see
-[`docs/HOSTINGER.md`](docs/HOSTINGER.md).
+- **Your own server (production):** `docker-compose.prod.yml` runs Caddy
+  (automatic HTTPS, with on-demand certificates for tenant subdomains and
+  verified custom domains), PostgreSQL with pgvector, a one-shot migration
+  service, the standalone web server, an optional demo seed and a nightly
+  `pg_dump` with a restore drill. Configuration, upgrades, backups, secret
+  rotation, monitoring and troubleshooting are in
+  [`docs/RUNBOOK.md`](docs/RUNBOOK.md).
+- **The demo at https://cm.growcdx.com:** Hostinger's Node.js web hosting, with
+  PostgreSQL on Neon. `scripts/hostinger-package.sh` makes the zip, and the
+  *Hostinger* workflow deploys it through the Hostinger API, then runs the
+  end-to-end suite against the live site; the *Hostinger status* workflow
+  reports on it. See [`docs/HOSTINGER.md`](docs/HOSTINGER.md).
 
 ---
 
@@ -318,6 +298,7 @@ the *Hostinger* workflow deploys it through the Hostinger API: see
 | `npm run db:reset` | Drop and recreate the database (development only) |
 | `npm run ai:reindex -- <slug> \| --all` | Rebuild the assistant's knowledge store |
 | `npm run platform:bootstrap -- --email <e-mail>` | Create or re-invite a platform administrator |
+| `npm run assistant:eval -- [<slug>]` | Score the assistant against its evaluation questions on a clinic's records |
 | `npm test` / `npm run test:watch` | Unit and route tests |
 | `npm run e2e` / `npm run e2e:ui` | Playwright suite |
 | `npm run lint` / `typecheck` / `format` | Static checks |
@@ -327,20 +308,26 @@ the *Hostinger* workflow deploys it through the Hostinger API: see
 ## Project layout
 
 ```
-prisma/               schema.prisma · migrations/ · seed.ts
+prisma/               schema.prisma · migrations/ · seed.ts and seed/ (the demo clinic)
 src/
-  app/                landing · login, invite and reset pages · dashboard/* · embed/[tenantSlug] · api/*
-  components/         ui primitives · dashboard shell · clinicmind/* (patients, appointments,
-                      consultations, assistant, settings widgets)
-  modules/            domain services: patients · appointments · consultations · knowledge · analytics
-  lib/                env · db · auth (session, login, password, tokens, rbac, rate limit) · ai (adapters,
-                      rag, extraction) · tenant scope · audit · mailer · proxy helpers
+  app/                pages and API routes: login, invite and reset · dashboard/* · platform/* ·
+                      embed/[tenantSlug] · the patients' links (i, q, onboard, check-in) · api/*
+  components/         ui/ primitives · dashboard/ shell · clinicmind/ feature components · platform/ · auth/
+  modules/            one folder per domain: patients, appointments, consultations, treatments,
+                      quotes, finance, insurance, lab, recalls, concierge, crm, messaging, intake,
+                      notifications, reporting, analytics, assistant, knowledge, evidence, ai-log,
+                      audit, platform, jobs (background jobs)
+  lib/                env · db (tenant pools, row-level security) · auth · ai (adapters, retrieval,
+                      extraction, transcription) · embed · tenant · time · mailer · uploads
   proxy.ts            request proxy: auth redirects, rate limits, CSP and security headers
+  instrumentation.ts  starts the in-process job scheduler
   __tests__/          route tests · lib/__tests__/ unit tests · test/ helpers
-e2e/                  Playwright suite
-scripts/              reindex.ts · backup.sh · restore-drill.sh · restore.sh
-deploy/               Caddyfile
-docs/                 architecture · integration · runbook · audit · spec analysis · demo script
+e2e/                  Playwright suite (also run against the live demo after each deploy)
+scripts/              db-app-role · platform-bootstrap · reindex · assistant-eval · backup, restore and
+                      the restore drill · demo-local.sh · the Hostinger zip, build and API client
+deploy/               Caddyfile · env.production.example · hostinger/ (the workflows' request files)
+demo/                 the click-through prototype (static files)
+docs/                 architecture · platform · integration · runbook · Hostinger
 public/embed.js       website embed loader
 ```
 
@@ -349,10 +336,7 @@ public/embed.js       website embed loader
 ## Documentation
 
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — tenancy, auth, data model, migrations, RLS, security, performance
-- [`docs/PLATFORM.md`](docs/PLATFORM.md) — the system-owner console, provisioning API, growcdx.com developer page, Omni Grow integration
+- [`docs/PLATFORM.md`](docs/PLATFORM.md) — the system-owner console, the provisioning API, AI providers per tenant
 - [`docs/INTEGRATION.md`](docs/INTEGRATION.md) — embedding ClinicMind in a website or portal, token minting
 - [`docs/RUNBOOK.md`](docs/RUNBOOK.md) — deploy, upgrade, backup and restore, rotation, monitoring
-- [`docs/DEMO_SCENARIO.md`](docs/DEMO_SCENARIO.md) — the guided live demo
-- [`docs/PHASE1_AUDIT.md`](docs/PHASE1_AUDIT.md) — the audit this release was built from
-- [`docs/SPEC_ANALYSIS.md`](docs/SPEC_ANALYSIS.md) — analysis of the Clinic AI implementation spec and the roadmap
-- [`docs/COSTS_AND_PAYMENTS.md`](docs/COSTS_AND_PAYMENTS.md), [`docs/SAAS_MODEL.md`](docs/SAAS_MODEL.md) — planning notes on running costs and a subscription model
+- [`docs/HOSTINGER.md`](docs/HOSTINGER.md) — the demo on Hostinger's Node.js hosting

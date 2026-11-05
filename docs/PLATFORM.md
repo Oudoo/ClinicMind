@@ -91,53 +91,6 @@ Branding fields are merged: a request names only the keys it changes, and an
 empty string clears a key. Slugs that would collide with platform hostnames
 (`platform`, `www`, `api`, `app`, `admin`, …) are refused.
 
-## The growcdx.com developer page
-
-The goal is one place on growcdx.com to manage every product and every client.
-The practical path:
-
-1. **Now.** The developer page links to each product's own console with the
-   administrator's own sign-in: ClinicMind at `https://<clinicmind host>/platform`.
-   Nothing to build in the website beyond the links.
-2. **Next.** A machine credential for the platform API (a platform API key or an
-   OAuth client for growcdx.com), so the developer page can list and create
-   clients across products without a browser session. ClinicMind needs three
-   additions for that: API-key authentication on the `/api/tenants*` routes,
-   a CORS allow-list entry for the growcdx.com origin, and webhooks for tenant
-   events (`tenant.created`, `tenant.suspended`) so the page stays current.
-3. **Later.** Single sign-on from a growcdx.com account into every product's
-   console, and a small cross-product registry on the website (product, client,
-   owner, status, plan) fed by those webhooks.
-
-The same shape applies to every product under growcdx.com: each product owns
-its tenants and exposes the same four operations (list, create, update,
-invite owner), and the website composes them.
-
-## Omni Grow, the all-in-one inbox: integrate, do not merge
-
-Omni Grow stays its own product and its own deployment. ClinicMind integrates
-with it over the contract in [`SPEC_ANALYSIS.md`](SPEC_ANALYSIS.md#5-the-all-in-one-inbox-integration-plan):
-Omni Grow owns the channels (WhatsApp, Instagram, website chat, voice
-transcripts), the unified thread, assignment and the inbox UI; ClinicMind owns
-the patient record, scheduling, clinical data, retrieval and the tools the
-front-desk AI calls. The two talk through signed webhooks and per-tenant API
-keys.
-
-Reasons:
-
-- Omni Grow is used on its own for other clients; merging it into ClinicMind
-  would tie its releases, scaling and incidents to a clinical product.
-- Clinical data stays inside ClinicMind's security boundary; the inbox holds
-  conversations and receives only the patient fields the contract allows.
-- Each product keeps one codebase and one team, and the growcdx.com developer
-  page manages both the same way.
-
-What this means in practice: a ClinicMind tenant gets an "Omni Grow connection"
-(endpoint, API key, webhook secret) in its settings; Omni Grow gets a
-"ClinicMind connection" per workspace. If a clinic wants the inbox inside the
-ClinicMind screen, it can be framed with the same embed-token pattern
-ClinicMind already uses for its own surface, without moving any code.
-
 ## AI providers per tenant
 
 Each client can run on the AI vendor it prefers. On the tenant page the **AI

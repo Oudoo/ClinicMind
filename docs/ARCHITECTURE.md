@@ -17,10 +17,12 @@ Clinic website / portal  ──► embed.js ──► /embed/<tenant> ──► 
 
 ## 2. Modular monolith
 
-A single Next.js deployment with clear domain seams (`src/modules/*`,
-`src/lib/*`), so it can later be split into services. Domains: auth, users,
-clinics, patients, appointments, conversations, consultations, ai, analytics,
-audit, settings, billing, embed.
+A single Next.js deployment with clear domain seams: shared infrastructure in
+`src/lib/*` (database, auth, AI adapters, retrieval, time, mail) and one folder
+per domain in `src/modules/*`: patients, appointments, consultations,
+treatments, quotes, finance, insurance, lab, recalls, concierge, crm, messaging,
+intake, notifications, reporting, analytics, assistant, knowledge, evidence,
+ai-log, audit, platform and jobs (the background jobs).
 
 ## 3. Multi-tenancy
 
@@ -59,10 +61,8 @@ dashboard layout redirects to `/login`):
    narrow a session, never widen it.
 
 There is no host- or header-based tenant resolution and no development
-fallback. The proxy strips the legacy `x-clinicmind-tenant` /
-`x-clinicmind-domain` headers from every request and sends dashboard visitors
-without any credential cookie straight to `/login?next=…`; the layout performs
-the authoritative check. Tests obtain a context by creating a real session
+fallback. The proxy sends dashboard visitors without any credential cookie
+straight to `/login?next=…`; the layout performs the authoritative check. Tests obtain a context by creating a real session
 (`src/test/db.ts#sessionCookieFor`).
 
 **Sign-in** (`POST /api/auth/login`, `lib/auth/login.ts`): e-mail + password.
@@ -101,15 +101,17 @@ another `SUPER_ADMIN` (`lib/auth/rbac.ts#grantableRoles`).
 **RBAC** (`lib/auth/rbac.ts`): 6 roles → capability sets, enforced at every API
 edge via `assertCan` on the role carried by the acting context. Clinical
 sign-off is gated to clinicians: `DOCTOR` and `CLINIC_OWNER` (the physician-owner,
-who is also bookable); nurses, receptionists and assistants cannot sign. A
-per-user clinician flag is the planned refinement for non-clinical owners.
+who is also bookable); nurses, receptionists and assistants cannot sign.
+Signing, the assistant and the evidence panel also need the person's clinician
+mark (`User.isClinician`, set by the owner in *Settings → Team*): an owner
+without it, such as the Clinic AI lead, has no clinical rights.
 `platform:manage` (provisioning / listing
 tenants) is SUPER_ADMIN-only while `tenant:manage` is scoped to the owner's own
 tenant.
 
-**Not yet**: TOTP (`User.mfaEnabled/mfaSecret` are reserved), session listing
-and remote revocation UI, and Redis-backed rate limiting for multi-instance
-deployments.
+**Not implemented**: TOTP (the `User.mfaEnabled` and `mfaSecret` columns are
+unused), a list of a user's sessions with remote sign-out, and rate limits
+shared between server instances (each process keeps its own).
 
 ## 5. AI layer
 

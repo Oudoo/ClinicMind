@@ -2,8 +2,7 @@
 # subdomains and custom domains) → app, Postgres with a named volume, one-shot
 # migrations, nightly backups, optional demo seed. See docs/RUNBOOK.md.
 #
-#   docker compose -f docker-compose.prod.yml --env-file .env up -d          # pulls the published images
-#   docker compose -f docker-compose.prod.yml --env-file .env up -d --build  # or builds them here
+#   docker compose -f docker-compose.prod.yml --env-file .env up -d --build
 #   docker compose -f docker-compose.prod.yml --env-file .env --profile seed run --rm seed
 services:
   caddy:
@@ -40,7 +39,7 @@ services:
     # Not published: only reachable from the other services on this network.
 
   migrate:
-    image: ${CLINICMIND_TOOLS_IMAGE:-ghcr.io/oudoo/clinicmind-tools:latest}
+    image: clinicmind-tools
     build:
       context: .
       target: tools
@@ -54,7 +53,7 @@ services:
     command: ["sh", "-c", "npx prisma migrate deploy && npx tsx scripts/db-app-role.ts"]
 
   web:
-    image: ${CLINICMIND_IMAGE:-ghcr.io/oudoo/clinicmind:latest}
+    image: clinicmind
     build: .
     restart: unless-stopped
     depends_on:
@@ -81,14 +80,13 @@ services:
       AI_TIMEOUT_MS: ${AI_TIMEOUT_MS:-30000}
       SMTP_URL: ${SMTP_URL:-}
       MAIL_FROM: ${MAIL_FROM:-}
-      LOG_LEVEL: ${LOG_LEVEL:-info}
     # Not published: Caddy is the only entry point.
 
-  # Demo clinic (six accounts, seeded data, assistant index). Rebuilds the demo
+  # Demo clinic (the demo accounts, seeded data, assistant index). Rebuilds the demo
   # tenant from scratch each time: `--profile seed run --rm seed`.
   seed:
     profiles: ["seed"]
-    image: ${CLINICMIND_TOOLS_IMAGE:-ghcr.io/oudoo/clinicmind-tools:latest}
+    image: clinicmind-tools
     build:
       context: .
       target: tools

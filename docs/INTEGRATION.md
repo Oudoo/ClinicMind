@@ -1,8 +1,9 @@
 # ClinicMind — Integration Guide
 
-ClinicMind embeds on
-any client's **own website/domain**. Every client gets an isolated, white-labeled
-instance. This guide covers both.
+Each client is an isolated, white-labeled tenant. Besides its own sign-in
+address, ClinicMind can run inside the client's website or another portal: this
+guide covers provisioning the tenant, both ways of embedding it, minting the
+session tokens, rotating the secret and custom domains.
 
 Two credentials are involved — keep them apart:
 

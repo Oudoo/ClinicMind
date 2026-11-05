@@ -52,7 +52,8 @@ Everything runs from `docker-compose.prod.yml`: Caddy terminates TLS, the app
 and Postgres are reachable only on the Compose network, migrations run before
 the app starts, a nightly `pg_dump` lands in `./backups`.
 
-1. **Server:** Ubuntu 22.04/24.04, 2 vCPU, 4 GB RAM, 40 GB disk, ports 22/80/443 open.
+1. **Server:** Ubuntu 22.04/24.04, 2 vCPU, 4 GB RAM, 40 GB disk, Docker with
+   Compose v2, ports 22/80/443 open.
 2. **DNS:** an A record for `DOMAIN` and a wildcard A record `*.ROOT_DOMAIN`
    pointing at the server (tenants are served as `<slug>.ROOT_DOMAIN`). Caddy
    obtains the app certificate at start and tenant and custom-domain
@@ -63,14 +64,10 @@ the app starts, a nightly `pg_dump` lands in `./backups`.
    git clone <repository> ~/clinicmind && cd ~/clinicmind
    cp deploy/env.production.example .env   # fill in DOMAIN, ACME_EMAIL, secrets, an AI key, SEED_DEMO_PASSWORD
    ```
-   Or let `scripts/server-setup.sh <domain> <acme e-mail>` do steps 3 to 5 on a fresh server: it installs Docker, opens the firewall, writes `.env` with generated secrets, starts the stack and seeds the demo.
-4. **Start:** `docker compose -f docker-compose.prod.yml --env-file .env up -d`
-   pulls the images published by the *Release image* workflow
-   (`ghcr.io/<owner>/clinicmind` and `…/clinicmind-tools`; `docker login ghcr.io`
-   first when the repository is private). `up -d --build` builds them on the
-   server instead.
+4. **Start:** `docker compose -f docker-compose.prod.yml --env-file .env up -d --build`
+   builds the images on the server and starts the stack.
 5. **Demo data:** `docker compose -f docker-compose.prod.yml --env-file .env --profile seed run --rm seed`
-   creates the demo clinic and prints the six accounts; re-running it rebuilds
+   creates the demo clinic and prints the demo accounts; re-running it rebuilds
    the demo tenant.
 6. **Platform administrator (real clients):**
    `docker compose -f docker-compose.prod.yml --env-file .env run --rm migrate npx tsx scripts/platform-bootstrap.ts --email you@example.com --name "Your Name"`
@@ -78,81 +75,25 @@ the app starts, a nightly `pg_dump` lands in `./backups`.
 7. **Verify:** `curl -s https://DOMAIN/api/health` → `{"status":"ok","database":"up",…,"devSecrets":false}`,
    then open `https://DOMAIN/login` and `https://demo.ROOT_DOMAIN/login`.
 
-### Publishing the demo at cm.growcdx.com
+### The demo at cm.growcdx.com
 
-| Item | Value |
-|---|---|
-| App domain (`DOMAIN`) | `cm.growcdx.com` → landing page, sign-in, platform console |
-| Tenants (`ROOT_DOMAIN`) | `cm.growcdx.com` → `demo.cm.growcdx.com`, `nour-clinics.cm.growcdx.com`, … |
-| DNS records | `A cm.growcdx.com → <server IP>` and `A *.cm.growcdx.com → <server IP>` |
-| First run | `bash scripts/server-setup.sh cm.growcdx.com <your e-mail>` on the server, with `GEMINI_API_KEY=<key>` exported first for live AI |
-| `AI_TRANSCRIPTION_PROVIDER` | `auto` (Gemini → OpenAI); no silent fallback, `echo` for tests |
-| `GEMINI_TRANSCRIPTION_MODEL` / `OPENAI_TRANSCRIPTION_MODEL` | speech-to-text models (`gemini-2.5-flash`, `gpt-4o-transcribe`) |
-| `DATA_ENCRYPTION_KEY` | encrypts per-tenant provider keys at rest; derived from `AUTH_SECRET` when unset |
-| Demo accounts | printed by the seed; the password is `SEED_DEMO_PASSWORD` in `.env` |
-| Health | `https://cm.growcdx.com/api/health` |
-| Later deploys | GitHub → Actions → *Deploy* → *Run workflow* (tag `latest` or a commit sha), after adding the `DEPLOY_HOST`, `DEPLOY_USER` and `DEPLOY_SSH_KEY` repository secrets; or `git pull` and `up -d` on the server |
-
-### Hostinger's Node.js web hosting (demo)
-
-A Business or Cloud web hosting plan can run the app as a Node.js website, with
-PostgreSQL elsewhere (it offers MySQL only): the zip, its build and the
-*Hostinger* workflow that deploys it through the API are in
-[`docs/HOSTINGER.md`](HOSTINGER.md). It suits a demo; production belongs on a
-server of its own, as below.
-
-### Hostinger in one workflow
-
-ClinicMind runs on a Hostinger **KVM VPS** (any size; shared hosting cannot run
-Docker or PostgreSQL). Buy the plan in hPanel and leave it un-set-up; the
-*Provision Hostinger* workflow does the rest through the Hostinger API: it
-installs Ubuntu 24.04 with a post-install script that clones this repository
-and runs `scripts/server-setup.sh`, points `cm.growcdx.com` and
-`*.cm.growcdx.com` at the server in the Hostinger DNS zone, and waits for
-`/api/health`.
-
-1. Create an API token in hPanel (Account → API,
-   <https://hpanel.hostinger.com/profile/api>) and store it as the repository
-   secret `HOSTINGER_API_TOKEN`. Optional secrets: `GEMINI_API_KEY` (live AI;
-   it travels inside the post-install script, which the workflow deletes from
-   Hostinger once the server runs) and `SEED_DEMO_PASSWORD` (the demo
-   accounts' password; otherwise one is generated on the server and kept in
-   `/opt/clinicmind/.env`). An optional repository *variable* `SSH_PUBLIC_KEY`
-   is installed for `root`.
-   ```bash
-   gh secret set HOSTINGER_API_TOKEN --repo Oudoo/ClinicMind
-   gh secret set GEMINI_API_KEY --repo Oudoo/ClinicMind        # optional
-   gh secret set SEED_DEMO_PASSWORD --repo Oudoo/ClinicMind    # optional
-   ```
-2. The repository's default branch must be `main`
-   (`gh repo edit Oudoo/ClinicMind --default-branch main`): GitHub registers
-   `workflow_dispatch` and `workflow_run` workflows only from the default
-   branch, so *Provision Hostinger*, *Release image* and *Deploy* do not exist
-   until then.
-3. Actions → *Provision Hostinger* → *Run workflow*: the contact e-mail for
-   the certificates, the domain (`cm.growcdx.com`), mode `setup`. Leave the
-   VM id empty to use the VPS awaiting setup. Mode `recreate` reinstalls an
-   existing VPS and destroys its data; it needs the VM id.
-4. The run prints the server IP and ends when `https://cm.growcdx.com/api/health`
-   answers: 10–20 minutes on first boot, less once *Release image* has
-   published images the server can pull (packages must be public, or the
-   server builds locally). Setup logs on the server: `/post_install.log`
-   (hPanel → VPS → Browser terminal).
-
-The same script runs anywhere with curl, jq and openssl:
-`HOSTINGER_API_TOKEN=… ACME_EMAIL=you@example.com bash scripts/hostinger-publish.sh`.
-If the DNS zone is not managed at Hostinger, pass `SKIP_DNS=true` and create
-the two A records yourself.
+The public demo runs on Hostinger's Node.js web hosting, with its PostgreSQL
+database on Neon (the hosting offers MySQL only). The zip, its build and the
+*Hostinger* workflow that deploys it through the Hostinger API are in
+[`HOSTINGER.md`](HOSTINGER.md). It suits a demo; production belongs on a
+server of its own, as above.
 
 ### Upgrading
 
-Run the *Deploy* workflow, or on the server:
+On the server:
 
 ```bash
 cd ~/clinicmind && git pull
-docker compose -f docker-compose.prod.yml --env-file .env pull && docker compose -f docker-compose.prod.yml --env-file .env up -d
+docker compose -f docker-compose.prod.yml --env-file .env up -d --build
 ```
-Migrations run before the new app version starts. Roll back by deploying the previous image tag; migrations are forward-only, so restore a backup if a migration must be undone.
+Migrations run before the new app version starts. They are forward-only: to
+go back, check out the previous commit and rebuild, and restore a backup if a
+migration must be undone.
 
 ## 6. Backups and restore
 
@@ -178,7 +119,7 @@ Migrations run before the new app version starts. Roll back by deploying the pre
 
 ## 9. Data protection notes
 
-- Patient data stays in Postgres and the AI provider calls; nothing is sent to third parties except the configured AI provider. Transcripts and retrieved context are stored in `ai_runs` for traceability — set a retention period that matches your policy and purge with a scheduled `DELETE` (a retention job is on the roadmap).
+- Patient data stays in Postgres and the AI provider calls; nothing is sent to third parties except the configured AI provider. Transcripts and retrieved context are stored in `ai_runs` for traceability — set a retention period that matches your policy and purge with a scheduled `DELETE`.
 - Sending clinical text to a cloud AI provider is a cross-border transfer under Egypt's PDPL; keep the provider's data-processing terms and the patient consent wording with your records.
 
 ## 10. Troubleshooting
