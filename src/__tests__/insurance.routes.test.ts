@@ -14,6 +14,7 @@ import { systemDb as db } from "@/lib/db";
 import { dateKeyInTz } from "@/lib/time";
 import { ensureDefaultTreatments } from "@/modules/treatments/service";
 import { payerMoneyIn } from "@/modules/insurance/money";
+import { dayCloseReport, reportScope } from "@/modules/finance/reports";
 import { GET as payersGet, POST as payersPost } from "@/app/api/payers/route";
 import { GET as payerGet } from "@/app/api/payers/[id]/route";
 import { POST as contractsPost } from "@/app/api/payers/[id]/contracts/route";
@@ -282,6 +283,10 @@ describe.skipIf(!dbTestsEnabled)("insurance and companies routes", () => {
     const overview = (await overviewGet(request("/api/insurance", { cookie: receptionCookie })).then(json)).json;
     expect(overview.kpis.owed).toBe(0);
     expect((await payerMoneyIn(db, a, { gte: new Date(Date.now() - DAY) })).reduce((s, m) => s + m.amount, 0)).toBe(3_740);
+    // The day's income counts the payer's money; the drawer is set against the desk's money only (it came into the bank).
+    const day = await dayCloseReport(await reportScope(a, { report: "day", date: dayKey(0) }));
+    expect(day.income.insurers).toBe(3_740);
+    for (const m of day.drawer) expect(m.books, m.method).toBe(m.drawer + m.paidOut);
     const claim = (await claimGet(request(`/api/claims/${lines[1]!.claimId}`, { cookie: receptionCookie }), params(lines[1]!.claimId)).then(json)).json.claim;
     expect(claim.lines[0].answers[0]).toMatchObject({ paid: 2_300, refused: 200, reasonLabel: "Above the contract's price", reference: "NS-REM-1" });
     // Nothing more is owed on a line paid in full.

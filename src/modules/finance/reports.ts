@@ -1020,7 +1020,8 @@ export interface DayCloseReport {
   adjustments: AdjustmentsReport["totals"];
   /**
    * The drawer against the books, per method: what the drawers and the money entered late add up to (floats aside),
-   * what the payments say, and the cash the drawers paid out for expenses (they agree when drawer = books − paid out).
+   * what the patients' payments say (insurers' and companies' money, which comes into the bank, left out), and the
+   * cash the drawers paid out for expenses (they agree when drawer = books − paid out).
    */
   drawer: { method: PaymentMethodValue; label: string; drawer: number; books: number; paidOut: number }[];
   trace: TraceRow[];
@@ -1030,7 +1031,8 @@ export interface DayCloseReport {
 /**
  * One day at a branch (or every branch), the way it is closed: the drawer
  * (each branch's shifts, its count and sign-off) against the books (the day's
- * income by method), the day's production and adjustments, and every receipt
+ * income by method, less what insurers and companies paid into the bank), the
+ * day's production and adjustments, and every receipt
  * traced to where its money went: the invoices it paid and the procedures on
  * them, a deposit's procedure, a fee's visit, credit not yet on an invoice, or
  * money paid back.
@@ -1039,7 +1041,7 @@ export async function dayCloseReport(scope: ReportScope): Promise<DayCloseReport
   const t = scope.tenantId;
   const date = scope.period.fromKey;
   const branches = scope.clinicId ? scope.clinics.filter((c) => c.id === scope.clinicId) : scope.clinics;
-  const [income, production, adjustments, days, payments, names] = await Promise.all([
+  const [income, production, adjustments, days, payments, names, payerMoney] = await Promise.all([
     incomeReport(scope),
     productionReport(scope),
     adjustmentsReport(scope),
@@ -1064,6 +1066,7 @@ export async function dayCloseReport(scope: ReportScope): Promise<DayCloseReport
       },
     }),
     namesOf(t),
+    payerMoneyIn(db, t, span(scope)),
   ]);
   const kept = payments.filter((p) => inBranch(scope, p.clinicId));
   const visitIds = [...new Set(kept.map((p) => p.appointmentId).filter((id): id is string => Boolean(id)))];
@@ -1129,7 +1132,11 @@ export async function dayCloseReport(scope: ReportScope): Promise<DayCloseReport
     paidOut += d.shifts.reduce((s, x) => s + x.paidOut.amount, 0);
     for (const m of d.totals) drawerBy.set(m.method, (drawerBy.get(m.method) ?? 0) + m.expected - (m.method === "CASH" ? floats : 0));
   }
-  const methods = PAYMENT_METHODS.filter((m) => (drawerBy.get(m) ?? 0) !== 0 || (income.totals.methods[m] ?? 0) !== 0 || (m === "CASH" && paidOut > 0));
+  // Insurers' and companies' money is in the day's income but came into the bank: the drawer is set against the desk's money.
+  const payersBy = new Map<PaymentMethodValue, number>();
+  for (const m of payerMoney) if (inBranch(scope, m.clinicId)) payersBy.set(m.method, (payersBy.get(m.method) ?? 0) + m.amount);
+  const books = (m: PaymentMethodValue) => (income.totals.methods[m] ?? 0) - (payersBy.get(m) ?? 0);
+  const methods = PAYMENT_METHODS.filter((m) => (drawerBy.get(m) ?? 0) !== 0 || books(m) !== 0 || (m === "CASH" && paidOut > 0));
   return {
     date,
     branches: days.map((d) => {
@@ -1146,7 +1153,7 @@ export async function dayCloseReport(scope: ReportScope): Promise<DayCloseReport
     income: income.totals,
     production: production.totals,
     adjustments: adjustments.totals,
-    drawer: methods.map((method) => ({ method, label: METHOD_LABELS[method], drawer: drawerBy.get(method) ?? 0, books: income.totals.methods[method] ?? 0, paidOut: method === "CASH" ? paidOut : 0 })),
+    drawer: methods.map((method) => ({ method, label: METHOD_LABELS[method], drawer: drawerBy.get(method) ?? 0, books: books(method), paidOut: method === "CASH" ? paidOut : 0 })),
     trace,
     summary,
   };

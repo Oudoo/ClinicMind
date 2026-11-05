@@ -16,7 +16,7 @@ import { contractDiscountOf, contractOn, contractYear, patientShareOf, ruleFor, 
  * claims for the rest as each invoice is issued.
  *
  * After the invoices: each payer's claims go in a batch on the 5th of the
- * next month; the insurer pays its batches in about five weeks (once a line
+ * next month (the newest claim's month still waits to be sent); the insurer pays its batches in about five weeks (once a line
  * above the contract's price is refused back to the patient, once a line not
  * covered is written off), the company in three, and the network has not
  * paid since the summer. Approvals asked of the payers: one waiting, one
@@ -216,6 +216,14 @@ export async function seedClaims(ctx: SeedContext): Promise<void> {
     const first = await db.claim.findFirst({ where: { tenantId, payerId: payer.id }, orderBy: { claimedAt: "asc" }, select: { claimedAt: true } });
     if (!first) continue;
     for (let month = dateKeyInTz(first.claimedAt, TZ); fifthAfter(month) <= today; month = nextDay(lastOfMonth(month))) sends.push({ payerId: payer.id, month, sentOn: fifthAfter(month) });
+  }
+  // The newest claim's month waits to be sent, so the desk always has claims to send: otherwise, from the 5th of a
+  // month until a newer claim comes in, every claim would already be in a batch.
+  const newest = await db.claim.findFirst({ where: { tenantId }, orderBy: { claimedAt: "desc" }, select: { claimedAt: true, payerId: true } });
+  if (newest) {
+    const month = dateKeyInTz(newest.claimedAt, TZ).slice(0, 7);
+    const waiting = sends.findIndex((s) => s.payerId === newest.payerId && s.month.slice(0, 7) === month);
+    if (waiting >= 0) sends.splice(waiting, 1);
   }
   sends.sort((a, b) => a.sentOn.localeCompare(b.sentOn));
   let batches = 0;

@@ -419,7 +419,8 @@ describe("the seeded demo database (when DATABASE_URL points at one)", () => {
       const day = await dayCloseReport(await reportScope(tenantId, { report: "day", date }));
       for (const m of day.drawer) if (m.drawer !== m.books - m.paidOut) problems.push(`${date} ${m.method}: drawer ${m.drawer}, payments ${m.books}, paid out ${m.paidOut}`);
       for (const r of day.trace) if (!r.traced) problems.push(`${date} ${r.receiptNumber ?? r.paymentId}: ${r.problem}`);
-      if (day.trace.reduce((s, r) => s + r.amount, 0) !== day.income.net) problems.push(`${date}: receipts ${day.trace.length} do not add up to the income`);
+      // Receipts are the desk's money; what insurers and companies paid came into the bank, without one.
+      if (day.trace.reduce((s, r) => s + r.amount, 0) !== day.income.net - day.income.insurers) problems.push(`${date}: receipts ${day.trace.length} do not add up to the income`);
     }
     expect(problems).toEqual([]);
     // Every pound collected has its receipt, and no payment paid out more than it brought in.
