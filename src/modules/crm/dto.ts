@@ -10,10 +10,6 @@ export interface PersonDTO {
   fullName: string;
 }
 
-export interface StaffDTO extends PersonDTO {
-  role: string;
-}
-
 export interface TreatmentDTO {
   id: string;
   key: string;

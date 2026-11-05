@@ -4,7 +4,7 @@ import { z } from "zod";
  * Validated, typed environment access.
  *
  * In production the process refuses to start on an invalid configuration or on
- * a known development secret (SEC-5). During `next build` and in development /
+ * a known development secret. During `next build` and in development /
  * test, missing values fall back to clearly labelled dev-only defaults so the
  * app can be built and run without a full .env.
  */
@@ -26,7 +26,6 @@ const schema = z.object({
   ROOT_DOMAIN: z.string().default("lvh.me:3000"),
 
   DATABASE_URL: z.string().min(1),
-  REDIS_URL: optionalString(),
 
   AUTH_SECRET: z.string().min(32, "AUTH_SECRET must be at least 32 characters"),
   EMBED_SIGNING_SECRET: z.string().min(32, "EMBED_SIGNING_SECRET must be at least 32 characters"),
@@ -57,7 +56,6 @@ const schema = z.object({
   SMTP_URL: z.preprocess(blankToUndefined, z.string().url().optional()),
   MAIL_FROM: optionalString(),
 
-  LOG_LEVEL: z.enum(["debug", "info", "warn", "error"]).default("info"),
 
   // ── Background jobs (concierge dispatch, alert rules, overdue follow-ups) ─
   /** In-process scheduler (every minute). "off" when an external cron calls POST /api/cron/run instead. */

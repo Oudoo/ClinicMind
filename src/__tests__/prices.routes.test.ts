@@ -1,5 +1,5 @@
 /**
- * The price list (Phase 2, finance part 1): codes, units and course packages;
+ * The price list: codes, units and course packages;
  * prices from a date that never change what was already charged; a branch's
  * own price before the clinic-wide one; the owner edits, everyone reads; and
  * a procedure recorded from an item takes the list price of its day.

@@ -17,7 +17,7 @@ type Phase = "checking" | "awaiting-token" | "ready" | "denied";
  * Only the tenant's allow-listed origins are spoken to: the token request is
  * posted to each allowed origin (the browser delivers it only to the matching
  * parent) and token messages are accepted only from an allowed origin and from
- * the parent window (SEC-7).
+ * the parent window.
  */
 export function EmbedBootstrap({
   tenantSlug,

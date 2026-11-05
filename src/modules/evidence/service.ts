@@ -14,7 +14,7 @@ import type { EvidenceAnswerDTO, EvidenceSourceDetailDTO, EvidenceSourceDTO } fr
 import { splitPassages } from "./passages";
 
 /**
- * The clinic's evidence library and the evidence panel (Phase 4).
+ * The clinic's evidence library and the evidence panel.
  *
  * Doctors and the owner add sources (a guideline, drug information, one of
  * the clinic's protocols: the text itself, with who wrote it and when); the

@@ -7,7 +7,7 @@ const TZ = "Africa/Cairo";
 const HOUR = 3_600_000;
 
 /**
- * Doctor pay in the demo (Phase 5C): the price list's materials per unit;
+ * Doctor pay in the demo: the price list's materials per unit;
  * the two doctors' pay rules, set at the start of the month three months
  * back (Dr. Omar a share of what his hair work collects, costs off first;
  * Dr. Mariam a fee per laser session and shares for the rest); the costs of

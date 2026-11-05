@@ -4,7 +4,6 @@ import { db, notDeleted, systemDb, withTenant } from "@/lib/db";
 import { audit } from "@/lib/audit";
 import { generateToken, hashToken } from "@/lib/auth/tokens";
 import { requireTenantPatient, TenantScopeError } from "@/lib/tenant-scope";
-import { formatDateInTz } from "@/lib/time";
 import { zOptionalText, zText } from "@/lib/validation";
 import { getTenantTimezone } from "@/modules/appointments/service";
 import { publicBaseUrl, looksLikeToken } from "@/modules/concierge/tokens";
@@ -547,9 +546,4 @@ export async function invoiceByToken(token: string): Promise<InvoiceDTO | null> 
   const found = await systemDb.invoice.findUnique({ where: { shareTokenHash: hashToken(token, INVOICE_PURPOSE) }, select: { id: true, tenantId: true, status: true } });
   if (!found || found.status === "DRAFT") return null;
   return withTenant(found.tenantId, () => load(found.tenantId, found.id));
-}
-
-/** "28 Oct 2026" / "٢٨ أكتوبر ٢٠٢٦" with Latin digits, on the clinic clock. */
-export function invoiceDate(iso: string, timezone: string, language: InvoiceLanguage): string {
-  return formatDateInTz(new Date(iso), timezone, { day: "numeric", month: "long", year: "numeric" }, language === "ar" ? "ar-EG-u-nu-latn" : "en-GB");
 }

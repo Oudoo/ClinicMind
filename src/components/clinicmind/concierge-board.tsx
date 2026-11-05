@@ -20,7 +20,7 @@ const POLL_MS = 30_000;
 /**
  * The concierge board: open escalations by target with a live countdown
  * (overdue in red) and Acknowledge / Resolve, who is on call, the two KPI
- * targets of the spec, and today's check-ins (due, awaiting an answer,
+ * targets, and today's check-ins (due, awaiting an answer,
  * answered). Refreshes itself every 30 seconds while the tab is visible.
  */
 export function ConciergeBoard({ initial, canWrite }: { initial: BoardDTO; canWrite: boolean }) {

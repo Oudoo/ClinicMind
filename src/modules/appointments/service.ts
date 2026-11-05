@@ -43,7 +43,7 @@ import {
 /**
  * Appointment lifecycle: booking with conflict detection, rescheduling and
  * status transitions. Every query is tenant-scoped, every foreign key a
- * request supplies is proven to belong to the tenant (SEC-4), and every
+ * request supplies is proven to belong to the tenant, and every
  * mutation is audited.
  *
  * No double bookings, three layers deep:
@@ -284,7 +284,7 @@ export async function assertBookableTime(
 // ── Staff (doctor pickers) ───────────────────────────────────────────────────
 
 /**
- * The person booked as the doctor: of the acting tenant (SEC-4) and one of the
+ * The person booked as the doctor: of the acting tenant and one of the
  * people the doctor pickers offer (`listStaff`): a bookable role the owner
  * marked as a clinician, or a nurse for a PROCEDURE (a nurse-led session).
  */
@@ -583,8 +583,6 @@ export async function attachNoteAuthors<T extends { authorId: string | null }>(
   return rows.map((r) => ({ ...r, author: r.authorId ? (byId.get(r.authorId) ?? null) : null }));
 }
 
-export type AppointmentWithRelations = Awaited<ReturnType<typeof listAppointments>>[number];
-
 // ── Reads ────────────────────────────────────────────────────────────────────
 
 export async function listAppointments(tenantId: string, filter: AppointmentListFilter) {
@@ -816,7 +814,7 @@ async function syncRecalls(tenantId: string, patientId: string): Promise<void> {
 export async function createAppointment(tenantId: string, rawInput: unknown, actor: Actor = {}) {
   const input = AppointmentInput.parse(rawInput);
 
-  // Every client-supplied foreign key must belong to the acting tenant (SEC-4);
+  // Every client-supplied foreign key must belong to the acting tenant;
   // otherwise a booking (and its timeline event) could land on another
   // tenant's patient, doctor or clinic.
   await requireTenantPatient(tenantId, input.patientId);

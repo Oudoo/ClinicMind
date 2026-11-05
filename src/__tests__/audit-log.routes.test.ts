@@ -1,5 +1,5 @@
 /**
- * The owner's audit-log screen (Phase 1): the log is searchable by person,
+ * The owner's audit-log screen: the log is searchable by person,
  * patient, activity and date, exports to CSV (and the export is itself
  * logged), never shows another clinic's entries, and is closed to everyone
  * without audit:read. Also covers the entries this phase adds: sign-ins,

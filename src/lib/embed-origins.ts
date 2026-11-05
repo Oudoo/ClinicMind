@@ -2,7 +2,7 @@ import { systemDb } from "@/lib/db";
 
 /**
  * Allowed framing origins of a tenant's embed surface, read by the proxy to
- * emit `frame-ancestors` for `/embed/<slug>` (SEC-7). Cached briefly so the
+ * emit `frame-ancestors` for `/embed/<slug>`. Cached briefly so the
  * lookup does not hit the database on every request.
  */
 export interface EmbedOrigins {
@@ -32,11 +32,6 @@ export async function getEmbedOrigins(slug: string): Promise<EmbedOrigins | null
   }
   cache.set(slug, { value, expires: now + TTL_MS });
   return value;
-}
-
-/** Test hook. */
-export function resetEmbedOriginsCache(): void {
-  cache.clear();
 }
 
 function isHttpOrigin(o: string): boolean {

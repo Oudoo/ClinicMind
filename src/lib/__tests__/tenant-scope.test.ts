@@ -12,7 +12,7 @@ import {
 const fake = createFakeDb();
 const client = fake.db as Prisma.TransactionClient;
 
-describe("tenant-scope helpers (SEC-4)", () => {
+describe("tenant-scope helpers", () => {
   beforeEach(() => seedTwoTenants(fake));
 
   describe("requireTenantPatient", () => {

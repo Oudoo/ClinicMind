@@ -1,5 +1,5 @@
 /**
- * Doctor pay (Phase 5) over the real route handlers and the test database:
+ * Doctor pay over the real route handlers and the test database:
  * per doctor and category, a share of what is billed or collected (the lab
  * and material costs off first, when the rule says so) or a fixed fee a
  * session; never below zero; a month's statement pays what each piece of

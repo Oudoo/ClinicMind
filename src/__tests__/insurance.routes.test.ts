@@ -1,5 +1,5 @@
 /**
- * Insurance and companies (Phase 5) over the real route handlers and the test
+ * Insurance and companies over the real route handlers and the test
  * database: payers and their contracts (no overlap, a new one ends the open
  * one), patients' covers, the contract applied to an invoice (its discount
  * on the draft, the co-pay, approvals and the yearly limit), the claim made

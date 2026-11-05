@@ -1,4 +1,4 @@
-import type { EnrolmentStatus, EscalationStatus, TaskStatus } from "./dto";
+import type { EnrolmentStatus, TaskStatus } from "./dto";
 import type { Language, StepKind } from "./protocols";
 import type { TriageLevel } from "./triage";
 
@@ -36,8 +36,6 @@ export function stepTitle(dayLabel: string, title: string): string {
 
 export const ENROLMENT_STATUS_TEXT: Record<EnrolmentStatus, string> = { ACTIVE: "Active", PAUSED: "Paused", COMPLETED: "Completed", STOPPED: "Stopped" };
 export const ENROLMENT_STATUS_TONE: Record<EnrolmentStatus, Tone> = { ACTIVE: "accent", PAUSED: "warning", COMPLETED: "success", STOPPED: "default" };
-
-export const ESCALATION_STATUS_TEXT: Record<EscalationStatus, string> = { OPEN: "Open", ACKNOWLEDGED: "Acknowledged", RESOLVED: "Resolved" };
 
 export const KIND_TEXT: Record<StepKind, string> = { INSTRUCTION: "Instructions", CHECK_IN: "Check-in", PHOTO_REQUEST: "Photos" };
 

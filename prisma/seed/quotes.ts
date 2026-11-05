@@ -6,7 +6,7 @@ import type { SeedContext, SeedPatient } from "./index";
 const TZ = "Africa/Cairo";
 
 /**
- * Treatment plans and quotes in the demo (Phase 5), made through the quote
+ * Treatment plans and quotes in the demo, made through the quote
  * service on the days they happened: a hair restoration plan accepted from
  * the link (its treatments are planned procedures nobody has booked yet,
  * which the recall list picks up), an acne plan accepted in part on the

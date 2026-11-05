@@ -15,7 +15,7 @@ const HOUR = 60 * MIN;
 const DAY = 24 * HOUR;
 
 /**
- * Instalment plans in the demo (Phase 5B), each paying for a treatment plan
+ * Instalment plans in the demo, each paying for a treatment plan
  * the patient accepted, made through the plan service on the day the desk
  * agreed it, the payments towards them on the days they came in:
  *

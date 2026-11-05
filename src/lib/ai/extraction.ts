@@ -45,7 +45,6 @@ export type ClinicalExtraction = z.infer<typeof ClinicalExtractionSchema>;
 export type ExtractedMedication = ClinicalExtraction["medications"][number];
 
 export const EXTRACTION_LIST_KEYS = ["symptoms", "diagnoses", "tests", "followUps"] as const;
-export type ExtractionListKey = (typeof EXTRACTION_LIST_KEYS)[number];
 
 export function emptyExtraction(): ClinicalExtraction {
   return { symptoms: [], diagnoses: [], medications: [], tests: [], followUps: [] };

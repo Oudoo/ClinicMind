@@ -75,21 +75,3 @@ export async function getTenantContext(opts: {
 
   return tenant ? { tenant } : null;
 }
-
-export class TenantNotFoundError extends Error {
-  readonly status = 404;
-  constructor() {
-    super("Tenant not found or inactive");
-    this.name = "TenantNotFoundError";
-  }
-}
-
-/** Require a tenant or throw — for API handlers. */
-export async function requireTenant(opts: {
-  host?: string | null;
-  explicitSlug?: string | null;
-}): Promise<TenantContext> {
-  const ctx = await getTenantContext(opts);
-  if (!ctx) throw new TenantNotFoundError();
-  return ctx;
-}

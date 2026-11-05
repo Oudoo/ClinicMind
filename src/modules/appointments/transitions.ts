@@ -51,12 +51,6 @@ export function isReschedulable(status: AppointmentStatus): boolean {
   return (RESCHEDULABLE_STATUSES as readonly AppointmentStatus[]).includes(status);
 }
 
-export function isTerminal(status: AppointmentStatus): boolean {
-  return TRANSITIONS[status].length === 0;
-}
-
-/** Cancelling must say why; the reason is also shown on the patient timeline. */
-export const REASON_REQUIRED_FOR: readonly AppointmentStatus[] = ["CANCELLED"];
 export const MAX_REASON_LENGTH = 300;
 
 export const MIN_DURATION_MINUTES = 5;
@@ -113,10 +107,6 @@ export const KIND_LABEL: Record<AppointmentKind, string> = {
 /** Statuses of a booking that is still ahead or under way (what the "next appointment" button shows). */
 export const LIVE_STATUSES = ["SCHEDULED", "CONFIRMED", "CHECKED_IN", "IN_PROGRESS"] as const satisfies readonly AppointmentStatus[];
 
-export function isLive(status: AppointmentStatus): boolean {
-  return (LIVE_STATUSES as readonly AppointmentStatus[]).includes(status);
-}
-
 /** A checked-in patient still waiting this many minutes past the start is "running late". */
 export const LATE_AFTER_MINUTES = 10;
 /** A booking with no check-in this many minutes past its start is flagged to reception once. */
@@ -141,5 +131,4 @@ export const APPOINTMENT_NOTE_KINDS = ["DICTATION", "TEXT"] as const;
 export type AppointmentNoteKind = (typeof APPOINTMENT_NOTE_KINDS)[number];
 export const MAX_NOTE_LENGTH = 5000;
 export const NOTE_LANGUAGES = ["auto", "ar", "en"] as const;
-export type NoteLanguage = (typeof NOTE_LANGUAGES)[number];
 export const LANGUAGE_LABEL: Record<string, string> = { ar: "Arabic", en: "English", auto: "Auto" };

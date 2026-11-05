@@ -13,8 +13,6 @@ export const EVIDENCE_KIND_LABEL: Record<EvidenceKind, string> = {
   PROTOCOL: "Clinic protocol",
 };
 
-export const EVIDENCE_STATUSES = ["DRAFT", "APPROVED", "RETIRED"] as const satisfies readonly EvidenceStatus[];
-
 export const EVIDENCE_STATUS_LABEL: Record<EvidenceStatus, string> = {
   DRAFT: "Waiting for approval",
   APPROVED: "Approved",

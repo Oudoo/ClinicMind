@@ -128,12 +128,3 @@ export async function verifyEmbedToken(token: string): Promise<EmbedClaims> {
     origin: payload.origin ? String(payload.origin) : undefined,
   };
 }
-
-/**
- * Build the `frame-ancestors` CSP directive for a tenant's embed surface from
- * its allow-list. Empty list => deny all framing (same-origin only).
- */
-export function frameAncestorsDirective(allowedOrigins: string[]): string {
-  if (!allowedOrigins.length) return "frame-ancestors 'self'";
-  return `frame-ancestors 'self' ${allowedOrigins.join(" ")}`;
-}

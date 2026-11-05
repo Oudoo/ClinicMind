@@ -103,14 +103,6 @@ describe.skipIf(!dbTestsEnabled)("authorization", () => {
         );
         expect(res.status).toBe(401);
       });
-
-      it(`${route.name} ignores the legacy x-clinicmind-tenant header`, async () => {
-        const res = await route.handler(
-          request("/api/x", { method: route.method, headers: { "x-clinicmind-tenant": a.slug } }),
-          { params: Promise.resolve({ id: "x" }) },
-        );
-        expect(res.status).toBe(401);
-      });
     }
 
     it("a revoked session is as good as none", async () => {

@@ -1,6 +1,5 @@
 /**
- * A moved appointment asks the patient to confirm the new time (Phase 1, time
- * and date rules): the WhatsApp request in the patient's language, the
+ * A moved appointment asks the patient to confirm the new time: the WhatsApp request in the patient's language, the
  * "awaiting patient" state, and the reply through the inbound webhook (1
  * confirms, 2 asks for another time, anything else is for a person).
  */

@@ -2,7 +2,7 @@ import { toAsciiDigits } from "@/modules/assistant/text";
 
 /**
  * Nothing that reaches an AI provider carries a patient's name, phone or
- * WhatsApp number, national ID, e-mail or date of birth (Phase 4).
+ * WhatsApp number, national ID, e-mail or date of birth.
  *
  * Each patient named in a text becomes a label: "the patient" when the text
  * is about one patient, "Patient A", "Patient B"… when it is about several, so

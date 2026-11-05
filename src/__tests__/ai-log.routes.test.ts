@@ -1,5 +1,5 @@
 /**
- * Phase 4, log and review, over the real route handlers and the test
+ * The AI log and its review, over the real route handlers and the test
  * database: the doctor who asked rates the answer (nobody else), every AI
  * run, rating and safety override is kept for good (the database refuses an
  * edit or a deletion), and the owner's monthly review counts the month's

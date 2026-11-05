@@ -31,7 +31,7 @@ import {
  * CRM: leads, the pipeline, follow-ups and ads campaigns with their costs.
  * Every query is scoped by `tenantId`; every client-supplied id (campaign,
  * owner, patient, treatment key, conversation) is proven to belong to the
- * tenant before it is stored (SEC-4); every mutation is audited.
+ * tenant before it is stored; every mutation is audited.
  */
 
 export interface Actor {
@@ -461,8 +461,6 @@ export async function getLead(tenantId: string, id: string) {
     })),
   };
 }
-
-export type LeadDetail = NonNullable<Awaited<ReturnType<typeof getLead>>>;
 
 // ── Leads: writes ────────────────────────────────────────────────────────────
 

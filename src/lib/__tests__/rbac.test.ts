@@ -37,7 +37,7 @@ describe("RBAC", () => {
     expect(can("ASSISTANT", "patients:write")).toBe(false);
   });
 
-  describe("platform vs tenant management (SEC-3)", () => {
+  describe("platform vs tenant management", () => {
     it("platform:manage is held by SUPER_ADMIN only", () => {
       for (const role of ALL_ROLES) {
         expect(can(role, "platform:manage"), role).toBe(role === "SUPER_ADMIN");
@@ -58,7 +58,7 @@ describe("RBAC", () => {
     });
   });
 
-  describe("embed role ceiling (SEC-2)", () => {
+  describe("embed role ceiling", () => {
     it("tenant roles never include SUPER_ADMIN", () => {
       expect(TENANT_ROLES).not.toContain("SUPER_ADMIN");
       expect(isTenantRole("SUPER_ADMIN")).toBe(false);

@@ -10,9 +10,8 @@
  * It covers the medicines a dermatology, hair and aesthetics clinic in Cairo
  * prescribes most often, the common antibiotics and analgesics, and the
  * medicines patients commonly already take that interact with them. It is NOT
- * a complete drug database: an unknown name is simply not checked. It will be
- * replaced by a licensed drug database (Phase 4); until then every addition is
- * a clinical decision — keep entries short, sourced from the product labels
+ * a complete drug database: an unknown name is simply not checked. Every
+ * addition is a clinical decision — keep entries short, sourced from the product labels
  * (SmPC / FDA), and add a unit test with each new rule.
  *
  * Client-safe: pure data, no imports beyond types.

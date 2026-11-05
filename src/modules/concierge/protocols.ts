@@ -658,7 +658,3 @@ export const DEFAULT_PROTOCOLS: readonly DefaultProtocol[] = [
     ],
   },
 ];
-
-export function defaultProtocolFor(treatmentKey: string): DefaultProtocol | undefined {
-  return DEFAULT_PROTOCOLS.find((p) => p.treatmentKey === treatmentKey);
-}

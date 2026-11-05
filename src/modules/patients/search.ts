@@ -62,12 +62,6 @@ export function phoneVariants(value: string): string[] {
   return [...variants];
 }
 
-/** True when the digits form a plausible phone number (7–15 digits). */
-export function looksLikePhone(value: string): boolean {
-  const d = digitsOnly(value).replace(/^00/, "");
-  return isNumericQuery(value) && d.length >= 7 && d.length <= 15;
-}
-
 /**
  * Canonical storage form for a phone typed by a patient: Arabic digits
  * converted, punctuation dropped, Egyptian mobiles written as `+2010…`,

@@ -1,5 +1,5 @@
 /**
- * Expenses and suppliers (Phase 5) over the real route handlers and the test
+ * Expenses and suppliers over the real route handlers and the test
  * database: suppliers with what is owed to each; a bill to pay by a day or
  * money spent at once, paid in one payment or several, never past its amount
  * (the database refuses it too); cash at the desk out of the cashier's drawer,

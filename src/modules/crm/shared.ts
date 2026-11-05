@@ -86,7 +86,6 @@ export const CHANNEL_LABELS: Record<ChannelKey, string> = {
 };
 
 export const LEAD_SORTS = ["newest", "lastContact", "oldest"] as const;
-export type LeadSortKey = (typeof LEAD_SORTS)[number];
 
 export const FOLLOW_UP_SCOPES = ["due", "overdue", "mine"] as const;
 export type FollowUpScope = (typeof FOLLOW_UP_SCOPES)[number];

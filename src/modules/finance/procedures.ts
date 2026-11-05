@@ -203,16 +203,6 @@ async function attachPeople(tenantId: string, rows: ProcedureRecord[], client: C
   });
 }
 
-/** The procedure must exist, be unarchived and belong to `tenantId` (404 otherwise). */
-export async function requireTenantProcedure(tenantId: string, id: string, client: Client = db) {
-  const row = await client.procedure.findFirst({
-    where: { id, tenantId, ...notDeleted },
-    select: { id: true, patientId: true, status: true, treatmentId: true },
-  });
-  if (!row) throw new TenantScopeError("procedure", id);
-  return row;
-}
-
 /** The appointment must belong to the tenant (and to the patient when given). */
 export async function requireTenantAppointment(tenantId: string, id: string, patientId?: string, client: Client = db) {
   const row = await client.appointment.findFirst({
@@ -313,7 +303,7 @@ async function fromPriceList(
 export async function createProcedure(tenantId: string, rawInput: unknown, actor: Actor = {}) {
   const parsed = ProcedureInput.parse(rawInput);
 
-  // Every client-supplied foreign key must belong to the acting tenant (SEC-4).
+  // Every client-supplied foreign key must belong to the acting tenant.
   await requireTenantPatient(tenantId, parsed.patientId);
   if (parsed.doctorId) await requireTenantUser(tenantId, parsed.doctorId);
   const appointment = parsed.appointmentId ? await requireTenantAppointment(tenantId, parsed.appointmentId, parsed.patientId) : null;

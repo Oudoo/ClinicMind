@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { Prisma, type AppointmentKind, type ChannelType, type RecallStatus, type UserRole } from "@prisma/client";
 import { z } from "zod";
-import { db, notDeleted } from "@/lib/db";
+import { db } from "@/lib/db";
 import { audit } from "@/lib/audit";
 import { requireTenantPatient, TenantScopeError } from "@/lib/tenant-scope";
 import { addDays, endOfDayInTz, formatDateInTz, formatTimeInTz, fromDateKey, startOfDayInTz } from "@/lib/time";

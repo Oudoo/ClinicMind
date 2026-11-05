@@ -40,7 +40,7 @@ export async function POST(req: Request) {
     const { patientId, transcript, appointmentId } = Body.parse(await req.json());
 
     // The patient (and the appointment, which must be this patient's) must
-    // belong to the acting tenant (SEC-4). Checked before any model call so a
+    // belong to the acting tenant. Checked before any model call so a
     // foreign id costs nothing and leaks nothing.
     await requireTenantPatient(ctx.tenantId, patientId);
     if (appointmentId) await requireTenantAppointmentOfPatient(ctx.tenantId, patientId, appointmentId);

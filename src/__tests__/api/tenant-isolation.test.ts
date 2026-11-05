@@ -54,7 +54,7 @@ beforeEach(() => {
   mockedContext.mockResolvedValue(actorA("DOCTOR"));
 });
 
-describe("SEC-4 · consultations/extract", () => {
+describe("consultations/extract", () => {
   it("refuses a patient of another tenant with 404 and writes nothing", async () => {
     const res = await extract(jsonRequest("/api/consultations/extract", { patientId: "patient-b", transcript: TRANSCRIPT }));
     expect(res.status).toBe(404);
@@ -79,7 +79,7 @@ describe("SEC-4 · consultations/extract", () => {
   });
 });
 
-describe("SEC-4 · consultations/[id]/sign", () => {
+describe("consultations/[id]/sign", () => {
   it("cannot sign another tenant's consultation", async () => {
     const res = await sign(jsonRequest("/api/consultations/consult-b/sign", {}), { params: Promise.resolve({ id: "consult-b" }) });
     expect(res.status).toBe(404);
@@ -130,7 +130,7 @@ describe("SEC-4 · consultations/[id]/sign", () => {
   });
 });
 
-describe("SEC-4 · appointments", () => {
+describe("appointments", () => {
   it("refuses another tenant's patient", async () => {
     const res = await createAppointmentRoute(jsonRequest("/api/appointments", { patientId: "patient-b", ...slot }));
     expect(res.status).toBe(404);
@@ -190,7 +190,7 @@ describe("SEC-4 · appointments", () => {
   });
 });
 
-describe("SEC-3 · /api/tenants requires platform:manage", () => {
+describe("/api/tenants requires platform:manage", () => {
   const provisionBody = { slug: "gamma", name: "Gamma Clinic", ownerEmail: "owner@gamma.clinic" };
 
   it("a clinic owner can neither list nor provision tenants", async () => {

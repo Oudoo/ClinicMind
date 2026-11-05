@@ -1,5 +1,5 @@
 import { getActingContext } from "@/lib/auth/session";
-import { assertCan, can, assertCanSignClinical, canSignClinical } from "@/lib/auth/rbac";
+import { assertCan, canSignClinical } from "@/lib/auth/rbac";
 import { clientIp, crossOriginRejected, isSameOrigin } from "@/lib/auth/request";
 import { handleApiError, ok, unauthorized } from "@/lib/api";
 import { cancelProcedure } from "@/modules/finance/procedures";

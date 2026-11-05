@@ -20,14 +20,6 @@ export function fmtEgp(v: number | null | undefined): string {
   return v === null || v === undefined || !Number.isFinite(v) ? DASH : `${formatNumber(Math.round(v))} EGP`;
 }
 
-/** Compact money for tiles and bars: 1,234,000 → "1.23M EGP"; below 100k the full figure. */
-export function fmtEgpShort(v: number | null | undefined): string {
-  if (v === null || v === undefined || !Number.isFinite(v)) return DASH;
-  const abs = Math.abs(v);
-  if (abs >= 1_000_000) return `${(v / 1_000_000).toFixed(abs >= 10_000_000 ? 1 : 2)}M EGP`;
-  if (abs >= 100_000) return `${Math.round(v / 1_000)}k EGP`;
-  return fmtEgp(v);
-}
 
 /** A fraction as a percentage with one decimal: 0.3456 → "34.6%". */
 export function fmtPct(v: number | null | undefined): string {

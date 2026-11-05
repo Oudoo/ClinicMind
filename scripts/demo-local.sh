@@ -112,7 +112,7 @@ cat <<EOF
   AI: $AI
 
   Accounts (both builds), password: $SEED_DEMO_PASSWORD
-    ai@demo.clinic          Nadia Youssef     Clinic AI lead (the spec, module by module: prototype)
+    ai@demo.clinic          Nadia Youssef     Clinic AI lead (owner, no clinician mark)
     owner@demo.clinic       Dr. Layla Hassan  Clinic owner
     doctor@demo.clinic      Dr. Omar Fahmy    Doctor
     mariam@demo.clinic      Dr. Mariam Tarek  Doctor

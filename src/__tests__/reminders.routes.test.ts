@@ -1,5 +1,5 @@
 /**
- * What the clinic sends on its own (Phase 3C/3D), over the real services,
+ * What the clinic sends on its own, over the real services,
  * route handlers and the test database: appointment reminders 48 and 2 hours
  * before (in the patient's language, once each, never in the quiet hours,
  * never to a patient who said no, never for a booking made minutes ago), the

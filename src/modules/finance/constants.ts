@@ -87,7 +87,7 @@ export function discountLimitFor(role: string, limits: DiscountLimits): number {
 /** Whether a discount on a price is within a limit (a percentage), in whole numbers. */
 export const withinDiscountLimit = (price: number, discount: number, limit: number) => discount <= 0 || discount * 100 <= price * limit;
 
-/** How a price-list item is counted (Phase 2 price list). */
+/** How a price-list item is counted. */
 export const PRICE_UNITS = ["VISIT", "SESSION", "AREA", "UNIT", "TOOTH", "ARCH", "PACKAGE"] as const;
 export type PriceUnitValue = (typeof PRICE_UNITS)[number];
 
@@ -139,8 +139,4 @@ export function netPaid(payments: readonly { kind: string; amount: number }[]): 
 /** What the patient still owes on a procedure: price − discount − payments − deposits + refunds. */
 export function procedureBalance(price: number, discount: number, payments: readonly { kind: string; amount: number }[]): number {
   return price - discount - netPaid(payments);
-}
-
-export function formatEgp(amount: number): string {
-  return `${new Intl.NumberFormat("en-US").format(Math.round(amount))} EGP`;
 }

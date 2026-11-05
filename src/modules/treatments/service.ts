@@ -30,7 +30,7 @@ export const DEFAULT_TREATMENTS: readonly TreatmentSeed[] = [
   { key: "general-dermatology", name: "General dermatology", category: "general", consultationFee: 600, priceFrom: 800, priceTo: 2_000, depositAmount: 0 },
 ];
 
-/** Hair transplant is the treatment the spec singles out (concierge week 12, enquiries by source). */
+/** Hair transplant has its own lines in the reports: satisfaction from the concierge's week-12 check-in, and enquiries by source. */
 export const HAIR_TRANSPLANT_KEY = "hair-transplant";
 
 export async function ensureDefaultTreatments(tenantId: string, client: Client = db): Promise<void> {
@@ -59,13 +59,7 @@ export async function listTreatments(tenantId: string, opts: { includeInactive?:
   return rows;
 }
 
-export type TreatmentRow = Awaited<ReturnType<typeof listTreatments>>[number];
-
-export async function getTreatmentByKey(tenantId: string, key: string, client: Client = db) {
-  return client.treatment.findUnique({ where: { tenantId_key: { tenantId, key } } });
-}
-
-/** The treatment must exist and belong to `tenantId` (SEC-4); 404 otherwise. */
+/** The treatment must exist and belong to `tenantId`; 404 otherwise. */
 export async function requireTenantTreatment(tenantId: string, treatmentId: string, client: Client = db) {
   const row = await client.treatment.findFirst({ where: { id: treatmentId, tenantId }, select: { id: true, key: true, name: true } });
   if (!row) throw new TenantScopeError("treatment", treatmentId);

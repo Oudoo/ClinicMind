@@ -133,12 +133,6 @@ export function conflictInfo(err: unknown): ConflictInfo | null {
   return { kind: err.code === "conflict" ? "slot" : "patient", conflicts: body?.conflicts ?? [] };
 }
 
-/** The conflicting slots carried by a 409 `conflict` response, or null for any other error. */
-export function conflictsFrom(err: unknown): AppointmentConflictDTO[] | null {
-  const info = conflictInfo(err);
-  return info && info.kind === "slot" ? info.conflicts : null;
-}
-
 // ── Clock rules (past bookings, opening hours) ───────────────────────────────
 
 export interface TimeRuleInfo {

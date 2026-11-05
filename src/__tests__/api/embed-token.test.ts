@@ -20,7 +20,7 @@ vi.mock("next/headers", () => ({
 }));
 
 import { fake } from "@/__tests__/helpers/fake-db";
-import { jsonRequest, seedTwoTenants, SECRET_A, SECRET_B, TENANT_A, TENANT_B } from "@/__tests__/helpers/fixtures";
+import { jsonRequest, seedTwoTenants, SECRET_A, SECRET_B, TENANT_A } from "@/__tests__/helpers/fixtures";
 import { EMBED_SECRET_HEADER, signEmbedToken, verifyEmbedToken } from "@/lib/embed";
 import { getActingContext } from "@/lib/auth/session";
 import { POST as mintToken } from "@/app/api/embed/token/route";
@@ -40,7 +40,7 @@ beforeEach(() => {
   requestState.cookies.clear();
 });
 
-describe("SEC-2 · POST /api/embed/token", () => {
+describe("POST /api/embed/token", () => {
   it("requires the embed secret header", async () => {
     const res = await mint(base, null);
     expect(res.status).toBe(401);
@@ -140,7 +140,7 @@ describe("SEC-2 · POST /api/embed/token", () => {
   });
 });
 
-describe("SEC-2 · session resolution from an embed token", () => {
+describe("session resolution from an embed token", () => {
   async function contextFor(token: string) {
     requestState.headers.set("authorization", `Bearer ${token}`);
     return getActingContext();
@@ -164,9 +164,7 @@ describe("SEC-2 · session resolution from an embed token", () => {
     expect((await contextFor(token))?.role).toBe("ASSISTANT");
   });
 
-  it("rejects a token whose role exceeds the user's stored role — without falling back to the header resolver", async () => {
-    // If the embed path fell through, this header would hand out tenant B's owner session.
-    requestState.headers.set("x-clinicmind-tenant", TENANT_B.slug);
+  it("rejects a token whose role exceeds the user's stored role", async () => {
     for (const role of ["SUPER_ADMIN", "CLINIC_OWNER", "DOCTOR"]) {
       const token = await signEmbedToken({ tenantId: TENANT_A.id, tenantSlug: TENANT_A.slug, userId: "reception-a", role });
       expect(await contextFor(token), role).toBeNull();

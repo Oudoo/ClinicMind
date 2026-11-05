@@ -1,5 +1,5 @@
 /**
- * Patient data protection for AI calls (Phase 4): every text that reaches an
+ * Patient data protection for AI calls: every text that reaches an
  * AI provider (the chat model and the embedding model) is captured here and
  * checked for the patient's name, phone, national ID and e-mail, on every
  * path that calls one: indexing a record, the assistant's answer, the

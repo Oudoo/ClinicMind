@@ -7,7 +7,7 @@ import { db, notDeleted } from "@/lib/db";
  * Every write that stores a client-supplied id (patientId, doctorId, clinicId…)
  * must prove the referenced row belongs to the acting tenant first; otherwise a
  * caller in tenant A could attach consultations, appointments or clinical
- * records to tenant B's patients (SEC-4). These helpers are the single place
+ * records to tenant B's patients. These helpers are the single place
  * that proof is made, and they accept a transaction client so the check can
  * run inside the same transaction as the write.
  */

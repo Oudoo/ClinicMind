@@ -150,7 +150,6 @@ async function main() {
     });
     staff.push({ id: u.id, fullName: u.fullName ?? s.fullName, kind: s.kind });
   }
-  const owner = staff[0]!;
   const doctorsFor = (kind: "derm" | "hair") => staff.filter((s) => s.kind === kind);
 
   // ── Patients ────────────────────────────────────────────────────────────

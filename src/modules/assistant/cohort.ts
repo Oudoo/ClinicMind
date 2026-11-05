@@ -4,7 +4,7 @@ import { dateKeyInTz, zonedParts } from "@/lib/time";
 import { jsonList, medicationSummary } from "@/modules/knowledge/documents";
 import { describeCriterion, termDisplay, type Criterion, type Detail, type ParsedQuestion, type TermSpec } from "./parser";
 import { findPhrase, joinList, words } from "./text";
-import { SEX_SPECIFIC_CONDITIONS, conceptById, drugClassById } from "./vocabulary";
+import { SEX_SPECIFIC_CONDITIONS } from "./vocabulary";
 
 export { parseCohortQuestion, describeCriterion } from "./parser";
 export type { Criterion, ParsedQuestion, TermSpec, Detail } from "./parser";
@@ -941,9 +941,4 @@ export function criteriaForAudit(criteria: Criterion[]): Record<string, unknown>
     ...(c.window ? { window: c.window.label } : {}),
     ...(c.cutoff ? { before: c.cutoff.before } : {}),
   }));
-}
-
-/** Labels of concepts and classes, re-exported for the eval report. */
-export function conceptLabel(id: string): string {
-  return conceptById(id)?.label ?? drugClassById(id)?.label ?? id;
 }

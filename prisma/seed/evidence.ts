@@ -11,7 +11,7 @@ import { daysBefore } from "./util";
 const TZ = "Africa/Cairo";
 
 /**
- * The evidence panel's library in the demo (Phase 4): the clinic's own
+ * The evidence panel's library in the demo: the clinic's own
  * protocols, drug information sheets and a treatment summary, every one
  * written for the demo and saying so (none is a real publisher's text), six
  * approved by the owner, one waiting for approval and one retired (the

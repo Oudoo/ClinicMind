@@ -1,5 +1,5 @@
 import { handleApiError, ok, unauthorized } from "@/lib/api";
-import { assertCan, assertCanSignClinical, canSignClinical } from "@/lib/auth/rbac";
+import { assertCanSignClinical } from "@/lib/auth/rbac";
 import { crossOriginRejected, isSameOrigin } from "@/lib/auth/request";
 import { approveProtocol } from "@/modules/concierge/service";
 import { conciergeContext, type IdParams } from "../../../_lib/context";

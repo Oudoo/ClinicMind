@@ -1,5 +1,5 @@
 /**
- * Instalment plans (Phase 5) over the real route handlers and the test
+ * Instalment plans over the real route handlers and the test
  * database: a plan is a down payment and so many instalments every so many
  * months from a first day, in whole pounds with the odd pounds on the last;
  * its schedule never changes (the database refuses it) and it is never
@@ -101,7 +101,6 @@ describe.skipIf(!dbTestsEnabled)("instalment plan routes", () => {
   const created: string[] = [];
   let a: string;
   let b: string;
-  let ownerId: string;
   let receptionId: string;
   let ownerCookie: string;
   let receptionCookie: string;
@@ -138,7 +137,6 @@ describe.skipIf(!dbTestsEnabled)("instalment plan routes", () => {
     const doctor = await createUser({ tenantId: a, role: "DOCTOR", fullName: "Dr. A" });
     const assistant = await createUser({ tenantId: a, role: "ASSISTANT", fullName: "Assistant A" });
     const ownerB = await createUser({ tenantId: b, role: "CLINIC_OWNER", fullName: "Owner B" });
-    ownerId = owner.id;
     receptionId = reception.id;
     doctorId = doctor.id;
     ownerCookie = await sessionCookieFor(owner.id);

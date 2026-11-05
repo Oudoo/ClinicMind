@@ -10,7 +10,7 @@ import { CheckInValidationError } from "./errors";
 /**
  * The concierge roster and hours: who a high-risk reply reaches in hours and
  * out of hours, who backs them up, and the acknowledgement targets (15 minutes
- * in hours, 30 out of hours per the spec). Stored under the tenant setting
+ * in hours, 30 out of hours by default). Stored under the tenant setting
  * key "concierge"; the defaults name the nurse in hours, the first doctor out
  * of hours and the owner as backup when the roster is empty.
  */
@@ -186,7 +186,7 @@ export async function updateConciergeSettings(
   actor: { id?: string | null; email?: string | null; ip?: string | null } = {},
 ): Promise<ConciergeSettings> {
   const input = ConciergeSettingsInput.parse(rawInput);
-  // Every user id a request supplies must belong to the tenant (SEC-4): a foreign id is a 404.
+  // Every user id a request supplies must belong to the tenant: a foreign id is a 404.
   const fieldErrors: Record<string, string[]> = {};
   for (const [field, id] of [
     ["inHoursUserId", input.roster.inHoursUserId],

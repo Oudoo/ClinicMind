@@ -1,7 +1,7 @@
 import Link from "next/link";
 import type { Metadata } from "next";
 import { getActingContext } from "@/lib/auth/session";
-import { can, assertCanSignClinical, canSignClinical } from "@/lib/auth/rbac";
+import { can, canSignClinical } from "@/lib/auth/rbac";
 import { formatDateInTz, formatDateTimeInTz, formatTimeInTz, isSameDayInTz } from "@/lib/time";
 import { getTenantTimezone } from "@/modules/appointments/service";
 import { listTreatments } from "@/modules/treatments/service";

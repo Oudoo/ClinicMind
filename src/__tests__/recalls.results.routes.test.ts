@@ -1,5 +1,5 @@
 /**
- * Phase 3E/3F over the real route handlers and the test database: the recalls
+ * Recall results over the real route handlers and the test database: the recalls
  * shown with a patient's next visit (what it is booked for, what else is due
  * by then); the recall dashboard (the recalls due in a period: contacted,
  * booked, booked within 30 days, by kind; accepted treatment not booked;

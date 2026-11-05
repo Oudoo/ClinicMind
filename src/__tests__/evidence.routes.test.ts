@@ -1,5 +1,5 @@
 /**
- * Phase 4A over the real route handlers and the test database: the clinic's
+ * The evidence panel over the real route handlers and the test database: the clinic's
  * evidence library (doctors add sources, the owner with the clinician mark
  * approves and retires them; an approved source edited waits for approval
  * again), the evidence panel (clinicians only; answers only from approved

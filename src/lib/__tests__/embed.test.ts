@@ -11,7 +11,7 @@ import {
   verifyEmbedToken,
 } from "@/lib/embed";
 
-describe("embed secret (SEC-2)", () => {
+describe("embed secret", () => {
   it("generates a prefixed, high-entropy secret and only a hash to store", () => {
     const a = generateEmbedSecret();
     const b = generateEmbedSecret();

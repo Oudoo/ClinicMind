@@ -3,10 +3,9 @@
  * endpoints (sign-in, password reset, set-password).
  *
  * State is per process. That is enough to blunt online password guessing on a
- * single instance and it needs no infrastructure; a horizontally scaled
- * deployment should move the buckets to Redis (REDIS_URL is already
- * provisioned). The per-account lockout in lib/auth/login.ts is database-backed
- * and therefore shared across instances regardless.
+ * single instance and it needs no infrastructure; several instances behind a
+ * load balancer would each keep their own buckets. The per-account lockout in
+ * lib/auth/login.ts is database-backed and therefore shared across instances.
  */
 export interface RateLimitResult {
   ok: boolean;

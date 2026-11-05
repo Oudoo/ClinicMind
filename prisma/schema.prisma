@@ -658,7 +658,7 @@ model AiRun {
   @@map("ai_runs")
 }
 
-/// A doctor's rating of an AI answer they asked for (Phase 4). Kept for good,
+/// A doctor's rating of an AI answer they asked for. Kept for good,
 /// like the runs: a new rating is a new row, the latest one counts.
 model AiFeedback {
   id        String   @id @default(cuid())
@@ -1992,7 +1992,7 @@ model SafetyOverride {
   @@map("safety_overrides")
 }
 
-// ── Phase 2: finance ─────────────────────────────────────────────────────────
+// ── Finance ──────────────────────────────────────────────────────────────────
 
 /// How a price-list item is counted: per visit, session, area treated, unit (grafts, syringes: `unitLabel`), tooth or arch, or a course package.
 enum PriceUnit {

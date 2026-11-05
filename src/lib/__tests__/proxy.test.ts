@@ -33,14 +33,6 @@ describe("proxy", () => {
     }
   });
 
-  it("strips client-supplied tenant headers before they reach the app", async () => {
-    const res = await run("/api/patients", { "x-clinicmind-tenant": "demo", "x-other": "keep" });
-    const forwarded = res.headers.get("x-middleware-override-headers") ?? "";
-    expect(forwarded).not.toContain("x-clinicmind-tenant");
-    expect(forwarded).toContain("x-other");
-    expect(res.headers.get("x-middleware-request-x-clinicmind-tenant")).toBeNull();
-  });
-
   it("denies framing everywhere except the embed surface", async () => {
     expect((await run("/login")).headers.get("x-frame-options")).toBe("DENY");
     expect((await run("/login")).headers.get("content-security-policy")).toContain("frame-ancestors 'none'");

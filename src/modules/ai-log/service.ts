@@ -5,7 +5,7 @@ import { zOptionalText } from "@/lib/validation";
 import { FEEDBACK_COMMENT_MAX, QUESTION_KINDS } from "./constants";
 
 /**
- * Doctors rate the answers they asked for (Phase 4, log and review). A rating
+ * Doctors rate the answers they asked for. A rating
  * is a new row, never an edit (the database keeps every one): the latest
  * counts. Only the doctor who asked rates an answer.
  */

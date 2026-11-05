@@ -87,7 +87,7 @@ const NAV: NavItem[] = [
   { href: "/dashboard/reports", label: "Reports", icon: ChartColumn, permission: "reports:read" },
   { href: "/dashboard/assistant", label: "AI Assistant", icon: Sparkles, badge: "RAG", permission: "ai:assistant", clinician: true },
   { href: "/dashboard/evidence", label: "Evidence library", icon: BookOpenCheck, permission: "evidence:read" },
-  { href: "/dashboard/clinic-ai", label: "Clinic AI", icon: Workflow, badge: "module" },
+  { href: "/dashboard/clinic-ai", label: "Clinic AI", icon: Workflow },
   { href: "/dashboard/audit", label: "Audit log", icon: ScrollText, permission: "audit:read" },
   { href: "/dashboard/settings", label: "Settings", icon: Settings },
 ];

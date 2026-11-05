@@ -33,7 +33,6 @@ import { createTenant, createUser, dbTestsEnabled, deleteTenants, openShifts, re
 runAsSystem();
 
 const params = (id: string) => ({ params: Promise.resolve({ id }) });
-const DAY = 86_400_000;
 
 interface Entry {
   kind: string;

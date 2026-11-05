@@ -1,5 +1,5 @@
 /**
- * Treatment plans and quotes (Phase 5) over the real route handlers and the
+ * Treatment plans and quotes over the real route handlers and the
  * test database: a draft is priced from today's list for its branch, with
  * discounts inside the role's limit and their reasons; giving it numbers it
  * in the branch's quote sequence and fixes it (the database refuses any

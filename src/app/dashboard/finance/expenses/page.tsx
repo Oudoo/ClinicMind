@@ -4,7 +4,7 @@ import { ChevronLeft, ChevronRight, Paperclip } from "lucide-react";
 import { getActingContext } from "@/lib/auth/session";
 import { can } from "@/lib/auth/rbac";
 import { formatNumber } from "@/lib/utils";
-import { isMonthKey, monthLabel, monthOfKey, shiftMonth } from "@/modules/finance/doctor-pay-calc";
+import { isMonthKey, monthLabel, shiftMonth } from "@/modules/finance/doctor-pay-calc";
 import { EXPENSE_CATEGORIES, EXPENSE_CATEGORY_LABELS, isOwnerOnlyCategory, RECURRING_EVERY_LABELS, type ExpenseCategoryValue } from "@/modules/finance/expense-constants";
 import { expenseFormContext, expenseKpis, listExpenses, listRecurring } from "@/modules/finance/expenses";
 import { Badge, Bento, Card, EmptyState, Metric, SectionTitle } from "@/components/ui/primitives";

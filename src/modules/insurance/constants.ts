@@ -60,7 +60,6 @@ export const REFUSAL_REASON_LABELS: Record<RefusalReasonValue, string> = {
 
 /** The price list's categories, as a contract's rules name them. */
 export const COVER_CATEGORIES = ["general", "skin", "laser", "injectables", "hair"] as const;
-export type CoverCategoryValue = (typeof COVER_CATEGORIES)[number];
 
 /** What a payer owes, by how long ago the work was claimed (days). */
 export const AGE_BUCKETS = [
@@ -76,5 +75,4 @@ export const ageBucketOf = (days: number): AgeBucketKey => AGE_BUCKETS.find((b) 
 export const INSURANCE_VIEWS = ["owed", "open", "sent", "approvals", "payers"] as const;
 export type InsuranceView = (typeof INSURANCE_VIEWS)[number];
 
-export const MAX_PERCENT = 100;
 export const MAX_CONTRACT_DISCOUNT = 90;

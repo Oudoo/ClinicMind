@@ -7,7 +7,7 @@ import { notify } from "@/modules/notifications/service";
 import { QUESTION_KIND_LABEL, QUESTION_KINDS, REVIEW_HOUR, type QuestionKind } from "./constants";
 
 /**
- * The owner's monthly review of the clinic's AI (Phase 4, log and review):
+ * The owner's monthly review of the clinic's AI:
  * the questions asked of the evidence panel and the assistant in a month,
  * answered from sources or records or not, how the doctors rated the
  * answers (and what they said about the poor ones), the questions nothing

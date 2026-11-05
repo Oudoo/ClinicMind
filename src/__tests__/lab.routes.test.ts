@@ -1,5 +1,5 @@
 /**
- * Lab work (Phase 5) over the real route handlers and the test database:
+ * Lab work over the real route handlers and the test database:
  * orders from a procedure or not, where on the body, due back by the lab's
  * usual days; a new lab by its name; results recorded by the clinicians only
  * (the desk sees where an order stands, never the result), the doctor who

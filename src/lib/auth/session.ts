@@ -24,7 +24,7 @@ import { generateToken, hashToken } from "./tokens";
  *      minted server-to-server at POST /api/embed/token for a framed surface.
  *      The token is never trusted on its own: the user it names must be an
  *      active member of the tenant and the role it carries may not exceed that
- *      user's stored role (SEC-2). A token that verifies but fails those checks
+ *      user's stored role. A token that verifies but fails those checks
  *      is rejected outright.
  *
  * There is deliberately no host/header-based tenant resolution and no
@@ -237,8 +237,8 @@ async function contextFromEmbedToken(token: string): Promise<ActingContext | nul
 
 /**
  * Bind verified embed claims to a real user record. The token's role is only
- * honoured when it is a tenant role within the ceiling of the user's own role
- * (SEC-2): the host backend can narrow a session, never widen it.
+ * honoured when it is a tenant role within the ceiling of the user's own role:
+ * the host backend can narrow a session, never widen it.
  */
 async function contextForEmbedClaims(claims: EmbedClaims): Promise<ActingContext | null> {
   const tenant = await systemDb.tenant.findFirst({

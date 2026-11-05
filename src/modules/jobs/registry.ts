@@ -11,7 +11,3 @@ import { jobs as reportingJobs } from "@/modules/reporting/jobs";
 
 /** Every background job the server knows, in the order they run. */
 export const JOBS: readonly Job[] = [...appointmentJobs, ...conciergeJobs, ...crmJobs, ...financeJobs, ...labJobs, ...notificationJobs, ...recallJobs, ...reportingJobs, ...aiLogJobs];
-
-export function findJob(name: string): Job | undefined {
-  return JOBS.find((j) => j.name === name);
-}

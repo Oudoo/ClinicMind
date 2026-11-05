@@ -6,7 +6,7 @@ import { METRIC_DEFINITIONS, METRIC_IDS, type MetricId, type MetricUnit } from "
 import type { Report } from "./service";
 
 /**
- * Metric targets: the spec's success-metrics table (baseline, target, unit,
+ * Metric targets: the success-metrics table (baseline, target, unit,
  * due date per metric), kept next to the current value of each metric.
  */
 export interface Actor {

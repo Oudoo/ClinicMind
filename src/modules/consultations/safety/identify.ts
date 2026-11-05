@@ -154,10 +154,6 @@ function index(): AliasIndex {
   return aliasIndex;
 }
 
-export function ingredientByKey(key: string): Ingredient | undefined {
-  return index().byKey.get(key);
-}
-
 /** At most one insertion, deletion or substitution apart. */
 function withinOneEdit(a: string, b: string): boolean {
   if (a === b) return true;
@@ -213,13 +209,6 @@ export function matchAliases(tokens: readonly string[]): AliasTarget[] {
     i++;
   }
   return out;
-}
-
-/** Ingredients named anywhere in a free text (an allergy, a summary). */
-export function ingredientsIn(text: string): Ingredient[] {
-  const seen = new Map<string, Ingredient>();
-  for (const target of matchAliases(tokenize(text))) for (const i of target.ingredients) seen.set(i.key, i);
-  return [...seen.values()];
 }
 
 // ── Route ────────────────────────────────────────────────────────────────────

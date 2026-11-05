@@ -163,7 +163,7 @@ export async function signConsultation(
 
   const result = await db.$transaction(async (tx) => {
     // Re-prove the patient belongs to this tenant inside the transaction
-    // (SEC-4): everything below is appended to that patient's record.
+    //: everything below is appended to that patient's record.
     await requireTenantPatient(tenantId, consultation.patientId, tx);
     const patientId = consultation.patientId;
 
@@ -633,7 +633,7 @@ export async function listActiveMedications(tenantId: string, patientId: string)
   }));
 }
 
-/** The appointment must belong to the tenant and to this patient (SEC-4). */
+/** The appointment must belong to the tenant and to this patient. */
 export async function requireTenantAppointmentOfPatient(tenantId: string, patientId: string, appointmentId: string) {
   const appointment = await db.appointment.findFirst({
     where: { id: appointmentId, tenantId, patientId, ...notDeleted },

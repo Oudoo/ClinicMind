@@ -11,7 +11,7 @@ import { MAX_AMOUNT, PRICE_CATEGORIES, PRICE_UNITS, type PriceCategoryValue, typ
 import { FinanceError } from "./errors";
 
 /**
- * The clinic's price list (Phase 2, finance part 1).
+ * The clinic's price list.
  *
  * Every billable item has a fixed code (printed on invoices), a name, a
  * category, a unit (per visit, session, area, unit such as a graft or a

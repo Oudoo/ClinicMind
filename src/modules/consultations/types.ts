@@ -185,12 +185,6 @@ export interface SummaryMention {
   ranges: [number, number][];
 }
 
-/** 409 from sign when the summary still mentions removed items and was not confirmed. */
-export interface SummaryMismatchBody {
-  error: "summary_mismatch";
-  mentions: SummaryMention[];
-}
-
 /** One row of the safety-override review list. */
 export interface SafetyOverrideRow {
   id: string;

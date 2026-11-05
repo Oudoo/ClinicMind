@@ -48,12 +48,6 @@ describe.skipIf(!dbTestsEnabled)("prescribing safety", () => {
     });
   }
 
-  const signBody = (medications: { name: string; dosage?: string; frequency?: string }[], extra: Record<string, unknown> = {}) => ({
-    summary: "",
-    extraction: { symptoms: [], diagnoses: [], medications, tests: [], followUps: [] },
-    ...extra,
-  });
-
   beforeAll(async () => {
     const a = await createTenant({ slug: `rxa-${Date.now().toString(36)}` });
     const b = await createTenant({ slug: `rxb-${Date.now().toString(36)}` });

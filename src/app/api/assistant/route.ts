@@ -44,7 +44,7 @@ export async function POST(req: Request) {
     assertCanUseAssistant(ctx);
 
     const { query, patientId, page } = Body.parse(await req.json());
-    // A client-supplied patient id must belong to the acting tenant (SEC-4);
+    // A client-supplied patient id must belong to the acting tenant;
     // a foreign id is indistinguishable from a missing one (404).
     if (patientId) await requireTenantPatient(ctx.tenantId, patientId);
 

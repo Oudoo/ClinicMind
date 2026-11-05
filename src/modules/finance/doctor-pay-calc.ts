@@ -27,7 +27,6 @@ export const OTHER_WORK = "*";
 /** Consultation fees, beside the price list's categories. */
 export const CONSULTATIONS = "consultation";
 export const PAY_CATEGORIES = [OTHER_WORK, CONSULTATIONS, ...PRICE_CATEGORIES] as const;
-export type PayCategoryValue = (typeof PAY_CATEGORIES)[number];
 
 export function payCategoryLabel(category: string): string {
   if (category === OTHER_WORK) return "Everything else";

@@ -6,17 +6,14 @@ import { getEmbedOrigins } from "@/lib/embed-origins";
 /**
  * Request proxy (the Next.js 16 successor of `middleware.ts`; runs on the Node.js runtime).
  *
- *  - Strips the legacy `x-clinicmind-*` tenant headers from every request. The
- *    acting tenant is derived from the authenticated session or embed token
- *    (lib/auth/session.ts), never from the host or a client-supplied header.
  *  - Sends dashboard visitors who carry no credential cookie at all to /login,
  *    preserving the requested path. This is a cheap short-circuit without a DB
  *    round trip; the dashboard layout performs the authoritative session check.
  *  - Rate-limits the API per client address, with tighter budgets on the AI and
- *    token-minting endpoints (SEC-8). State is per process; the per-account
+ *    token-minting endpoints. State is per process; the per-account
  *    lockouts in lib/auth are database-backed.
  *  - Emits the Content-Security-Policy. `/embed/<slug>` may be framed only by
- *    that tenant's allow-listed origins (SEC-7); every other page refuses to be
+ *    that tenant's allow-listed origins; every other page refuses to be
  *    framed at all.
  */
 export async function proxy(req: NextRequest) {
@@ -33,18 +30,10 @@ export async function proxy(req: NextRequest) {
     return withSecurityHeaders(NextResponse.redirect(login), pathname, null);
   }
 
-  const requestHeaders = new Headers(req.headers);
-  requestHeaders.delete("x-clinicmind-tenant");
-  requestHeaders.delete("x-clinicmind-domain");
-
   const embedSlug = embedSlugOf(pathname);
   const frameAncestors = embedSlug ? await embedFrameAncestors(embedSlug) : null;
 
-  return withSecurityHeaders(
-    NextResponse.next({ request: { headers: requestHeaders } }),
-    pathname,
-    frameAncestors,
-  );
+  return withSecurityHeaders(NextResponse.next(), pathname, frameAncestors);
 }
 
 function isDashboardPath(pathname: string): boolean {

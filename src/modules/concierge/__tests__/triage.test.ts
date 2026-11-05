@@ -133,7 +133,7 @@ describe("answers schema and summaries", () => {
 });
 
 describe("protocol definitions", () => {
-  it("every default protocol validates and covers the spec's days", () => {
+  it("every default protocol validates and covers its days", () => {
     for (const p of DEFAULT_PROTOCOLS) {
       expect(zSteps.safeParse(p.steps).success, p.treatmentKey).toBe(true);
       expect(parseSteps(p.steps)).toHaveLength(p.steps.length);

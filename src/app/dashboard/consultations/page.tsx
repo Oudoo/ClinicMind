@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { ShieldAlert } from "lucide-react";
 import { getActingContext } from "@/lib/auth/session";
-import { can, assertCanSignClinical, canAskEvidence, canSignClinical } from "@/lib/auth/rbac";
+import { can, canAskEvidence, canSignClinical } from "@/lib/auth/rbac";
 import { db } from "@/lib/db";
 import { getAppointment, getTenantTimezone } from "@/modules/appointments/service";
 import { toAppointmentDTO } from "@/modules/appointments/dto";

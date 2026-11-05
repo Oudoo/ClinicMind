@@ -846,8 +846,6 @@ export async function getPatient(tenantId: string, id: string) {
   };
 }
 
-export type PatientDetail = NonNullable<Awaited<ReturnType<typeof getPatient>>>;
-
 // ── Mutations ─────────────────────────────────────────────────────────────────
 
 export async function createPatient(tenantId: string, input: unknown, actor: Actor = {}) {
