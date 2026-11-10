@@ -11,7 +11,8 @@ import { DictationField } from "@/components/clinicmind/dictate-field";
 import { Badge, Card, SectionTitle } from "@/components/ui/primitives";
 import { useToast } from "@/components/ui/toast";
 import { apiFetch, ApiError, fieldErrors } from "@/lib/http";
-import { cn, formatDate, formatTime } from "@/lib/utils";
+import { cn, formatDate, formatTime, humanize } from "@/lib/utils";
+import { STATUS_LABEL as APPOINTMENT_STATUS_LABEL, type AppointmentStatus } from "@/modules/appointments/transitions";
 import { medicationKey, normaliseClinicalTerm } from "@/modules/consultations/normalise";
 import { findSummaryMentions, rebuildSummary } from "@/modules/consultations/summary";
 import {
@@ -276,35 +277,32 @@ export function ConsultationReview(props: ConsultationReviewProps) {
   return (
     <Card className="space-y-5">
       <SectionTitle
-        title="Review & sign"
-        description={`${patient.fullName} — every section is editable. Nothing is saved until you sign.`}
+        title="Review and sign"
+        description={`${patient.fullName} · every section is editable; nothing is saved until you sign.`}
         action={
-          <Badge tone={edits ? "warning" : "default"}>
-            {edits ? `${edits} ${plural(edits, "edit", "edits")} from AI draft` : "matches AI draft"}
-          </Badge>
+          <p className="text-xs tabular-nums text-muted-foreground" data-testid="review-edits">
+            {edits ? `${edits} ${plural(edits, "edit", "edits")} from the AI draft` : "Matches the AI draft"}
+          </p>
         }
       />
 
       {empty && nothingEntered ? (
-        <Alert tone="info">
-          No structured data could be extracted from this transcript. Nothing was inferred — enter the findings
-          below before signing.
-        </Alert>
+        <p className="text-sm text-muted-foreground">
+          No structured data could be extracted from this transcript. Nothing was inferred: enter the findings below before signing.
+        </p>
       ) : null}
 
       {appointment ? (
-        <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-muted/40 px-3 py-2 text-sm">
-          <span className="flex min-w-0 items-center gap-2">
-            <CalendarCheck className="h-4 w-4 shrink-0 text-accent" />
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border pb-4 text-sm">
+          <span className="flex min-w-0 items-start gap-2">
+            <CalendarCheck className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
             <span className="min-w-0">
               Linked appointment:{" "}
-              <span className="font-medium">
+              <span className="font-medium tabular-nums">
                 {formatDate(appointment.startsAt)} {formatTime(appointment.startsAt)}
               </span>
-              {appointment.reason ? ` — ${appointment.reason}` : ""}
-              <span className="block text-xs text-muted-foreground">
-                Marked completed when you sign, once its start time has passed.
-              </span>
+              {appointment.reason ? ` · ${appointment.reason}` : ""}
+              <span className="block text-xs text-muted-foreground">Marked completed when you sign, once its start time has passed.</span>
             </span>
           </span>
           <Button type="button" variant="ghost" size="sm" onClick={() => setAppointment(null)}>
@@ -331,7 +329,7 @@ export function ConsultationReview(props: ConsultationReviewProps) {
       <MedicationEditor rows={medications} onChange={setMedications} />
 
       <div className="space-y-2">
-        <p className="data-label">Stop existing medication</p>
+        <p className="data-label">Stop a current medication</p>
         <StopMedicationList
           medications={activeMedications}
           error={medicationsError}
@@ -340,9 +338,8 @@ export function ConsultationReview(props: ConsultationReviewProps) {
           onToggle={toggleStop}
         />
         <p className="text-xs text-muted-foreground">
-          Ticked medications are stopped when you sign. A current medication that also appears in the
-          prescription above (same medicine, even under another name or strength) is updated in place —
-          unless it is ticked, in which case the current entry is stopped and a fresh one started.
+          Ticked medications are stopped when you sign. A current medication that also appears in the prescription above (same medicine, even
+          under another name or strength) is updated in place, unless it is ticked: then the current entry is stopped and a fresh one started.
         </p>
       </div>
 
@@ -417,7 +414,7 @@ export function ConsultationReview(props: ConsultationReviewProps) {
             disabled={busy || blankMedicationRows > 0 || !safetyReady || !summaryReady}
           >
             {busy ? <Loader2 className="animate-spin" /> : <ShieldCheck />}
-            Review complete — sign
+            Sign consultation
           </Button>
           {blockers.length && !busy ? (
             <p className="text-xs text-muted-foreground sm:text-right" data-testid="sign-blockers">
@@ -517,16 +514,17 @@ function ChipList({
   );
 }
 
+/** One item of a list being edited (a symptom, a diagnosis), with its remove button. */
 export function Chip({ text, onRemove }: { text: string; onRemove?: () => void }) {
   return (
-    <span className="inline-flex max-w-full items-start gap-1 rounded-md bg-accent-muted px-2 py-1 text-xs font-medium text-accent">
+    <span className="inline-flex max-w-full items-start gap-1 rounded-md bg-muted px-2 py-1 text-xs font-medium text-foreground">
       <span className="min-w-0 break-words">{text}</span>
       {onRemove ? (
         <button
           type="button"
           onClick={onRemove}
           aria-label={`Remove ${text}`}
-          className="shrink-0 rounded p-0.5 hover:bg-accent/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="shrink-0 rounded p-0.5 text-muted-foreground hover:bg-border hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           <X className="h-3 w-3" />
         </button>
@@ -544,7 +542,7 @@ function MedicationEditor({ rows, onChange }: { rows: MedicationRow[]; onChange:
     <fieldset className="space-y-2">
       <legend className="data-label mb-1.5">Medications</legend>
       {rows.length ? (
-        <div className={cn("hidden gap-2 px-1 sm:grid lg:hidden xl:grid", MEDICATION_COLUMNS)} aria-hidden="true">
+        <div className={cn("hidden gap-2 sm:grid lg:hidden xl:grid", MEDICATION_COLUMNS)} aria-hidden="true">
           <span className="data-label">Name</span>
           <span className="data-label">Dosage</span>
           <span className="data-label">Frequency</span>
@@ -621,28 +619,31 @@ function StopMedicationList({
 }) {
   if (error) return <Alert tone="info">{error}</Alert>;
   if (medications === null) return <p className="text-xs text-muted-foreground">Loading current medications…</p>;
-  if (!medications.length) return <p className="text-xs text-muted-foreground">No active medications on record.</p>;
+  if (!medications.length) return <p className="text-xs text-muted-foreground">No current medications on record.</p>;
   return (
-    <ul className="divide-y divide-border rounded-lg border border-border">
+    <ul className="divide-y divide-border border-y border-border">
       {medications.map((m) => {
         const checked = selected.has(m.id);
         const inPrescription = prescribedKeys.has(medicationKey(m));
         const details = [m.dosage, m.frequency].filter(Boolean).join(" · ");
         return (
           <li key={m.id}>
-            <label
-              htmlFor={`stop-${m.id}`}
-              className={cn("flex cursor-pointer items-start gap-3 px-3 py-2 text-sm", checked && "bg-danger/5")}
-            >
+            <label htmlFor={`stop-${m.id}`} className={cn("flex cursor-pointer items-start gap-3 py-2 text-sm", checked && "text-muted-foreground")}>
               <Checkbox id={`stop-${m.id}`} checked={checked} onChange={() => onToggle(m.id)} className="mt-0.5" />
               <span className="min-w-0 flex-1">
                 <span className={cn("font-medium", checked && "line-through")}>{m.name}</span>
                 {details ? <span className="text-muted-foreground"> · {details}</span> : null}
-                {m.startDate ? (
-                  <span className="tabular-nums block text-xs text-muted-foreground">since {formatDate(m.startDate)}</span>
-                ) : null}
+                {m.startDate ? <span className="block text-xs tabular-nums text-muted-foreground">since {formatDate(m.startDate)}</span> : null}
               </span>
-              {inPrescription ? <Badge tone="accent">in prescription</Badge> : null}
+              {checked ? (
+                <Badge tone="danger" dot>
+                  Stops when signed
+                </Badge>
+              ) : inPrescription ? (
+                <Badge tone="accent" dot>
+                  In the prescription
+                </Badge>
+              ) : null}
             </label>
           </li>
         );
@@ -726,24 +727,27 @@ function SignedState({
   onNew: () => void;
 }) {
   const { medications } = result;
+  const left = result.appointment && !result.appointment.completed ? result.appointment : null;
+  const leftAs = left ? (APPOINTMENT_STATUS_LABEL[left.status as AppointmentStatus] ?? humanize(left.status)).toLowerCase() : "";
   return (
     <Card className="space-y-5">
-      <div className="flex items-start gap-3">
-        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-success/10 text-success">
-          <ShieldCheck className="h-5 w-5" />
-        </span>
-        <div>
-          <h3 className="font-display text-lg font-semibold tracking-tight">Signed into {patient.fullName}'s record</h3>
-          <p className="mt-0.5 text-sm text-muted-foreground">
-            {result.editedByClinician
-              ? "You edited the AI draft before signing; the draft and the signed version are both in the audit log."
-              : "Signed as drafted by the AI; recorded in the audit log."}
-          </p>
-        </div>
-      </div>
+      <SectionTitle
+        title={`Signed into ${patient.fullName}'s record`}
+        description={
+          result.editedByClinician
+            ? "You edited the AI draft before signing; the draft and the signed version are both in the audit log."
+            : "Signed as drafted by the AI; recorded in the audit log."
+        }
+        action={
+          <Badge tone="success" className="gap-1">
+            <ShieldCheck className="h-3 w-3" aria-hidden="true" />
+            Signed
+          </Badge>
+        }
+      />
 
       <dl className="grid grid-cols-1 gap-4 text-sm sm:grid-cols-2">
-        <Outcome label="Diagnoses added" items={result.addedDiagnoses} emptyText="None new — existing diagnoses kept." />
+        <Outcome label="Diagnoses added" items={result.addedDiagnoses} emptyText="None new: existing diagnoses kept." />
         <Outcome label="Medications started" items={medications.started} emptyText="None" />
         <Outcome label="Medications adjusted" items={medications.adjusted} emptyText="None" />
         <Outcome label="Medications stopped" items={medications.stopped} emptyText="None" />
@@ -753,17 +757,17 @@ function SignedState({
       ) : null}
       {result.safety?.overrides ? (
         <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-          <ShieldAlert className="h-3.5 w-3.5 text-warning" />
+          <ShieldAlert className="h-3.5 w-3.5 text-warning" aria-hidden="true" />
           {result.safety.overrides} prescribing-safety {plural(result.safety.overrides, "override", "overrides")} recorded with your
           {plural(result.safety.overrides, " reason", " reasons")} for the clinic owner's review.
         </p>
       ) : null}
       {result.appointment ? (
         <p className="flex items-start gap-1.5 text-xs text-muted-foreground" data-testid="signed-appointment">
-          <CalendarCheck className="mt-px h-3.5 w-3.5 shrink-0" />
+          <CalendarCheck className="mt-px h-3.5 w-3.5 shrink-0" aria-hidden="true" />
           {result.appointment.completed
             ? "Linked appointment marked completed."
-            : `Linked appointment left as ${result.appointment.status.toLowerCase().replace(/_/g, " ")}${result.appointment.reason ? `: ${result.appointment.reason}` : "."}`}
+            : `Linked appointment left as ${leftAs}${result.appointment.reason ? `: ${result.appointment.reason}` : "."}`}
         </p>
       ) : null}
 
@@ -783,20 +787,21 @@ function Outcome({ label, items, emptyText }: { label: string; items: string[]; 
   return (
     <div>
       <dt className="data-label mb-1">{label}</dt>
-      <dd>
-        {items.length ? (
-          <ul className="flex flex-wrap gap-1">
-            {items.map((item, i) => (
-              <li key={`${i}-${item}`}>
-                <Chip text={item} />
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <span className="text-muted-foreground">{emptyText}</span>
-        )}
-      </dd>
+      <dd>{items.length ? <ItemList items={items} /> : <span className="text-muted-foreground">{emptyText}</span>}</dd>
     </div>
+  );
+}
+
+/** Items of a signed list, one per line, in the text face (no chips: nothing here is editable). */
+function ItemList({ items }: { items: string[] }) {
+  return (
+    <ul className="space-y-0.5">
+      {items.map((item, i) => (
+        <li key={`${i}-${item}`} className="break-words" dir="auto">
+          {item}
+        </li>
+      ))}
+    </ul>
   );
 }
 
@@ -810,24 +815,14 @@ export function ExtractionChips({ extraction }: { extraction: ClinicalExtraction
     },
   ];
   return (
-    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+    <dl className="grid grid-cols-1 gap-4 text-sm md:grid-cols-2">
       {sections.map((section) => (
         <div key={section.label}>
-          <p className="data-label mb-1">{section.label}</p>
-          {section.items.length ? (
-            <ul className="flex flex-wrap gap-1">
-              {section.items.map((item, i) => (
-                <li key={`${i}-${item}`}>
-                  <Chip text={item} />
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <span className="text-xs text-muted-foreground">—</span>
-          )}
+          <dt className="data-label mb-1">{section.label}</dt>
+          <dd>{section.items.length ? <ItemList items={section.items} /> : <span className="text-muted-foreground">—</span>}</dd>
         </div>
       ))}
-    </div>
+    </dl>
   );
 }
 

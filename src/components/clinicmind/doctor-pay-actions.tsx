@@ -2,12 +2,12 @@
 
 import { useId, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
-import { Banknote, Lock, Pencil, Plus, Trash2 } from "lucide-react";
+import { AlertTriangle, Banknote, CircleCheck, Clock, Lock, Pencil, Play, Plus, Redo2, Trash2, type LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogClose, DialogContent, DialogFooter } from "@/components/ui/dialog";
 import { Alert, Field } from "@/components/ui/field";
 import { Checkbox, Input, Select } from "@/components/ui/input";
-import { Badge } from "@/components/ui/primitives";
+import { Badge, Card } from "@/components/ui/primitives";
 import { useToast } from "@/components/ui/toast";
 import { apiFetch, fieldErrors } from "@/lib/http";
 import { dateKeyInTz } from "@/lib/time";
@@ -31,54 +31,62 @@ export function PayRulesEditor({ doctors }: { doctors: PayDoctorDTO[] }) {
   const [editing, setEditing] = useState<{ doctor: PayDoctorDTO; rule: PayRuleDTO | null } | null>(null);
   const [removing, setRemoving] = useState<{ doctor: PayDoctorDTO; rule: PayRuleDTO } | null>(null);
   return (
-    <div className="grid grid-cols-1 gap-4 lg:grid-cols-2" data-testid="pay-rules">
-      {doctors.map((d) => (
-        <section key={d.id} className="bento space-y-3" aria-label={`Pay of ${d.fullName}`}>
-          <div className="flex flex-wrap items-start justify-between gap-2">
-            <div>
-              <h2 className="font-display text-base font-semibold">{d.fullName}</h2>
-              <p className="text-xs text-muted-foreground">
-                {ROLE_LABELS[d.role] ?? d.role} · {d.payFrom ? `paid for work from ${monthName(d.payFrom)}` : "no pay set"}
-              </p>
-            </div>
-            <Button type="button" size="sm" variant="outline" onClick={() => setEditing({ doctor: d, rule: null })}>
-              <Plus className="h-4 w-4" aria-hidden="true" />
-              Add a rule
-            </Button>
-          </div>
-          {d.rules.length ? (
-            <ul className="divide-y divide-border rounded-md border border-border">
-              {d.rules.map((r) => (
-                <li key={r.id} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 text-sm">
-                  <div className="min-w-0">
-                    <p className="font-medium">{r.categoryLabel}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {r.terms}
-                      {r.note ? ` · ${r.note}` : ""}
-                    </p>
-                  </div>
-                  <div className="flex gap-1">
-                    <Button type="button" size="sm" variant="ghost" aria-label={`Change the rule for ${r.categoryLabel}`} onClick={() => setEditing({ doctor: d, rule: r })}>
-                      <Pencil className="h-3.5 w-3.5" aria-hidden="true" />
-                    </Button>
-                    <Button type="button" size="sm" variant="ghost" aria-label={`Remove the rule for ${r.categoryLabel}`} onClick={() => setRemoving({ doctor: d, rule: r })}>
-                      <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
-                    </Button>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="text-sm text-muted-foreground">No rules: their work earns nothing on a statement until one is set.</p>
-          )}
-          {d.rules.length && !d.rules.some((r) => r.category === OTHER_WORK) ? (
-            <p className="text-xs text-warning">No rule for everything else: work outside these categories earns nothing.</p>
-          ) : null}
-        </section>
-      ))}
+    <>
+      {/* One surface: a block per person, divided by rules; their rules are rows, each read as a sentence. */}
+      <Card className="divide-y divide-border p-0" data-testid="pay-rules">
+        {doctors.map((d) => {
+          const noCatchAll = d.rules.length > 0 && !d.rules.some((r) => r.category === OTHER_WORK);
+          return (
+            <section key={d.id} className="px-5 py-4" aria-label={`Pay of ${d.fullName}`}>
+              <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
+                <div className="min-w-0">
+                  <h3 className="text-sm font-medium">{d.fullName}</h3>
+                  <p className="text-xs text-muted-foreground">
+                    {ROLE_LABELS[d.role] ?? d.role}
+                    {d.payFrom ? ` · paid for work from ${monthName(d.payFrom)}` : " · no pay set"}
+                  </p>
+                </div>
+                <Button type="button" size="sm" variant="outline" onClick={() => setEditing({ doctor: d, rule: null })}>
+                  <Plus className="h-4 w-4" aria-hidden="true" />
+                  Add a rule
+                </Button>
+              </div>
+              {d.rules.length ? (
+                <ul className="mt-2 divide-y divide-border">
+                  {d.rules.map((r) => (
+                    <li key={r.id} className="flex items-center justify-between gap-3 py-2 text-sm">
+                      <p className="min-w-0">
+                        <span className="font-medium">{r.categoryLabel}</span>
+                        <span className="text-muted-foreground">: {r.terms}.</span>
+                        {r.note ? <span className="block text-xs text-muted-foreground">{r.note}</span> : null}
+                      </p>
+                      <div className="flex shrink-0 gap-1">
+                        <Button type="button" size="sm" variant="ghost" aria-label={`Change the rule for ${r.categoryLabel}`} onClick={() => setEditing({ doctor: d, rule: r })}>
+                          <Pencil className="h-4 w-4" aria-hidden="true" />
+                        </Button>
+                        <Button type="button" size="sm" variant="ghost" aria-label={`Remove the rule for ${r.categoryLabel}`} onClick={() => setRemoving({ doctor: d, rule: r })}>
+                          <Trash2 className="h-4 w-4" aria-hidden="true" />
+                        </Button>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="mt-2 text-sm text-muted-foreground">No rules: their work earns nothing on a statement until one is set.</p>
+              )}
+              {noCatchAll ? (
+                <p className="mt-2 flex items-center gap-1.5 text-xs text-warning">
+                  <AlertTriangle className="h-3 w-3 shrink-0" aria-hidden="true" />
+                  No rule for everything else: work outside these categories earns nothing.
+                </p>
+              ) : null}
+            </section>
+          );
+        })}
+      </Card>
       {editing ? <RuleDialog doctor={editing.doctor} rule={editing.rule} onClose={() => setEditing(null)} /> : null}
       {removing ? <RemoveRuleDialog doctor={removing.doctor} rule={removing.rule} onClose={() => setRemoving(null)} /> : null}
-    </div>
+    </>
   );
 }
 
@@ -309,7 +317,7 @@ export function MarkPaidButton({ doctorId, doctorName, month, payable, timezone 
   }
   return (
     <>
-      <Button type="button" size="sm" variant="outline" onClick={() => setOpen(true)}>
+      <Button type="button" size="sm" onClick={() => setOpen(true)}>
         <Banknote className="h-4 w-4" aria-hidden="true" />
         Mark as paid
       </Button>
@@ -351,14 +359,19 @@ export function MarkPaidButton({ doctorId, doctorName, month, payable, timezone 
   );
 }
 
-/** Where a month's statement stands. */
+/** Where a month's statement stands: still adding up, closed and waiting to be paid, closed with nothing to pay, paid, or paid by a later month's. */
 export function StatementStatusBadge({ status, payable }: { status: "OPEN" | "CLOSED" | "PAID" | "COVERED"; payable: number }) {
-  const map: Record<typeof status, [string, BadgeTone]> = {
-    OPEN: ["Open", "warning"],
-    CLOSED: payable > 0 ? ["Closed · to pay", "accent"] : ["Closed · nothing to pay", "default"],
-    PAID: ["Paid", "success"],
-    COVERED: ["In a later statement", "default"],
+  const map: Record<typeof status, [string, BadgeTone, LucideIcon]> = {
+    OPEN: ["Open", "accent", Play],
+    CLOSED: payable > 0 ? ["Closed, to pay", "warning", Clock] : ["Closed, nothing to pay", "default", CircleCheck],
+    PAID: ["Paid", "success", CircleCheck],
+    COVERED: ["Paid in a later statement", "default", Redo2],
   };
-  const [label, tone] = map[status];
-  return <Badge tone={tone}>{label}</Badge>;
+  const [label, tone, Icon] = map[status];
+  return (
+    <Badge tone={tone} className="gap-1">
+      <Icon className="h-3 w-3 shrink-0" aria-hidden="true" />
+      {label}
+    </Badge>
+  );
 }

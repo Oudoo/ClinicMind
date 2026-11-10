@@ -364,7 +364,28 @@ function ExpenseDialog({ context, expense, supplier, onClose }: { context: Expen
 }
 
 /** Pay towards an expense: what is owed, or part of it; cash today out of the drawer. */
-export function PayExpenseButton({ expenseId, description, owed, billedOn, timezone, drawerOpen, size = "sm" }: { expenseId: string; description: string; owed: number; billedOn: string; timezone: string; drawerOpen: boolean; size?: "sm" | "md" }) {
+export function PayExpenseButton({
+  expenseId,
+  description,
+  owed,
+  billedOn,
+  timezone,
+  drawerOpen,
+  size = "sm",
+  variant = "outline",
+  className,
+}: {
+  expenseId: string;
+  description: string;
+  owed: number;
+  billedOn: string;
+  timezone: string;
+  drawerOpen: boolean;
+  size?: "sm" | "md" | "lg";
+  /** `primary` on the expense's own page, where paying is the thing to do. */
+  variant?: "primary" | "outline";
+  className?: string;
+}) {
   const id = useId();
   const router = useRouter();
   const { toast } = useToast();
@@ -416,7 +437,7 @@ export function PayExpenseButton({ expenseId, description, owed, billedOn, timez
   const hint = (key: string, fallback?: string) => (issues[key] ? <span className="text-danger">{issues[key]}</span> : fallback);
   return (
     <>
-      <Button type="button" size={size} variant="outline" onClick={show} aria-label={`Pay ${description}`}>
+      <Button type="button" size={size} variant={variant} className={className} onClick={show} aria-label={`Pay ${description}`}>
         <Banknote className="h-4 w-4" aria-hidden="true" />
         Pay
       </Button>
@@ -553,9 +574,9 @@ export function VoidExpensePaymentButton({ paymentId, amount }: { paymentId: str
   const [open, setOpen] = useState(false);
   return (
     <>
-      <button type="button" className="rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground" aria-label={`Void the payment of ${formatNumber(amount)} EGP`} onClick={() => setOpen(true)}>
-        <X className="h-3.5 w-3.5" aria-hidden="true" />
-      </button>
+      <Button type="button" variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-danger" aria-label={`Void the payment of ${formatNumber(amount)} EGP`} title="Void this payment" onClick={() => setOpen(true)}>
+        <Ban className="h-4 w-4" aria-hidden="true" />
+      </Button>
       {open ? (
         <VoidDialog
           title={`Void the payment of ${formatNumber(amount)} EGP?`}

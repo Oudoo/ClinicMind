@@ -2,14 +2,15 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { ChevronDown, Loader2, Sparkles } from "lucide-react";
+import { Loader2, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Alert, Field } from "@/components/ui/field";
 import { Select, Textarea } from "@/components/ui/input";
-import { Badge, Card, SectionTitle } from "@/components/ui/primitives";
+import { Card, SectionTitle } from "@/components/ui/primitives";
 import { useToast } from "@/components/ui/toast";
 import { apiFetch, ApiError, fieldErrors } from "@/lib/http";
-import { formatDate, formatTime } from "@/lib/utils";
+import { formatDate, formatTime, humanize } from "@/lib/utils";
+import { STATUS_LABEL as APPOINTMENT_STATUS_LABEL, type AppointmentStatus } from "@/modules/appointments/transitions";
 import { isExtractionEmpty } from "@/modules/consultations/normalise";
 import {
   TRANSCRIPT_MAX_LENGTH,
@@ -22,7 +23,7 @@ import {
 import { PatientPicker } from "./consultation-patient-picker";
 import { DictationControl } from "./dictation";
 import { ConsultationReview, DiscardButton, ExtractionChips } from "./consultation-review";
-import { STATUS_LABEL, STATUS_TONE } from "./consultation-list";
+import { ConsultationStatusBadge } from "./consultation-list";
 
 export interface ConsultationPanelProps {
   /** The consultation opened from the list, or null for a new capture. */
@@ -43,7 +44,7 @@ export interface ConsultationPanelProps {
 }
 
 /**
- * Consultation Intelligence panel.
+ * The consultation panel beside the list.
  *
  * Flow: dictate or paste the transcript -> AI extracts a structured draft ->
  * clinician REVIEWS (every section editable) -> explicitly signs. Clinical
@@ -163,10 +164,7 @@ function CaptureForm({ presetPatient, canSign, canAskEvidence, onChanged, onClos
 
   return (
     <Card className="space-y-5">
-      <SectionTitle
-        title="New consultation"
-        description="Pick the patient, dictate or paste the transcript and extract a structured draft. Nothing reaches the record until a clinician signs."
-      />
+      <SectionTitle title="New consultation" description="Pick the patient, dictate or paste the transcript, then extract a draft to review and sign." />
 
       <PatientPicker
         value={patient}
@@ -271,22 +269,19 @@ function AppointmentSelect({
 
   return (
     <Field label="Appointment (optional)" htmlFor="consultation-appointment" hint={hint}>
-      <div className="relative">
-        <Select
-          id="consultation-appointment"
-          value={value?.id ?? ""}
-          onChange={(e) => onChange(appointments?.find((a) => a.id === e.target.value) ?? null)}
-          disabled={disabled || !appointments?.length}
-        >
-          <option value="">No linked appointment</option>
-          {(appointments ?? []).map((a) => (
-            <option key={a.id} value={a.id}>
-              {formatDate(a.startsAt)} {formatTime(a.startsAt)} — {a.reason ?? "Appointment"} ({a.status.toLowerCase()})
-            </option>
-          ))}
-        </Select>
-        <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-      </div>
+      <Select
+        id="consultation-appointment"
+        value={value?.id ?? ""}
+        onChange={(e) => onChange(appointments?.find((a) => a.id === e.target.value) ?? null)}
+        disabled={disabled || !appointments?.length}
+      >
+        <option value="">No linked appointment</option>
+        {(appointments ?? []).map((a) => (
+          <option key={a.id} value={a.id}>
+            {formatDate(a.startsAt)} {formatTime(a.startsAt)} · {a.reason ?? "Appointment"} · {APPOINTMENT_STATUS_LABEL[a.status as AppointmentStatus] ?? humanize(a.status)}
+          </option>
+        ))}
+      </Select>
     </Field>
   );
 }
@@ -304,28 +299,24 @@ function ConsultationReadOnly({
 }) {
   const { patient, status } = consultation;
   const capturedBy = consultation.doctor?.fullName ?? "unknown";
+  // What happened to the draft, in one line under the title.
+  const outcome =
+    status === "SIGNED" && consultation.reviewedAt
+      ? `Signed ${formatDate(consultation.reviewedAt)} ${formatTime(consultation.reviewedAt)}${consultation.reviewedBy?.fullName ? ` by ${consultation.reviewedBy.fullName}` : ""}.`
+      : status === "DISCARDED"
+        ? "Nothing from this draft was written to the patient's record."
+        : status === "PENDING_REVIEW"
+          ? "Waiting for a clinician: only a doctor or the clinic owner can sign this draft into the patient's record."
+          : null;
   return (
     <Card className="space-y-5">
       <SectionTitle
         title={status === "SIGNED" ? "Signed consultation" : status === "DISCARDED" ? "Discarded draft" : "Draft awaiting review"}
         description={`${patient.fullName} · captured ${formatDate(consultation.createdAt)} ${formatTime(consultation.createdAt)} by ${capturedBy}`}
-        action={<Badge tone={STATUS_TONE[status]}>{STATUS_LABEL[status]}</Badge>}
+        action={<ConsultationStatusBadge status={status} />}
       />
 
-      {status === "PENDING_REVIEW" ? (
-        <Alert tone="info">
-          Awaiting clinician review. Only a doctor or the clinic owner can sign this draft into the patient's record.
-        </Alert>
-      ) : null}
-      {status === "SIGNED" && consultation.reviewedAt ? (
-        <p className="text-sm text-muted-foreground">
-          Signed {formatDate(consultation.reviewedAt)} {formatTime(consultation.reviewedAt)}
-          {consultation.reviewedBy?.fullName ? ` by ${consultation.reviewedBy.fullName}` : ""}.
-        </p>
-      ) : null}
-      {status === "DISCARDED" ? (
-        <p className="text-sm text-muted-foreground">Nothing from this draft was written to the patient's record.</p>
-      ) : null}
+      {outcome ? <p className="text-sm text-muted-foreground">{outcome}</p> : null}
 
       <ExtractionChips extraction={consultation.extraction} />
 
@@ -335,9 +326,9 @@ function ConsultationReadOnly({
       </div>
 
       {consultation.transcript ? (
-        <details className="rounded-lg border border-border">
-          <summary className="cursor-pointer px-3 py-2 text-sm font-medium">Transcript</summary>
-          <pre className="max-h-80 overflow-auto whitespace-pre-wrap border-t border-border px-3 py-2 font-sans text-sm">
+        <details className="border-t border-border pt-4">
+          <summary className="cursor-pointer text-sm font-medium">Transcript</summary>
+          <pre className="mt-2 max-h-80 overflow-auto whitespace-pre-wrap font-sans text-sm leading-relaxed text-muted-foreground">
             {consultation.transcript}
           </pre>
         </details>

@@ -1,13 +1,34 @@
+import { AlertTriangle, Ban, CircleCheck, CircleDot, Clock, type LucideIcon } from "lucide-react";
 import { Badge } from "@/components/ui/primitives";
 import type { ExpenseStatusValue } from "@/modules/finance/expense-constants";
 import type { BadgeTone } from "./patient-shared";
 
-const TONES: Record<ExpenseStatusValue, BadgeTone> = { OPEN: "warning", PART_PAID: "accent", PAID: "success", VOID: "default" };
+/** How each state reads: its tone and a mark of its own, so none is told by colour alone. */
+const STYLE: Record<ExpenseStatusValue, { tone: BadgeTone; Icon: LucideIcon }> = {
+  OPEN: { tone: "warning", Icon: Clock },
+  PART_PAID: { tone: "warning", Icon: CircleDot },
+  PAID: { tone: "success", Icon: CircleCheck },
+  VOID: { tone: "default", Icon: Ban },
+};
 
-/** Where an expense stands: late (by how many days), to pay, part paid, paid or voided. */
+/** Where an expense stands: late (by how many days), due today, to pay, part paid, paid or voided. */
 export function ExpenseStatusBadge({ status, label, daysLate }: { status: ExpenseStatusValue; label: string; daysLate: number | null }) {
-  if (daysLate !== null && status !== "PAID" && status !== "VOID") return <Badge tone="danger">{daysLate === 0 ? "Due today" : `${daysLate} day${daysLate === 1 ? "" : "s"} late`}</Badge>;
-  return <Badge tone={TONES[status]}>{label}</Badge>;
+  if (daysLate !== null && status !== "PAID" && status !== "VOID") {
+    const today = daysLate === 0;
+    return (
+      <Badge tone={today ? "warning" : "danger"} className="gap-1">
+        {today ? <Clock className="h-3 w-3 shrink-0" aria-hidden="true" /> : <AlertTriangle className="h-3 w-3 shrink-0" aria-hidden="true" />}
+        {today ? "Due today" : `${daysLate} day${daysLate === 1 ? "" : "s"} late`}
+      </Badge>
+    );
+  }
+  const { tone, Icon } = STYLE[status];
+  return (
+    <Badge tone={tone} className="gap-1">
+      <Icon className="h-3 w-3 shrink-0" aria-hidden="true" />
+      {label}
+    </Badge>
+  );
 }
 
 /** "29 Oct 2026" from a day key, on any clock (a day is a day). */

@@ -30,7 +30,15 @@ export function ExpenseNav({ current, toPay, overdue }: { current: ExpenseTab; t
                 )}
               >
                 {t.label}
-                {count ? <span className={cn("tabular-nums rounded-md px-1.5 text-xs", overdue ? "bg-danger/10 text-danger" : "bg-card text-muted-foreground")}>{count}</span> : null}
+                {/* How many bills wait; red when any of them is late, with the reason in the tooltip. */}
+                {count ? (
+                  <span
+                    className={cn("rounded-md px-1.5 text-xs tabular-nums", overdue ? "bg-danger/10 text-danger" : "bg-card text-muted-foreground")}
+                    title={overdue ? `${overdue} of ${count} past the day to pay` : `${count} to pay`}
+                  >
+                    {count}
+                  </span>
+                ) : null}
               </Link>
             </li>
           );

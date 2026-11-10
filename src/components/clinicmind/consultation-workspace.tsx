@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ClipboardPaste, Mic, Type } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Badge, Card, SectionTitle } from "@/components/ui/primitives";
+import { Card, SectionTitle } from "@/components/ui/primitives";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ToastProvider, useToast } from "@/components/ui/toast";
 import { apiFetch } from "@/lib/http";
@@ -23,6 +23,8 @@ const LIST_PAGE_SIZE = 30;
 
 export interface ConsultationsWorkspaceProps {
   initial: ConsultationListResponse;
+  /** Drafts awaiting a clinician across the clinic, for the list's count line. */
+  pendingCount?: number;
   canSign: boolean;
   /** A clinician who may ask the clinic's evidence library from the review. */
   canAskEvidence?: boolean;
@@ -56,7 +58,7 @@ interface Selection {
   nonce: number;
 }
 
-function Workspace({ initial, canSign, canAskEvidence = false, userId, openId, presetPatient, presetAppointment = null, timezone = "Africa/Cairo" }: ConsultationsWorkspaceProps) {
+function Workspace({ initial, pendingCount, canSign, canAskEvidence = false, userId, openId, presetPatient, presetAppointment = null, timezone = "Africa/Cairo" }: ConsultationsWorkspaceProps) {
   const { toast } = useToast();
   const [items, setItems] = useState<ConsultationListItem[]>(initial.consultations);
   const [total, setTotal] = useState(initial.total);
@@ -138,6 +140,7 @@ function Workspace({ initial, canSign, canAskEvidence = false, userId, openId, p
       <ConsultationList
         items={items}
         total={total}
+        pendingCount={filter === "ALL" ? pendingCount : undefined}
         loading={listLoading}
         filter={filter}
         selectedId={selection.id}
@@ -231,46 +234,51 @@ function BookingNotesCard({ appointment, timezone }: { appointment: AppointmentD
   }
 
   return (
-    <Card className="space-y-3 border-accent/40" data-testid="booking-notes-card">
-      <SectionTitle
-        title="Notes dictated at booking"
-        description={`${appointment.patient.fullName} · ${formatDateTimeInTz(start, timezone)} · ${KIND_LABEL[appointment.kind]}${appointment.reason ? ` · ${appointment.reason}` : ""}`}
-        action={
-          notes.length ? (
-            <Button type="button" size="sm" onClick={() => insert(notes)}>
-              <ClipboardPaste />
-              Insert {notes.length === 1 ? "into transcript" : `all ${notes.length}`}
-            </Button>
-          ) : undefined
-        }
-      />
+    <Card className="overflow-hidden p-0" data-testid="booking-notes-card">
+      <div className="px-5 pt-5 pb-4">
+        <SectionTitle
+          title="Notes dictated at booking"
+          description={`${appointment.patient.fullName} · ${formatDateTimeInTz(start, timezone)} · ${KIND_LABEL[appointment.kind]}${appointment.reason ? ` · ${appointment.reason}` : ""}`}
+          action={
+            notes.length > 1 ? (
+              <Button type="button" variant="outline" size="sm" onClick={() => insert(notes)}>
+                <ClipboardPaste />
+                Insert all {notes.length}
+              </Button>
+            ) : undefined
+          }
+        />
+      </div>
       {notes.length === 0 ? (
-        <p className="text-sm text-muted-foreground">No notes were dictated when this appointment was booked.</p>
+        <p className="border-t border-border px-5 py-4 text-sm text-muted-foreground">No notes were dictated when this appointment was booked.</p>
       ) : (
-        <ul className="space-y-2">
-          {notes.map((n) => (
-            <li key={n.id} className="rounded-lg border border-border bg-card p-3">
-              <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
-                <Badge tone={n.kind === "DICTATION" ? "accent" : "default"}>
-                  {n.kind === "DICTATION" ? <Mic className="h-3 w-3" aria-hidden="true" /> : <Type className="h-3 w-3" aria-hidden="true" />}
-                  {n.kind === "DICTATION" ? "Dictated" : "Typed"}
-                </Badge>
-                <span className="font-medium text-foreground">{n.author?.fullName ?? "Unknown"}</span>
-                <time dateTime={n.createdAt} className="tabular-nums">
-                  {formatDateTimeInTz(new Date(n.createdAt), timezone)}
-                </time>
-                {n.language ? <span>{LANGUAGE_LABEL[n.language] ?? n.language}</span> : null}
-                {n.durationSeconds ? <span className="tabular-nums">{formatSeconds(n.durationSeconds)}</span> : null}
-                <Button type="button" variant="ghost" size="sm" className="ml-auto h-7 px-2" onClick={() => insert([n])}>
-                  <ClipboardPaste className="h-3.5 w-3.5" />
-                  Insert
-                </Button>
-              </div>
-              <p dir="auto" className="mt-1.5 whitespace-pre-wrap text-sm leading-relaxed">
-                {n.body}
-              </p>
-            </li>
-          ))}
+        <ul className="divide-y divide-border border-t border-border">
+          {notes.map((n) => {
+            const KindIcon = n.kind === "DICTATION" ? Mic : Type;
+            return (
+              <li key={n.id} className="px-5 py-3">
+                <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+                  <span className="inline-flex items-center gap-1">
+                    <KindIcon className="h-3 w-3" aria-hidden="true" />
+                    {n.kind === "DICTATION" ? "Dictated" : "Typed"}
+                  </span>
+                  <span className="font-medium text-foreground">{n.author?.fullName ?? "Unknown"}</span>
+                  <time dateTime={n.createdAt} className="tabular-nums">
+                    {formatDateTimeInTz(new Date(n.createdAt), timezone)}
+                  </time>
+                  {n.language ? <span>{LANGUAGE_LABEL[n.language] ?? n.language}</span> : null}
+                  {n.durationSeconds ? <span className="tabular-nums">{formatSeconds(n.durationSeconds)}</span> : null}
+                  <Button type="button" variant="outline" size="sm" className="ml-auto" onClick={() => insert([n])}>
+                    <ClipboardPaste />
+                    Insert into transcript
+                  </Button>
+                </div>
+                <p dir="auto" className="mt-1.5 whitespace-pre-wrap text-sm leading-relaxed">
+                  {n.body}
+                </p>
+              </li>
+            );
+          })}
         </ul>
       )}
     </Card>

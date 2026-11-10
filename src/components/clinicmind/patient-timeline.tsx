@@ -1,7 +1,6 @@
 import type { TimelineKind } from "@prisma/client";
-import { Badge, EmptyState } from "@/components/ui/primitives";
+import { EmptyState } from "@/components/ui/primitives";
 import { formatDate, formatTime } from "@/lib/utils";
-import type { BadgeTone } from "@/components/clinicmind/patient-shared";
 
 export interface TimelineItem {
   id: string;
@@ -10,26 +9,6 @@ export interface TimelineItem {
   body: string | null;
   occurredAt: Date;
 }
-
-const KIND_TONE: Record<TimelineKind, BadgeTone> = {
-  APPOINTMENT: "accent",
-  CALL: "default",
-  WHATSAPP_MESSAGE: "default",
-  DIAGNOSIS: "warning",
-  PRESCRIPTION: "accent",
-  AUDIO: "default",
-  DOCUMENT: "default",
-  AI_NOTE: "default",
-  VISIT: "success",
-  PROCEDURE: "success",
-  PAYMENT: "accent",
-  CHECK_IN: "default",
-  ESCALATION: "danger",
-  INTAKE: "default",
-  LEAD: "default",
-  LAB: "accent",
-  INSURANCE: "accent",
-};
 
 const KIND_LABEL: Record<TimelineKind, string> = {
   APPOINTMENT: "Appointment",
@@ -51,37 +30,28 @@ const KIND_LABEL: Record<TimelineKind, string> = {
   INSURANCE: "Insurance",
 };
 
-/** Chronological feed of a patient's `TimelineEvent`s, newest first. Server component. */
+/**
+ * Everything that happened to the patient, newest first, as rows: when, what kind of event,
+ * and what it says. Server component; the page wraps it in a padding-less Card.
+ */
 export function PatientTimeline({ events }: { events: TimelineItem[] }) {
   if (!events.length) {
-    return (
-      <EmptyState
-        title="No events yet"
-        hint="Appointments, visits, diagnoses and messages appear here as they happen."
-      />
-    );
+    return <EmptyState inCard title="Nothing on the timeline yet" hint="Appointments, visits, diagnoses and messages appear here as they happen." />;
   }
   return (
-    <ol className="relative space-y-6 border-l border-border pl-6">
+    <ol className="divide-y divide-border">
       {events.map((event) => (
-        <li key={event.id} className="relative">
-          <span
-            aria-hidden="true"
-            className="absolute -left-[29px] top-1.5 h-2.5 w-2.5 rounded-full border-2 border-card bg-accent"
-          />
-          <div className="flex flex-wrap items-center gap-2">
-            <Badge tone={KIND_TONE[event.kind]}>{KIND_LABEL[event.kind]}</Badge>
-            <time
-              dateTime={event.occurredAt.toISOString()}
-              className="text-xs tabular-nums text-muted-foreground"
-            >
+        <li key={event.id} className="grid gap-x-4 gap-y-1 px-5 py-3 sm:grid-cols-[10rem_minmax(0,1fr)]">
+          <div className="flex items-baseline gap-x-2 sm:flex-col sm:gap-y-0.5">
+            <time dateTime={event.occurredAt.toISOString()} className="text-sm tabular-nums">
               {formatDate(event.occurredAt)} · {formatTime(event.occurredAt)}
             </time>
+            <span className="data-label">{KIND_LABEL[event.kind]}</span>
           </div>
-          <p className="mt-1 text-sm font-medium">{event.title}</p>
-          {event.body ? (
-            <p className="mt-0.5 whitespace-pre-wrap text-sm text-muted-foreground">{event.body}</p>
-          ) : null}
+          <div className="min-w-0">
+            <p className="text-sm font-medium">{event.title}</p>
+            {event.body ? <p className="mt-0.5 whitespace-pre-wrap break-words text-sm text-muted-foreground">{event.body}</p> : null}
+          </div>
         </li>
       ))}
     </ol>

@@ -8,17 +8,18 @@ import { toAppointmentDTO } from "@/modules/appointments/dto";
 import { countPendingReview, listConsultations } from "@/modules/consultations/service";
 import { countRecentOverrides, overrideScope } from "@/modules/consultations/safety/overrides";
 import { ConsultationsWorkspace } from "@/components/clinicmind/consultation-workspace";
-import { Badge, Card, EmptyState, SectionTitle } from "@/components/ui/primitives";
+import { EmptyState, SectionTitle } from "@/components/ui/primitives";
 import { Button } from "@/components/ui/button";
+import { formatNumber } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
 /**
- * Consultation Intelligence: recent consultations (drafts awaiting review
- * first) beside the capture / review / sign panel. `?id=` opens a
- * consultation; `?patientId=` preselects a patient for a new capture;
- * `?appointmentId=` (from "Start consultation") preselects that booking's
- * patient and shows the notes dictated at booking beside the capture form.
+ * Consultations: recent consultations (drafts awaiting review first) beside
+ * the capture / review / sign panel. `?id=` opens a consultation;
+ * `?patientId=` preselects a patient for a new capture; `?appointmentId=`
+ * (from "Start consultation") preselects that booking's patient and shows
+ * the notes dictated at booking beside the capture form.
  */
 export default async function ConsultationsPage({
   searchParams,
@@ -32,13 +33,11 @@ export default async function ConsultationsPage({
   if (!can(ctx.role, "consultations:read")) {
     return (
       <div className="space-y-6">
-        <SectionTitle title="Consultation Intelligence" description="Transcript → extract → review → sign." />
-        <Card>
-          <EmptyState
-            title="Consultations are not available for your role"
-            hint="Ask a clinic owner if you need access to the clinical workflow."
-          />
-        </Card>
+        <SectionTitle title="Consultations" />
+        <EmptyState
+          title="Consultations are not available for your role"
+          hint="Ask a clinic owner if you need access to the clinical workflow."
+        />
       </div>
     );
   }
@@ -64,31 +63,30 @@ export default async function ConsultationsPage({
   return (
     <div className="space-y-6">
       <SectionTitle
-        title="Consultation Intelligence"
-        description="Transcript → extract → review → sign. Nothing reaches the patient record until a clinician signs."
+        title="Consultations"
+        description="Nothing reaches the patient record until a clinician signs."
         action={
-          <div className="flex flex-wrap items-center justify-end gap-2">
-            {canReviewOverrides ? (
-              <Button asChild variant="outline" size="sm">
-                <Link href="/dashboard/safety" title="Prescribing-safety stops signed through with a reason, and acknowledged warnings">
-                  <ShieldAlert className="h-4 w-4" />
-                  Safety overrides
-                  {recentOverrides > 0 ? (
-                    <Badge tone="danger" title={`${recentOverrides} safety ${recentOverrides === 1 ? "stop" : "stops"} overridden in the last 28 days`}>
-                      {recentOverrides}
-                    </Badge>
-                  ) : null}
-                </Link>
-              </Button>
-            ) : null}
-            <Badge tone={pending ? "warning" : "default"}>
-              {pending} pending review
-            </Badge>
-          </div>
+          canReviewOverrides ? (
+            <Button asChild variant="outline">
+              <Link
+                href="/dashboard/safety"
+                title={
+                  recentOverrides > 0
+                    ? `${formatNumber(recentOverrides)} prescribing-safety ${recentOverrides === 1 ? "stop" : "stops"} signed through in the last 28 days`
+                    : "Prescribing-safety stops signed through with a reason, and acknowledged warnings"
+                }
+              >
+                <ShieldAlert className="h-4 w-4" />
+                Safety overrides
+                {recentOverrides > 0 ? <span className="tabular-nums text-muted-foreground">· {formatNumber(recentOverrides)}</span> : null}
+              </Link>
+            </Button>
+          ) : undefined
         }
       />
       <ConsultationsWorkspace
         initial={initial}
+        pendingCount={pending}
         canSign={canSignClinical(ctx)}
         canAskEvidence={canAskEvidence(ctx)}
         userId={ctx.userId}

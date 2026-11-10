@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogClose, DialogContent, DialogFooter } from "@/components/ui/dialog";
 import { Alert, Field } from "@/components/ui/field";
 import { Checkbox, Input, Select } from "@/components/ui/input";
-import { Badge } from "@/components/ui/primitives";
+import { Badge, SectionTitle } from "@/components/ui/primitives";
 import { useToast } from "@/components/ui/toast";
 import { apiFetch, fieldErrors } from "@/lib/http";
 import { dateKeyInTz, formatDateInTz, fromDateKey } from "@/lib/time";
@@ -347,8 +347,8 @@ function EditPriceItemDialog({ itemId, options, onClose }: { itemId: string; opt
               </div>
             </form>
 
-            <section aria-label="Prices" className="space-y-3 rounded-lg border border-border p-3">
-              <p className="text-sm font-medium">Prices</p>
+            <section aria-label="Prices" className="space-y-3 border-t border-border pt-4">
+              <SectionTitle level="section" title="Prices" description="Every price the item has had, and the ones set for a day to come." />
               <ul className="divide-y divide-border text-sm">
                 {item.history.map((h) => (
                   <li key={h.id} className="flex items-start justify-between gap-2 py-2">
@@ -358,7 +358,11 @@ function EditPriceItemDialog({ itemId, options, onClose }: { itemId: string; opt
                         from {day(h.effectiveFrom)} · {branchName(h.clinicId)}
                         {h.createdBy ? ` · ${h.createdBy}` : ""}
                       </span>
-                      {h.scheduled ? <Badge tone="accent">Scheduled</Badge> : null}
+                      {h.scheduled ? (
+                        <Badge tone="accent" dot>
+                          Scheduled
+                        </Badge>
+                      ) : null}
                     </span>
                     {h.scheduled ? (
                       <Button
@@ -400,7 +404,7 @@ function EditPriceItemDialog({ itemId, options, onClose }: { itemId: string; opt
                   Set price
                 </Button>
               </form>
-              <p className="text-xs text-muted-foreground">A price in force stays in the history; a scheduled one can be withdrawn until its day.</p>
+              <p className="text-xs text-muted-foreground">A price in force stays on record; a scheduled one can be withdrawn until its day.</p>
             </section>
           </div>
         ) : error ? null : (
