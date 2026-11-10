@@ -21,7 +21,6 @@ export default async function PlatformLayout({ children }: { children: React.Rea
       <ToastProvider>
         <DashboardShell
           tenantName={ctx.tenantName}
-          tenantLabel="platform"
           productName={branding?.productName}
           logoUrl={branding?.logoUrl ?? null}
           platform

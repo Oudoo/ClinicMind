@@ -23,7 +23,7 @@ Textarea.displayName = "Textarea";
 
 export const Select = React.forwardRef<HTMLSelectElement, React.SelectHTMLAttributes<HTMLSelectElement>>(
   ({ className, children, ...props }, ref) => (
-    <select ref={ref} className={cn(inputClass, "appearance-none pr-8 bg-no-repeat", className)} {...props}>
+    <select ref={ref} className={cn(inputClass, "select-caret appearance-none pe-8", className)} {...props}>
       {children}
     </select>
   ),

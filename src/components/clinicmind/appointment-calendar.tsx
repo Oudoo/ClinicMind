@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { CalendarPlus, ChevronLeft, ChevronRight } from "lucide-react";
@@ -10,9 +10,10 @@ import { Card, EmptyState, SectionTitle } from "@/components/ui/primitives";
 import { ToastProvider, useToast } from "@/components/ui/toast";
 import { apiFetch } from "@/lib/http";
 import { balanceWords } from "@/modules/finance/ledger-copy";
-import { dateKeyInTz } from "@/lib/time";
+import { dateKeyInTz, fromDateKey } from "@/lib/time";
 import { cn } from "@/lib/utils";
 import type { AppointmentDTO } from "@/modules/appointments/dto";
+import { isClosedDay } from "@/modules/appointments/rules";
 import { STATUS_LABEL, type AppointmentStatus, type WorkingHours } from "@/modules/appointments/transitions";
 import { AppointmentCard } from "./appointment-card";
 import { CancelAppointmentDialog } from "./appointment-cancel-dialog";
@@ -27,13 +28,33 @@ export type CalendarView = "week" | "day";
 export interface CalendarDay {
   /** `YYYY-MM-DD` on the clinic clock. */
   key: string;
-  /** e.g. "Sat 17 Oct". */
+  /** e.g. "Sat 17 Oct"; today reads "Today 17 Oct". */
   label: string;
+}
+
+/** The day's list in one line, what needs someone first: who is waiting, who is in, what is still to come. */
+function daySummary(list: AppointmentDTO[]): string {
+  const count = (...statuses: AppointmentStatus[]) => list.filter((a) => statuses.includes(a.status)).length;
+  const parts: [number, string][] = [
+    [count("CHECKED_IN"), "waiting in the clinic"],
+    [count("IN_PROGRESS"), "in consultation"],
+    [count("SCHEDULED", "CONFIRMED"), "to come"],
+    [count("COMPLETED"), "done"],
+    [count("NO_SHOW"), count("NO_SHOW") === 1 ? "no-show" : "no-shows"],
+    [count("CANCELLED"), "cancelled"],
+    [count("WAITLISTED"), "on the waitlist"],
+  ];
+  return parts
+    .filter(([n]) => n > 0)
+    .map(([n, label]) => `${n} ${label}`)
+    .join(" · ");
 }
 
 export interface AppointmentCalendarProps {
   view: CalendarView;
   timezone: string;
+  /** The server's clock when the page was rendered (ISO): "late" marks and the next step follow it. */
+  now: string;
   /** The selected day (`YYYY-MM-DD`). */
   anchorKey: string;
   todayKey: string;
@@ -66,6 +87,7 @@ export function AppointmentCalendar(props: AppointmentCalendarProps) {
 function Calendar({
   view,
   timezone,
+  now: renderedAt,
   anchorKey,
   todayKey,
   rangeLabel,
@@ -87,6 +109,16 @@ function Calendar({
   const [rescheduleTarget, setRescheduleTarget] = useState<AppointmentDTO | null>(null);
   const [notesTarget, setNotesTarget] = useState<AppointmentDTO | null>(null);
   const [pendingId, setPendingId] = useState<string | null>(null);
+
+  // The clock the list is read against: the server's at first, then kept moving on the
+  // server's time (this device's clock may be off), so a patient turns "late" without a reload.
+  const [now, setNow] = useState(() => new Date(renderedAt));
+  const offset = useRef(0);
+  useEffect(() => {
+    offset.current = new Date(renderedAt).getTime() - Date.now();
+    const timer = window.setInterval(() => setNow(new Date(Date.now() + offset.current)), 30_000);
+    return () => window.clearInterval(timer);
+  }, [renderedAt]);
 
   const href = (overrides: Partial<{ view: CalendarView; date: string; doctorId: string }>) => {
     const next = { view, date: anchorKey, doctorId, ...overrides };
@@ -130,10 +162,10 @@ function Calendar({
     byDay.set(key, [...(byDay.get(key) ?? []), a]);
   }
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <SectionTitle
         title="Appointments"
-        description={`Schedule on the clinic clock (${timezone}). No double bookings: conflicts are refused per doctor, room and patient.`}
+        description={`Times are on the clinic clock (${timezone}).`}
         action={
           canWrite ? (
             <Button type="button" onClick={() => setNewOpen(true)}>
@@ -144,122 +176,118 @@ function Calendar({
         }
       />
 
-      <Card className="p-3 sm:p-4">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-          <nav aria-label="Date navigation" className="flex flex-wrap items-center gap-2">
-            <Button asChild variant="outline" size="icon" className="h-9 w-9">
-              <Link href={href({ date: nav.prev })} aria-label={`Previous ${view}`}>
-                <ChevronLeft className="h-4 w-4" />
-              </Link>
-            </Button>
-            <Button asChild variant="outline" size="sm">
-              <Link href={href({ date: nav.today })}>Today</Link>
-            </Button>
-            <Button asChild variant="outline" size="icon" className="h-9 w-9">
-              <Link href={href({ date: nav.next })} aria-label={`Next ${view}`}>
-                <ChevronRight className="h-4 w-4" />
-              </Link>
-            </Button>
-            <h3 className="ml-1 font-display text-sm font-semibold tracking-tight">{rangeLabel}</h3>
-          </nav>
+      {/* The controls of the list below, not a panel of their own. */}
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        <nav aria-label="Date navigation" className="flex flex-wrap items-center gap-2">
+          <Button asChild variant="outline" size="icon">
+            <Link href={href({ date: nav.prev })} aria-label={`Previous ${view}`}>
+              <ChevronLeft className="h-4 w-4" />
+            </Link>
+          </Button>
+          <Button asChild variant="outline">
+            <Link href={href({ date: nav.today })}>Today</Link>
+          </Button>
+          <Button asChild variant="outline" size="icon">
+            <Link href={href({ date: nav.next })} aria-label={`Next ${view}`}>
+              <ChevronRight className="h-4 w-4" />
+            </Link>
+          </Button>
+          <h3 className="ml-1 text-sm font-semibold">{rangeLabel}</h3>
+        </nav>
 
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-            <div role="group" aria-label="View" className="inline-flex h-9 items-center gap-1 rounded-lg bg-muted p-1">
-              {(["week", "day"] as const).map((v) => (
-                <Link
-                  key={v}
-                  href={href({ view: v })}
-                  aria-current={view === v ? "page" : undefined}
-                  className={cn(
-                    "inline-flex h-7 items-center rounded-md px-3 text-sm font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                    view === v ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground",
-                  )}
-                >
-                  {v === "week" ? "Week" : "Day"}
-                </Link>
-              ))}
-            </div>
-
-            <form method="get" action="/dashboard/appointments" className="flex items-center gap-2">
-              <input type="hidden" name="view" value={view} />
-              <input type="hidden" name="date" value={anchorKey} />
-              <label htmlFor="doctor-filter" className="data-label">
-                Doctor
-              </label>
-              <Select id="doctor-filter" name="doctorId" defaultValue={doctorId} className="h-9 w-44">
-                <option value="">All doctors</option>
-                {doctors.map((d) => (
-                  <option key={d.id} value={d.id}>
-                    {staffLabel(d)}
-                  </option>
-                ))}
-              </Select>
-              <Button type="submit" variant="outline" size="sm">
-                Apply
-              </Button>
-            </form>
+        <div className="flex flex-wrap items-center gap-2">
+          <div role="group" aria-label="View" className="inline-flex h-9 items-center gap-1 rounded-lg bg-muted p-1">
+            {(["week", "day"] as const).map((v) => (
+              <Link
+                key={v}
+                href={href({ view: v })}
+                aria-current={view === v ? "page" : undefined}
+                className={cn(
+                  "inline-flex h-7 items-center rounded-md px-3 text-sm font-medium transition-colors",
+                  view === v ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground",
+                )}
+              >
+                {v === "week" ? "Week" : "Day"}
+              </Link>
+            ))}
           </div>
+          {/* Choosing a doctor shows their schedule at once. */}
+          <Select
+            key={doctorId}
+            aria-label="Doctor"
+            defaultValue={doctorId}
+            onChange={(e) => router.push(href({ doctorId: e.target.value }))}
+            className="h-9 w-full bg-card sm:w-52"
+          >
+            <option value="">All doctors</option>
+            {doctors.map((d) => (
+              <option key={d.id} value={d.id}>
+                {staffLabel(d)}
+              </option>
+            ))}
+          </Select>
         </div>
-      </Card>
+      </div>
 
       {view === "week" ? (
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-7">
+        // One surface for the week: the days are divided by rules, and so are a day's bookings.
+        <div className="grid grid-cols-1 gap-px overflow-hidden rounded-lg border border-border bg-border shadow-[0_1px_2px_rgba(26,32,44,0.04)] md:grid-cols-2 xl:grid-cols-7">
           {days.map((day) => {
             const list = byDay.get(day.key) ?? [];
             const isToday = day.key === todayKey;
+            const date = fromDateKey(day.key, timezone);
             return (
-              <section
-                key={day.key}
-                aria-label={day.label}
-                className={cn("bento-tight space-y-2", isToday && "border-accent/60 ring-1 ring-accent/30")}
-              >
-                <div className="flex items-center justify-between">
-                  <Link href={href({ view: "day", date: day.key })} className={cn("data-label hover:text-foreground", isToday && "text-accent")}>
+              <section key={day.key} aria-label={day.label} className="min-w-0 bg-card md:last:col-span-2 xl:last:col-span-1">
+                <div className={cn("flex items-center justify-between gap-2 border-b border-border px-2.5 py-2", isToday && "bg-accent-muted")}>
+                  <Link
+                    href={href({ view: "day", date: day.key })}
+                    aria-current={isToday ? "date" : undefined}
+                    className={cn("truncate text-sm font-medium hover:underline", isToday ? "font-semibold text-accent" : "text-foreground")}
+                  >
                     {day.label}
                   </Link>
-                  <span className="font-mono text-xs text-muted-foreground">{list.length}</span>
+                  <span className={cn("text-xs tabular-nums", isToday ? "text-accent" : "text-muted-foreground")} title={`${list.length} booked`}>
+                    {list.length}
+                  </span>
                 </div>
-                <div className="space-y-2">
-                  {list.length ? (
-                    list.map((a) => (
+                {list.length ? (
+                  <div className="divide-y divide-border">
+                    {list.map((a) => (
                       <AppointmentCard
                         key={a.id}
                         appointment={a}
                         timezone={timezone}
+                        now={now}
                         canWrite={canWrite}
                         pending={pendingId === a.id}
+                        showDoctor={!doctorId}
                         actions={actions}
                       />
-                    ))
-                  ) : (
-                    <p className="py-4 text-center text-xs text-muted-foreground">—</p>
-                  )}
-                </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="px-2.5 py-3 text-xs text-muted-foreground">{date && isClosedDay(date, hours, timezone) ? "Closed" : "Nothing booked"}</p>
+                )}
               </section>
             );
           })}
         </div>
-      ) : (
-        <Card className="space-y-3">
-          {appointments.length ? (
-            appointments.map((a) => (
-              <AppointmentCard
-                key={a.id}
-                appointment={a}
-                timezone={timezone}
-                canWrite={canWrite}
-                pending={pendingId === a.id}
-                layout="row"
-                actions={actions}
-              />
-            ))
-          ) : (
-            <EmptyState
-              title="Nothing booked on this day"
-              hint={canWrite ? "Use “New appointment” to book a slot." : "Bookings from the front desk and the AI receptionist appear here."}
-            />
-          )}
+      ) : appointments.length ? (
+        <Card className="overflow-hidden p-0">
+          <p className="border-b border-border px-4 py-2.5 text-sm text-muted-foreground md:px-5" data-testid="day-summary">
+            {daySummary(appointments)}
+          </p>
+          <div className="divide-y divide-border">
+            {appointments.map((a) => (
+              <AppointmentCard key={a.id} appointment={a} timezone={timezone} now={now} canWrite={canWrite} pending={pendingId === a.id} layout="row" actions={actions} />
+            ))}
+          </div>
         </Card>
+      ) : (
+        <EmptyState
+          title="Nothing booked on this day"
+          hint={canWrite ? "Use “New appointment” to book a slot." : "Bookings from the front desk and the AI receptionist appear here."}
+        />
       )}
 
       {newOpen ? (

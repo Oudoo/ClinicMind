@@ -4,7 +4,6 @@ import { ToastProvider } from "@/components/ui/toast";
 import { getActingContext } from "@/lib/auth/session";
 import { tenantThemeStyle, type TenantBranding } from "@/lib/brand";
 import { can } from "@/lib/auth/rbac";
-import { PLATFORM_TENANT_SLUG } from "@/modules/platform/service";
 
 /**
  * Every dashboard page sits under this layout, so this is the authoritative
@@ -24,7 +23,6 @@ export default async function DashboardLayout({ children }: { children: React.Re
       <ToastProvider>
         <DashboardShell
           tenantName={ctx.tenantName}
-          tenantLabel={platform && ctx.tenantSlug === PLATFORM_TENANT_SLUG ? "platform" : "clinic"}
           productName={productName}
           logoUrl={branding?.logoUrl ?? null}
           platform={platform}

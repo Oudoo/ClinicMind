@@ -1,12 +1,10 @@
 import type { Config } from "tailwindcss";
 
 /**
- * ClinicMind — Institutional Tech design system.
+ * ClinicMind design tokens (DESIGN.md describes how they are used).
  *
- * Palette, type scale and spacing follow the "Institutional Tech"
- * brand (Stripe x McKinsey). All colors are exposed as CSS variables so that each
- * tenant can override the accent at runtime (white-labeling) without a rebuild.
- * See src/lib/brand.ts for the per-tenant theming bridge.
+ * Every colour is a CSS variable (src/app/globals.css), so each tenant can override the
+ * accent at runtime (white-labeling) without a rebuild: see src/lib/brand.ts.
  */
 const config: Config = {
   darkMode: ["class"],
@@ -35,6 +33,8 @@ const config: Config = {
           DEFAULT: "hsl(var(--card) / <alpha-value>)",
           foreground: "hsl(var(--card-foreground) / <alpha-value>)",
         },
+        // The navigation rail's ground.
+        sidebar: "hsl(var(--sidebar) / <alpha-value>)",
         border: "hsl(var(--border) / <alpha-value>)",
         input: "hsl(var(--input) / <alpha-value>)",
         ring: "hsl(var(--ring) / <alpha-value>)",
@@ -48,7 +48,7 @@ const config: Config = {
         danger: "hsl(var(--danger) / <alpha-value>)",
       },
       fontFamily: {
-        // Headers: institutional grotesque. Body: clean sans. Data: monospace.
+        // One face for the interface; monospace only for codes and reference numbers.
         sans: ["var(--font-jakarta)", "Plus Jakarta Sans", "system-ui", "sans-serif"],
         display: ["var(--font-jakarta)", "Plus Jakarta Sans", "system-ui", "sans-serif"],
         mono: ["var(--font-jetbrains)", "JetBrains Mono", "ui-monospace", "monospace"],
@@ -60,9 +60,6 @@ const config: Config = {
       },
       letterSpacing: {
         tightest: "-0.04em",
-      },
-      backdropBlur: {
-        glass: "12px", // brand glassmorphism
       },
       backgroundImage: {
         "indigo-flow": "linear-gradient(135deg, #4F46E5 0%, #6366F1 50%, #818CF8 100%)",

@@ -15,3 +15,12 @@ export async function signIn(page: Page, email = DEMO_EMAIL, password = DEMO_PAS
   // goes nowhere: on a live site that takes a second or so, on this machine no time at all.
   await page.waitForLoadState("load");
 }
+
+/**
+ * Opens every group of the menu, so each link in it can be found: the groups a role does not
+ * work in every day start closed. The choice is kept in the browser, so once per sign-in is enough.
+ */
+export async function openMenuGroups(page: Page): Promise<void> {
+  const closed = page.getByRole("navigation", { name: "Main" }).locator('button[aria-expanded="false"]');
+  while (await closed.count()) await closed.first().click();
+}

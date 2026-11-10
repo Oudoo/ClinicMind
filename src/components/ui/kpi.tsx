@@ -80,7 +80,7 @@ export function DeltaChip({
   const title = `${format(current)} ${currentLabel} · ${format(previous)} ${previousLabel}`;
   return (
     <span
-      className={cn("inline-flex items-center gap-0.5 rounded-md px-1.5 py-0.5 font-mono text-[11px] tabular-nums", tone)}
+      className={cn("inline-flex h-5 items-center gap-0.5 whitespace-nowrap rounded-md px-1.5 text-xs font-medium tabular-nums", tone)}
       title={title}
       data-testid="delta-chip"
     >
@@ -193,12 +193,12 @@ export function Columns({
       </div>
       <div className="mt-1 flex gap-1 sm:gap-1.5">
         {items.map((x) => (
-          <span key={x.label} className="min-w-0 flex-1 truncate text-center font-mono text-[10px] text-muted-foreground">
+          <span key={x.label} className="min-w-0 flex-1 truncate text-center text-xs text-muted-foreground">
             {x.label}
           </span>
         ))}
       </div>
-      {note ? <p className="mt-1 text-[11px] text-muted-foreground">{note}</p> : null}
+      {note ? <p className="mt-2 text-xs text-muted-foreground">{note}</p> : null}
     </div>
   );
 }
@@ -223,7 +223,7 @@ export function HBars({
           <div className="h-2.5 min-w-0 flex-1 overflow-hidden rounded bg-muted">
             <div className="h-full rounded bg-accent" style={{ width: `${Math.round((x.value / max) * 100)}%` }} />
           </div>
-          <span className="w-10 shrink-0 text-right font-mono text-xs tabular-nums">{format(x.value)}</span>
+          <span className="w-10 shrink-0 text-right text-xs font-medium tabular-nums">{format(x.value)}</span>
         </li>
       ))}
     </ul>

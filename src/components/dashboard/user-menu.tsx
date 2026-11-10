@@ -17,6 +17,16 @@ export interface ShellUser {
   canSignOut: boolean;
 }
 
+/** The role as the clinic says it, under the person's name. */
+const ROLE_NAMES: Record<string, string> = {
+  SUPER_ADMIN: "Platform administrator",
+  CLINIC_OWNER: "Clinic owner",
+  DOCTOR: "Doctor",
+  NURSE: "Nurse",
+  RECEPTIONIST: "Reception",
+  ASSISTANT: "Assistant",
+};
+
 export function UserMenu({ user }: { user: ShellUser }) {
   const [pending, setPending] = useState(false);
   const name = user.fullName ?? user.email ?? "Embedded session";
@@ -47,12 +57,12 @@ export function UserMenu({ user }: { user: ShellUser }) {
           className="flex items-center gap-2 rounded-md px-2 py-1.5 text-left hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           aria-label="Account menu"
         >
-          <span className="flex h-8 w-8 items-center justify-center rounded-md bg-accent-muted font-mono text-xs text-accent">
+          <span className="flex h-8 w-8 items-center justify-center rounded-full bg-accent-muted text-xs font-semibold text-accent">
             {user.fullName ? initials(user.fullName) : <UserRound className="h-4 w-4" />}
           </span>
           <span className="hidden flex-col leading-tight sm:flex">
             <span className="max-w-[12rem] truncate text-xs font-medium">{name}</span>
-            <span className="font-mono text-[10px] uppercase text-muted-foreground">{user.role.replace("_", " ")}</span>
+            <span className="text-xs text-muted-foreground">{ROLE_NAMES[user.role] ?? user.role}</span>
           </span>
           <ChevronDown className="hidden h-3.5 w-3.5 text-muted-foreground sm:block" />
         </button>
@@ -66,7 +76,7 @@ export function UserMenu({ user }: { user: ShellUser }) {
           <div className="px-2 py-2">
             <p className="truncate text-sm font-medium">{name}</p>
             {user.email && user.fullName ? (
-              <p className="truncate font-mono text-xs text-muted-foreground">{user.email}</p>
+              <p className="truncate text-xs text-muted-foreground">{user.email}</p>
             ) : null}
           </div>
           <DropdownMenu.Separator className="my-1 h-px bg-border" />

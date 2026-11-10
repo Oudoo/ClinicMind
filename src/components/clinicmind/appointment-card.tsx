@@ -2,19 +2,23 @@
 
 import Link from "next/link";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
-import { CalendarClock, Loader2, Mic, MoreHorizontal } from "lucide-react";
+import { AlertTriangle, CalendarClock, Loader2, Mic, MoreHorizontal } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/primitives";
 import { formatTimeInTz } from "@/lib/time";
 import { cn } from "@/lib/utils";
+import { isRunningLate } from "@/modules/appointments/countdown";
 import type { AppointmentDTO } from "@/modules/appointments/dto";
 import { availableTransitions, transitionTimeBlock } from "@/modules/appointments/rules";
 import {
   allowedTransitions,
   isReschedulable,
+  KIND_LABEL,
   transitionLabel,
   type AppointmentStatus,
 } from "@/modules/appointments/transitions";
-import { AppointmentKindBadge, AppointmentStatusBadge } from "./appointment-status";
+import { NEXT_STATUS } from "./appointment-shared";
+import { AppointmentStatusBadge } from "./appointment-status";
 import { BalanceChip } from "./patient-balance";
 
 export interface AppointmentActions {
@@ -31,24 +35,33 @@ const DESTRUCTIVE: readonly AppointmentStatus[] = ["CANCELLED", "NO_SHOW"];
 
 /**
  * One booking on the schedule: time range, patient (linked to their record),
- * doctor, reason, kind, status, the count of dictated notes and — for
- * writers — a menu with the moves the state machine allows from its current
- * status that the clock also allows right now (no check-in before the day, no
- * no-show before the start), plus "Dictate a note".
+ * what it is for, who with, its status and the count of dictated notes. For
+ * writers, the usual next step is one tap in the day's list (confirm, check in,
+ * start, complete) and a menu holds every move the state machine allows from
+ * the current status that the clock also allows right now (no check-in before
+ * the day, no no-show before the start), plus "Dictate a note".
+ *
+ * `row` is a line of the day's list; `compact` is an entry in a day's column of the week.
  */
 export function AppointmentCard({
   appointment,
   timezone,
+  now,
   canWrite,
   pending = false,
   layout = "compact",
+  showDoctor = true,
   actions,
 }: {
   appointment: AppointmentDTO;
   timezone: string;
+  /** The clinic's clock now: decides the "late" mark and which next step the clock allows. */
+  now: Date;
   canWrite: boolean;
   pending?: boolean;
   layout?: "compact" | "row";
+  /** False when the schedule shows one doctor only: the week's entries then say what the visit is for. */
+  showDoctor?: boolean;
   actions: AppointmentActions;
 }) {
   const start = new Date(appointment.startsAt);
@@ -59,10 +72,24 @@ export function AppointmentCard({
   const muted = appointment.status === "CANCELLED" || appointment.status === "NO_SHOW";
   // What the patient owes, for the desk (roles that take payments), on visits still to happen or under way.
   const balance = muted || appointment.status === "COMPLETED" || appointment.status === "WAITLISTED" ? null : appointment.patientBalance;
+  const late = isRunningLate(appointment, now);
+  const next = NEXT_STATUS[appointment.status];
+  const step = canWrite && next && availableTransitions(appointment, now, timezone).includes(next) ? next : null;
+  const doctor = appointment.doctor?.fullName ?? "No doctor assigned";
+  const what = appointment.reason ?? KIND_LABEL[appointment.kind];
+  // Everything about the visit in one line, for the tooltip of a shortened entry.
+  const summary = [appointment.reason, KIND_LABEL[appointment.kind], doctor, appointment.room].filter(Boolean).join(" · ");
 
   const menu = showMenu ? (
     <AppointmentActionsMenu appointment={appointment} timezone={timezone} pending={pending} actions={actions} />
   ) : null;
+
+  const timeRange = (
+    <>
+      {formatTimeInTz(start, timezone)}
+      <span className="font-normal text-muted-foreground">–{formatTimeInTz(end, timezone)}</span>
+    </>
+  );
 
   const notesBadge =
     appointment.notesCount > 0 ? (
@@ -72,81 +99,108 @@ export function AppointmentCard({
         disabled={!actions.onNotes}
         aria-label={`${appointment.notesCount} dictated ${appointment.notesCount === 1 ? "note" : "notes"} on this appointment`}
         title={`${appointment.notesCount} dictated ${appointment.notesCount === 1 ? "note" : "notes"}`}
-        className="inline-flex h-5 items-center gap-0.5 rounded-md bg-accent-muted px-1.5 font-mono text-[10px] text-accent hover:bg-accent/15 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default"
+        className="inline-flex h-5 items-center gap-1 rounded-md bg-muted px-1.5 text-xs font-medium tabular-nums text-muted-foreground hover:bg-accent-muted hover:text-accent disabled:cursor-default"
       >
         <Mic className="h-3 w-3" aria-hidden="true" />
         {appointment.notesCount}
       </button>
     ) : null;
 
-  const details = (
-    <>
-      <Link
-        href={`/dashboard/patients/${appointment.patientId}`}
-        className={cn(
-          "block truncate text-sm font-medium hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm",
-          muted && "text-muted-foreground line-through",
-        )}
-      >
-        {appointment.patient.fullName}
-      </Link>
-      <p className="truncate text-xs text-muted-foreground">
-        {appointment.doctor?.fullName ?? "No doctor assigned"}
-        {appointment.room ? ` · ${appointment.room}` : ""}
-      </p>
-      {appointment.reason ? (
-        <p className="truncate text-xs text-muted-foreground" title={appointment.reason}>
-          {appointment.reason}
-        </p>
-      ) : null}
-      {appointment.cancelReason && muted ? (
-        <p className="truncate text-xs text-danger/80" title={appointment.cancelReason}>
-          {appointment.cancelReason}
-        </p>
-      ) : null}
-    </>
+  const lateBadge = late ? (
+    <Badge tone="danger" className="gap-1" title={appointment.status === "CHECKED_IN" ? "Checked in and still waiting" : "Past the start time and not checked in"}>
+      <AlertTriangle className="h-3 w-3 shrink-0" aria-hidden="true" />
+      Late
+    </Badge>
+  ) : null;
+
+  const name = (
+    <Link
+      href={`/dashboard/patients/${appointment.patientId}`}
+      className={cn("block truncate rounded-sm text-sm font-medium hover:underline", muted && "text-muted-foreground line-through")}
+    >
+      {appointment.patient.fullName}
+    </Link>
   );
 
+  const cancelReason =
+    appointment.cancelReason && muted ? (
+      <p className="truncate text-xs text-danger" title={appointment.cancelReason}>
+        {appointment.cancelReason}
+      </p>
+    ) : null;
+
   if (layout === "row") {
+    const status = <AppointmentStatusBadge status={appointment.status} awaitingSince={appointment.confirmationRequestedAt} />;
     return (
       <article
         aria-label={`${time} ${appointment.patient.fullName}`}
-        className={cn("flex flex-col gap-2 rounded-md border border-border bg-card p-3 sm:flex-row sm:items-center sm:gap-4", pending && "opacity-60")}
+        className={cn("flex flex-col gap-2 px-4 py-3 md:flex-row md:items-center md:gap-4 md:px-5", pending && "opacity-60")}
       >
-        <span className="w-28 shrink-0 font-mono text-xs tabular-nums text-foreground">{time}</span>
-        <div className="min-w-0 flex-1">{details}</div>
-        <div className="flex flex-wrap items-center justify-between gap-2 sm:justify-end">
-          {notesBadge}
-          <BalanceChip balance={balance} />
-          <AppointmentKindBadge kind={appointment.kind} />
-          <AppointmentStatusBadge status={appointment.status} awaitingSince={appointment.confirmationRequestedAt} />
-          {menu}
+        <div className="flex items-center justify-between gap-2 md:w-24 md:shrink-0">
+          <span className="whitespace-nowrap text-sm font-medium tabular-nums">{timeRange}</span>
+          {/* On a narrow screen the status sits beside the time, where the eye lands first. */}
+          <span className="md:hidden">{status}</span>
+        </div>
+        <div className="min-w-0 flex-1">
+          {name}
+          <p className="truncate text-xs text-muted-foreground" title={summary}>
+            <span className={muted ? undefined : "text-foreground/80"}>{what}</span>
+            {appointment.reason ? ` · ${KIND_LABEL[appointment.kind]}` : ""} · {doctor}
+            {appointment.room ? ` · ${appointment.room}` : ""}
+          </p>
+          {cancelReason}
+        </div>
+        {/* On a narrow screen the marks and the actions share a line (and wrap); from a tablet up each is a column of the row. */}
+        <div className="flex flex-wrap items-center gap-2 md:contents">
+          <div className="flex flex-wrap items-center gap-1.5 md:shrink-0 md:justify-end">
+            {notesBadge}
+            <BalanceChip balance={balance} />
+            {lateBadge}
+            <span className="hidden md:inline-flex">{status}</span>
+          </div>
+          {canWrite ? (
+            <div className="ml-auto flex items-center gap-1 md:ml-0 md:w-44 md:shrink-0 md:justify-end">
+              {step ? (
+                <Button type="button" variant="outline" size="sm" disabled={pending} onClick={() => actions.onTransition(appointment, step)}>
+                  {transitionLabel(appointment.status, step)}
+                </Button>
+              ) : null}
+              {menu}
+            </div>
+          ) : null}
         </div>
       </article>
     );
   }
 
   return (
-    <article
-      aria-label={`${time} ${appointment.patient.fullName}`}
-      className={cn("rounded-md border border-border bg-card p-2.5", pending && "opacity-60")}
-    >
-      {/* Wraps in narrow week columns: the badges and menu drop to a second line instead of overflowing the card. */}
-      <div className="flex flex-wrap items-center justify-between gap-x-1 gap-y-1">
-        <span className="flex items-center gap-1.5 whitespace-nowrap font-mono text-xs tabular-nums">
-          {time}
+    <article aria-label={`${time} ${appointment.patient.fullName}`} className={cn("min-w-0 px-2.5 py-2", pending && "opacity-60")}>
+      <div className="flex items-center justify-between gap-1">
+        <span className="flex min-w-0 items-center gap-1.5 whitespace-nowrap text-xs font-medium tabular-nums">
+          <span>{timeRange}</span>
           {notesBadge}
         </span>
-        <div className="ml-auto flex shrink-0 items-center gap-1">
-          <AppointmentStatusBadge status={appointment.status} awaitingSince={appointment.confirmationRequestedAt} />
-          {menu}
+        {menu}
+      </div>
+      {name}
+      <p className="truncate text-xs text-muted-foreground" title={summary}>
+        {showDoctor ? doctor : what}
+      </p>
+      {cancelReason}
+      <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+        <AppointmentStatusBadge plain status={appointment.status} awaitingSince={appointment.confirmationRequestedAt} />
+        {late ? (
+          <span className="flex items-center gap-1 text-xs font-medium text-danger">
+            <AlertTriangle className="h-3 w-3 shrink-0" aria-hidden="true" />
+            Late
+          </span>
+        ) : null}
+      </div>
+      {balance != null && balance !== 0 ? (
+        <div className="mt-1">
+          <BalanceChip balance={balance} />
         </div>
-      </div>
-      <div className="mt-1 space-y-0.5">{details}</div>
-      <div className="mt-1.5 flex flex-wrap items-center gap-1">
-        <AppointmentKindBadge kind={appointment.kind} />
-        <BalanceChip balance={balance} />
-      </div>
+      ) : null}
     </article>
   );
 }
@@ -169,7 +223,7 @@ function AppointmentActionsMenu({
           type="button"
           variant="ghost"
           size="icon"
-          className="h-7 w-7"
+          className="h-7 w-7 shrink-0 text-muted-foreground"
           disabled={pending}
           aria-label={`Actions for ${appointment.patient.fullName}'s appointment`}
         >

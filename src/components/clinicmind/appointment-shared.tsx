@@ -13,6 +13,17 @@ import { STATUS_LABEL, type AppointmentKind, type AppointmentStatus, type Workin
 /** Pieces shared by the booking dialogs, the calendar and the next-appointment button. */
 
 /**
+ * The step a visit usually takes next, offered as one tap wherever a booking is listed:
+ * confirm, check in, start, complete. Every other move stays in the booking's menu.
+ */
+export const NEXT_STATUS: Partial<Record<AppointmentStatus, AppointmentStatus>> = {
+  SCHEDULED: "CONFIRMED",
+  CONFIRMED: "CHECKED_IN",
+  CHECKED_IN: "IN_PROGRESS",
+  IN_PROGRESS: "COMPLETED",
+};
+
+/**
  * "Mon 02 Nov" on the clinic clock. Built from the numeric parts rather than
  * `Intl`'s weekday format, whose punctuation differs between ICU versions
  * ("Mon, 02 Nov" in Node, "Mon 02 Nov" in Chromium): text rendered on the

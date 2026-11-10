@@ -12,6 +12,7 @@ import {
 } from "@/lib/time";
 import { getTenantTimezone, getWorkingHours, listAppointments, listStaff } from "@/modules/appointments/service";
 import { toAppointmentDTO } from "@/modules/appointments/dto";
+import { clinicDayLabel } from "@/modules/appointments/rules";
 import { withPatientBalances } from "@/modules/finance/ledger";
 import { AppointmentCalendar, type CalendarView } from "@/components/clinicmind/appointment-calendar";
 
@@ -51,11 +52,14 @@ export default async function AppointmentsPage({
     getWorkingHours(ctx.tenantId),
   ]);
 
+  const todayKey = dateKeyInTz(now, timezone);
   const days = Array.from({ length: dayCount }, (_, i) => {
     const day = addDays(rangeStart, i, timezone);
+    const key = dateKeyInTz(day, timezone);
     return {
-      key: dateKeyInTz(day, timezone),
-      label: formatDateInTz(day, timezone, { weekday: "short", day: "2-digit", month: "short" }),
+      key,
+      // Today is said in words, not only by its colour.
+      label: key === todayKey ? `Today ${formatDateInTz(day, timezone, { day: "2-digit", month: "short" })}` : clinicDayLabel(day, timezone),
     };
   });
 
@@ -70,8 +74,9 @@ export default async function AppointmentsPage({
     <AppointmentCalendar
       view={view}
       timezone={timezone}
+      now={now.toISOString()}
       anchorKey={anchorKey}
-      todayKey={dateKeyInTz(now, timezone)}
+      todayKey={todayKey}
       rangeLabel={rangeLabel}
       days={days}
       appointments={await withPatientBalances(ctx.tenantId, ctx.role, appointments.map(toAppointmentDTO))}

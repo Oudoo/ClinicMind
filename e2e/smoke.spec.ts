@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { signIn, ANONYMOUS } from "./helpers";
+import { signIn, ANONYMOUS, openMenuGroups } from "./helpers";
 
 test.describe("security surface", () => {
   test.use({ storageState: ANONYMOUS });
@@ -61,8 +61,11 @@ test.describe("signed-in clinic owner", () => {
   });
 
   test("sees the overview with live metrics", async ({ page }) => {
-    await expect(page.getByRole("heading", { name: /clinic intelligence/i })).toBeVisible();
-    await expect(page.getByText(/total patients/i)).toBeVisible();
+    // The day's work comes first (who is next, what is waiting), then the clinic's figures.
+    await expect(page.getByRole("heading", { name: "Today", exact: true })).toBeVisible();
+    await expect(page.getByTestId("attention-card")).toBeVisible();
+    await expect(page.getByTestId("overview-figures")).toContainText(/appointments today/i);
+    await expect(page.getByTestId("overview-figures")).toContainText(/total patients/i);
     await page.screenshot({ path: "e2e/artifacts/overview.png", fullPage: true });
   });
 
@@ -92,6 +95,7 @@ test.describe("signed-in clinic owner", () => {
       ["Treatment plans", /treatment plans/i],
       ["Settings", /settings/i],
     ] as const) {
+      await openMenuGroups(page);
       await page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: label }).first().click();
       await expect(page.getByRole("heading", { level: 2 }).first()).toContainText(pattern);
       await page.screenshot({ path: `e2e/artifacts/${label.toLowerCase().replace(/\s+/g, "-")}.png`, fullPage: true });

@@ -34,7 +34,7 @@ import { NoShowDialog } from "./appointment-no-show-dialog";
 import { AppointmentNotesDialog } from "./appointment-notes-dialog";
 import { RescheduleAppointmentDialog } from "./appointment-reschedule-dialog";
 import { describeApiError, describeConfirmation, shortDayLabel } from "./appointment-shared";
-import { AppointmentKindBadge, AppointmentStatusBadge } from "./appointment-status";
+import { AppointmentStatusBadge } from "./appointment-status";
 import { BalanceChip } from "./patient-balance";
 import { balanceWords } from "@/modules/finance/ledger-copy";
 
@@ -55,6 +55,9 @@ const TONE_CLASS: Record<CountdownTone, string> = {
   warning: "bg-warning/10 text-warning",
   danger: "bg-danger/10 text-danger",
 };
+
+/** A time of day in the text face, figures aligned. */
+const TIME = "tabular-nums";
 
 type DialogState = { kind: "notes" | "reschedule" | "no-show"; appointment: AppointmentDTO } | { kind: "book" } | null;
 
@@ -167,7 +170,8 @@ export function NextAppointmentCard({ initial, timezone, variant, patientId, pat
     return key === todayKey ? "Today" : key === tomorrowKey ? "Tomorrow" : shortDayLabel(d, timezone);
   };
 
-  const eyebrow =
+  // The card's heading: whose appointment this is, or where the patient is now.
+  const heading =
     variant === "patient"
       ? "Next appointment"
       : a?.status === "IN_PROGRESS"
@@ -248,19 +252,17 @@ export function NextAppointmentCard({ initial, timezone, variant, patientId, pat
   if (!a) {
     return (
       <>
-        <Card className="border-dashed p-5 sm:p-6" data-testid="next-appointment-empty">
+        <Card data-testid="next-appointment-empty">
           <div className={cn("flex flex-col items-start gap-3", variant === "hero" && "sm:flex-row sm:items-center sm:justify-between")}>
             <div className="min-w-0">
-              <p className="data-label">{eyebrow}</p>
-              <p className="mt-1 font-display text-xl font-semibold tracking-tight">
-                {variant === "patient" ? "No upcoming appointment" : "Nothing booked ahead"}
-              </p>
+              <h3 className="section-title-heading">{heading}</h3>
+              <p className="mt-2 text-sm font-medium">{variant === "patient" ? "No upcoming appointment" : "Nothing booked ahead"}</p>
               <p className="text-sm text-muted-foreground">
                 {variant === "patient" ? "Book the next visit so the follow-up is not lost." : "The next live booking appears here the moment it is made."}
               </p>
             </div>
             {canWrite ? (
-              <Button type="button" size="lg" onClick={() => setDialog({ kind: "book" })}>
+              <Button type="button" onClick={() => setDialog({ kind: "book" })}>
                 <CalendarPlus />
                 Book an appointment
               </Button>
@@ -291,69 +293,57 @@ export function NextAppointmentCard({ initial, timezone, variant, patientId, pat
 
   return (
     <>
-      <Card
-        data-testid="next-appointment-card"
-        aria-live="polite"
-        className={cn("relative overflow-hidden border-accent/40 p-5 sm:p-6", countdown.late && "border-warning/70")}
-      >
-        <div className="pointer-events-none absolute inset-y-0 right-0 w-2/3 bg-gradient-to-l from-accent-muted/70 to-transparent" aria-hidden="true" />
-        {/* The hero spans the overview; the patient card sits in the record's side column, so it stays one column at every width. */}
-        <div className={cn("relative grid gap-5", hero && "lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center")}>
-          <div className="min-w-0 space-y-3">
-            <p className="data-label">{eyebrow}</p>
-            <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
+      <Card data-testid="next-appointment-card" aria-live="polite">
+        {/* On the overview the actions sit beside the patient; in the record's side column the card stays one column at every width. */}
+        <div className={cn("grid gap-5", hero && "sm:grid-cols-[minmax(0,1fr)_auto] sm:items-start")}>
+          <div className="min-w-0">
+            <h3 className="section-title-heading">{heading}</h3>
+            <div className="mt-2 flex flex-wrap items-baseline gap-x-3 gap-y-1">
               {hero ? (
                 <Link
                   href={`/dashboard/patients/${a.patientId}`}
-                  className="max-w-full truncate font-display text-2xl font-semibold tracking-tight hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:text-3xl"
+                  className="max-w-full truncate font-display text-2xl font-semibold tracking-[-0.02em] hover:underline"
                 >
                   {a.patient.fullName}
                 </Link>
               ) : (
                 // On the patient's own record the day is the headline, not their name.
-                <span className="font-display text-2xl font-semibold tracking-tight">{dayLabel(start)}</span>
+                <span className="font-display text-2xl font-semibold tracking-[-0.02em]">{dayLabel(start)}</span>
               )}
-              <span className="font-mono text-xl tabular-nums sm:text-2xl">
+              <span className={cn("text-base font-medium", TIME)}>
                 {formatTimeInTz(start, timezone)}
-                <span className="text-muted-foreground">–{formatTimeInTz(end, timezone)}</span>
+                <span className="font-normal text-muted-foreground">–{formatTimeInTz(end, timezone)}</span>
+                {hero ? <span className="font-normal text-muted-foreground"> · {dayLabel(start)}</span> : null}
               </span>
-              {hero ? <span className="text-sm text-muted-foreground">{dayLabel(start)}</span> : null}
             </div>
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1.5">
               <span
                 data-testid="next-appointment-countdown"
-                className={cn("inline-flex items-center gap-1 rounded-md px-2 py-0.5 font-mono text-xs tabular-nums", TONE_CLASS[countdown.tone])}
+                className={cn("inline-flex h-5 items-center gap-1 whitespace-nowrap rounded-md px-1.5 text-xs font-medium tabular-nums", TONE_CLASS[countdown.tone])}
               >
                 {countdown.late ? <AlertTriangle className="h-3 w-3" aria-hidden="true" /> : <Clock className="h-3 w-3" aria-hidden="true" />}
                 {countdown.label}
               </span>
-              <AppointmentKindBadge kind={a.kind} />
               <AppointmentStatusBadge status={a.status} awaitingSince={a.confirmationRequestedAt} />
               <BalanceChip balance={a.patientBalance} />
-              {a.notesCount ? (
-                <button
-                  type="button"
-                  onClick={() => setDialog({ kind: "notes", appointment: a })}
-                  className="inline-flex items-center gap-1 rounded-md bg-accent-muted px-2 py-0.5 font-mono text-[10px] uppercase tracking-wide text-accent hover:bg-accent/15 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                >
-                  <Mic className="h-3 w-3" aria-hidden="true" />
-                  {a.notesCount} {a.notesCount === 1 ? "note" : "notes"}
-                </button>
-              ) : null}
             </div>
-            <p className="truncate text-sm text-muted-foreground">
-              {a.reason ?? "No reason given"} · {a.doctor?.fullName ?? "No doctor"}
+            <p className="mt-3 text-sm text-muted-foreground">
+              <span className="text-foreground">{a.reason ?? "No reason given"}</span> · {KIND_LABEL[a.kind]} · {a.doctor?.fullName ?? "No doctor"}
               {a.room ? ` · ${a.room}` : ""}
             </p>
-            {data.recalls?.length ? <VisitRecalls recalls={data.recalls} patientId={a.patientId} /> : null}
+            {data.recalls?.length ? (
+              <div className="mt-3">
+                <VisitRecalls recalls={data.recalls} patientId={a.patientId} />
+              </div>
+            ) : null}
           </div>
 
-          <div className={cn("flex flex-col gap-2", hero && "lg:w-64")}>
+          <div className={cn("flex flex-col gap-2", hero && "sm:w-56")}>
             {canWrite && step ? (
               <Button
                 type="button"
                 size="lg"
-                className="h-12 w-full text-base"
+                className="w-full"
                 disabled={Boolean(pending)}
                 onClick={() => (step.status === "IN_PROGRESS" ? startConsultation(a) : void transition(a, step.status))}
               >
@@ -397,12 +387,15 @@ export function NextAppointmentCard({ initial, timezone, variant, patientId, pat
                 <Mic />
                 {a.notesCount ? `Notes · ${a.notesCount}` : canWrite ? "Dictate a note" : "Notes"}
               </Button>
-              <Button asChild variant="ghost" size="sm">
-                <Link href={`/dashboard/appointments?view=day&date=${dayKey}`}>
-                  Open
-                  <ArrowRight />
-                </Link>
-              </Button>
+              {/* The overview already has a button for today's schedule. */}
+              {hero && dayKey === todayKey ? null : (
+                <Button asChild variant="ghost" size="sm">
+                  <Link href={`/dashboard/appointments?view=day&date=${dayKey}`}>
+                    {dayKey === todayKey ? "Today's schedule" : "Open the day"}
+                    <ArrowRight />
+                  </Link>
+                </Button>
+              )}
             </div>
             {variant === "patient" && canWrite ? (
               <Button type="button" variant="outline" size="sm" onClick={() => setDialog({ kind: "book" })}>
@@ -414,20 +407,18 @@ export function NextAppointmentCard({ initial, timezone, variant, patientId, pat
         </div>
 
         {data.queue.length ? (
-          <div className="relative mt-5 border-t border-border pt-4">
-            <p className="data-label mb-2">
+          <div className="mt-5 border-t border-border pt-4">
+            <p className="data-label">
               {variant === "patient" ? "Also booked" : "Rest of today's queue"} · {data.queue.length}
             </p>
-            <ul className={cn("grid gap-2", hero && "sm:grid-cols-3")} data-testid="next-appointment-queue">
+            {/* Rows divided by rules, not a card each: the queue is a list to read down. */}
+            <ul className="mt-1 divide-y divide-border" data-testid="next-appointment-queue">
               {data.queue.map((q) => {
                 const late = isRunningLate(q, now);
                 const qStart = new Date(q.startsAt);
                 return (
-                  <li
-                    key={q.id}
-                    className={cn("flex min-w-0 items-center gap-3 rounded-md border border-border bg-card/80 p-2.5", late && "border-warning/70")}
-                  >
-                    <span className="shrink-0 font-mono text-sm tabular-nums">{formatTimeInTz(qStart, timezone)}</span>
+                  <li key={q.id} className="flex min-w-0 items-center gap-3 py-2.5 last:pb-0">
+                    <span className={cn("w-11 shrink-0 text-sm font-medium", TIME)}>{formatTimeInTz(qStart, timezone)}</span>
                     <div className="min-w-0 flex-1">
                       {variant === "patient" ? (
                         // On the patient's own page their name says nothing: show what the visit is for.
@@ -449,8 +440,13 @@ export function NextAppointmentCard({ initial, timezone, variant, patientId, pat
                         {q.room ? ` · ${q.room}` : ""}
                       </p>
                     </div>
-                    <div className="flex shrink-0 flex-col items-end gap-1">
-                      {late ? <Badge tone="danger">late</Badge> : null}
+                    <div className="flex shrink-0 flex-col items-end gap-1 sm:flex-row sm:items-center">
+                      {late ? (
+                        <Badge tone="danger" className="gap-1">
+                          <AlertTriangle className="h-3 w-3 shrink-0" aria-hidden="true" />
+                          Late
+                        </Badge>
+                      ) : null}
                       <AppointmentStatusBadge status={q.status} awaitingSince={q.confirmationRequestedAt} />
                     </div>
                   </li>
@@ -459,9 +455,9 @@ export function NextAppointmentCard({ initial, timezone, variant, patientId, pat
             </ul>
           </div>
         ) : variant === "hero" ? (
-          <p className="relative mt-4 border-t border-border pt-3 text-xs text-muted-foreground">Nothing else in today's queue.</p>
+          <p className="mt-5 border-t border-border pt-3 text-xs text-muted-foreground">Nothing else in today's queue.</p>
         ) : null}
-        {stale ? <p className="relative mt-2 text-[11px] text-muted-foreground">Live refresh paused — showing the last answer from the server.</p> : null}
+        {stale ? <p className="mt-2 text-xs text-muted-foreground">Live refresh paused: this is the last answer from the server.</p> : null}
       </Card>
       {dialogs}
     </>
