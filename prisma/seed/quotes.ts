@@ -184,8 +184,18 @@ export async function seedQuotes(ctx: SeedContext): Promise<void> {
     const free = ctx.patients.filter((p) => !busy.has(p.id) && !used.has(p.id)).sort((a, b) => a.fullName.localeCompare(b.fullName));
     const fits = (p: SeedPatient) => p.condKey === cond;
     const fallsBack = (p: SeedPatient) => fallback === "ANY" || p.gender === fallback;
+    // A plan that must wait on the recall list needs a patient with nothing booked, whatever
+    // else they have under way: without one the recall list would have no such plan, and on
+    // some days every patient without work under way is booked ahead.
+    const unbookedAny = ctx.patients.filter((p) => !used.has(p.id) && !booked.has(p.id)).sort((a, b) => a.fullName.localeCompare(b.fullName));
     const chosen =
-      (unbooked ? (free.find((p) => fits(p) && !booked.has(p.id)) ?? (fallback ? free.find((p) => fallsBack(p) && !booked.has(p.id)) : undefined)) : undefined) ??
+      (unbooked
+        ? (free.find((p) => fits(p) && !booked.has(p.id)) ??
+          (fallback ? free.find((p) => fallsBack(p) && !booked.has(p.id)) : undefined) ??
+          unbookedAny.find(fits) ??
+          (fallback ? unbookedAny.find(fallsBack) : undefined) ??
+          unbookedAny[0])
+        : undefined) ??
       free.find(fits) ??
       (fallback ? free.find(fallsBack) : undefined) ??
       null;
