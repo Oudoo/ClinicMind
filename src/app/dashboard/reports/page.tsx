@@ -14,7 +14,7 @@ import { getReport, listReportDoctors, type Report } from "@/modules/reporting/s
 import { reportTables, type TableSpec } from "@/modules/reporting/tables";
 import { listTargets, targetRows, type TargetView } from "@/modules/reporting/targets";
 import { listTreatments } from "@/modules/treatments/service";
-import { Card, SectionTitle } from "@/components/ui/primitives";
+import { Card, SectionTitle, Bento } from "@/components/ui/primitives";
 import { Button } from "@/components/ui/button";
 import { Columns, DeltaChip, HBars, Kpi } from "@/components/ui/kpi";
 import { ReportAlertRules } from "@/components/clinicmind/report-alert-rules";
@@ -449,13 +449,13 @@ function Revenue({ c }: { c: Ctx }) {
   const short = (v: number) => (v >= 10_000 ? `${Math.round(v / 1000)}k` : formatNumber(v));
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-5">
+      <Bento className="lg:grid-cols-5">
         <Kpi label="M4 · Revenue · EGP" value={formatNumber(cur.revenue)} tone="accent" delta={<Delta cur={cur.revenue} prev={prev.revenue} good="up" fmt={fmtEgp} />} hint={`${cur.procedures} signed procedures`} target={targetChip(c.targets.get("M4"))} />
         <Kpi label="Procedures" value={formatNumber(cur.procedures)} delta={<Delta cur={cur.procedures} prev={prev.procedures} good="up" fmt={fmtCount} />} />
         <Kpi label="Deposits · EGP" value={formatNumber(cur.deposits)} delta={<Delta cur={cur.deposits} prev={prev.deposits} good="up" fmt={fmtEgp} />} hint="by the date paid" />
         <Kpi label="Refunds · EGP" value={formatNumber(cur.refunds)} tone={cur.refunds ? "warning" : "default"} delta={<Delta cur={cur.refunds} prev={prev.refunds} good="down" fmt={fmtEgp} />} hint="by the date paid" />
         <Kpi label="Consultation fees · EGP" value={formatNumber(cur.consultationFees)} delta={<Delta cur={cur.consultationFees} prev={prev.consultationFees} good="up" fmt={fmtEgp} />} hint="their own line" />
-      </div>
+      </Bento>
       <MetricBlock id="M4" title="Revenue by doctor and treatment" description="Signed procedures by the date performed (price minus discount). Deposits and refunds by the date paid; consultation fees their own line.">
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
           <div className="space-y-2">
@@ -496,7 +496,7 @@ function Patients({ c, canEnterReviews }: { c: Ctx; canEnterReviews: boolean }) 
       >
         <div className="flex flex-wrap gap-6">
           <Stat label="Came back" value={<span className="inline-flex items-center gap-2">{fmtPct(m10.current.rate)} <Delta cur={m10.current.rate} prev={m10.previous.rate} good="up" fmt={fmtPct} /></span>} hint={`${m10.current.returned} of ${m10.current.cohort} patients · previous ${fmtPct(m10.previous.rate)}`} />
-          <Stat label="Cohort window" value={<span className="font-mono text-sm">{formatDateInTz(m10.current.cohortFrom, c.timezone)} → {formatDateInTz(cohortTo, c.timezone)}</span>} hint="this period, 12 months earlier" />
+          <Stat label="Cohort window" value={<span className="tabular-nums text-sm">{formatDateInTz(m10.current.cohortFrom, c.timezone)} → {formatDateInTz(cohortTo, c.timezone)}</span>} hint="this period, 12 months earlier" />
         </div>
         <T c={c} id="M10.treatment" />
       </MetricBlock>
@@ -584,7 +584,7 @@ function Response({ c }: { c: Ctx }) {
                       {i.kind === "follow_up" ? "Follow-up" : "Escalation"} · {i.ownerLabel}
                     </div>
                   </div>
-                  <span className="shrink-0 font-mono text-xs text-warning">{i.overdueHours >= 72 ? `${Math.floor(i.overdueHours / 24)} d` : `${i.overdueHours} h`} late</span>
+                  <span className="tabular-nums shrink-0 text-xs text-warning">{i.overdueHours >= 72 ? `${Math.floor(i.overdueHours / 24)} d` : `${i.overdueHours} h`} late</span>
                 </li>
               ))}
             </ul>

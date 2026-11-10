@@ -75,7 +75,7 @@ export function RecallRules({ rules, treatments, staff, canManage }: { rules: Re
                   <p className="flex flex-wrap items-center gap-1 text-xs text-muted-foreground">
                     Diagnoses containing
                     {r.diagnosisTerms.map((t) => (
-                      <span key={t} className="rounded-md bg-muted px-1.5 py-0.5 font-mono text-[11px] text-foreground">
+                      <span key={t} className="rounded-md bg-muted px-1.5 py-0.5 font-mono text-xs text-foreground">
                         {t}
                       </span>
                     ))}

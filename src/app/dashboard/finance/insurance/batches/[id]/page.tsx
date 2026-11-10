@@ -18,7 +18,7 @@ import { RecordAnswerButton, VoidPayerPaymentButton } from "@/components/clinicm
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Claims batch" };
 
-const NUM = "whitespace-nowrap text-right font-mono tabular-nums";
+const NUM = "whitespace-nowrap text-right tabular-nums";
 
 /**
  * `/dashboard/finance/insurance/batches/[id]` — claims sent to a payer

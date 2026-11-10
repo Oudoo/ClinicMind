@@ -76,7 +76,7 @@ export async function PatientInsuranceCard({ tenantId, role, patientId, canWrite
             <div className="space-y-1">
               <div className="flex justify-between text-xs">
                 <span>Yearly limit, to {dayKey(current.limit.to)}</span>
-                <span className="font-mono tabular-nums">
+                <span className="tabular-nums">
                   {formatNumber(current.limit.used)} of {formatNumber(current.limit.amount)} EGP used
                 </span>
               </div>
@@ -144,7 +144,7 @@ export async function PatientInsuranceCard({ tenantId, role, patientId, canWrite
                   </span>
                 </span>
                 <span className="flex items-center gap-2">
-                  <span className="font-mono text-xs tabular-nums">
+                  <span className="text-xs tabular-nums">
                     {formatNumber(c.amount)}
                     {c.refused ? ` · ${formatNumber(c.refused)} refused` : ""}
                   </span>

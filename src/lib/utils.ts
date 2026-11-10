@@ -62,3 +62,24 @@ export function initials(name: string): string {
     .map((p) => p[0]?.toUpperCase() ?? "")
     .join("");
 }
+
+/**
+ * A stored value as the interface says it: "PART_PAID" → "Part paid", "whatsapp_cloud" →
+ * "Whatsapp cloud". For a status, kind or channel that has no label of its own yet; prefer a
+ * label map where the wording matters ("NO_SHOW" → "No-show").
+ */
+export function humanize(value: string | null | undefined): string {
+  const words = (value ?? "").replace(/[_-]+/g, " ").trim().toLowerCase();
+  return words ? words.charAt(0).toUpperCase() + words.slice(1) : "";
+}
+
+/** A staff role as the clinic says it. */
+export const ROLE_LABEL: Record<string, string> = {
+  SUPER_ADMIN: "Platform administrator",
+  CLINIC_OWNER: "Clinic owner",
+  DOCTOR: "Doctor",
+  NURSE: "Nurse",
+  RECEPTIONIST: "Reception",
+  ASSISTANT: "Assistant",
+};
+export const roleLabel = (role: string | null | undefined): string => (role ? ROLE_LABEL[role] ?? humanize(role) : "");

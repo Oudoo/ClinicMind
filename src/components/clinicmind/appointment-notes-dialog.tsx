@@ -136,11 +136,11 @@ export function AppointmentNotesDialog({
                           {note.kind === "DICTATION" ? "Dictated" : "Typed"}
                         </Badge>
                         <span className="font-medium text-foreground">{note.author?.fullName ?? "Unknown"}</span>
-                        <time dateTime={note.createdAt} className="font-mono tabular-nums">
+                        <time dateTime={note.createdAt} className="tabular-nums">
                           {formatDateTimeInTz(new Date(note.createdAt), timezone)}
                         </time>
                         {note.language ? <span>{LANGUAGE_LABEL[note.language] ?? note.language}</span> : null}
-                        {note.durationSeconds ? <span className="font-mono tabular-nums">{formatSeconds(note.durationSeconds)}</span> : null}
+                        {note.durationSeconds ? <span className="tabular-nums">{formatSeconds(note.durationSeconds)}</span> : null}
                         {mayRemove ? (
                           <Button
                             type="button"
@@ -304,7 +304,7 @@ function NoteComposer({ appointment, onSaved }: { appointment: AppointmentDTO; o
           ) : (
             <span className="flex justify-between gap-4">
               <span>{kind === "DICTATION" && seconds ? `${formatSeconds(seconds)} recorded · ` : ""}editable before it is saved</span>
-              <span className="font-mono tabular-nums">
+              <span className="tabular-nums">
                 {text.length.toLocaleString()} / {MAX_NOTE_LENGTH.toLocaleString()}
               </span>
             </span>
@@ -344,7 +344,7 @@ function NoteComposer({ appointment, onSaved }: { appointment: AppointmentDTO; o
           {busy ? "Saving…" : "Save note"}
         </Button>
       </div>
-      <p className="text-[11px] text-muted-foreground">
+      <p className="text-xs text-muted-foreground">
         Notes are kept with the booking, written to the patient timeline and shown when the consultation starts.
       </p>
     </section>

@@ -17,7 +17,7 @@ export function ApprovalStatusBadge({ status, label, expired }: { status: string
   return <Badge tone={tone}>{expired ? "Expired" : label}</Badge>;
 }
 
-const NUM = "whitespace-nowrap text-right font-mono tabular-nums";
+const NUM = "whitespace-nowrap text-right tabular-nums";
 
 /** What each payer owes, by how long ago its claims were made; then, of what it owes, what is not sent yet and what is late. */
 export function AgingTable({ aging, linkPayers = true }: { aging: AgingReport; linkPayers?: boolean }) {

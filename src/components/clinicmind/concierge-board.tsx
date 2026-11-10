@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { AlertTriangle, BellRing, Camera, Moon, PhoneCall, RefreshCw, Star, Sun } from "lucide-react";
-import { Badge, Card, EmptyState } from "@/components/ui/primitives";
+import { Badge, Card, EmptyState, Bento } from "@/components/ui/primitives";
 import { Kpi } from "@/components/ui/kpi";
 import { Button } from "@/components/ui/button";
 import { apiFetch } from "@/lib/http";
@@ -90,7 +90,7 @@ export function ConciergeBoard({ initial, canWrite }: { initial: BoardDTO; canWr
         </div>
       </Card>
 
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 xl:grid-cols-4">
+      <Bento className="xl:grid-cols-4">
         <Kpi
           label={`Check-ins answered · ${board.windowDays} days`}
           value={answer.pct === null ? "—" : `${answer.pct}%`}
@@ -121,7 +121,7 @@ export function ConciergeBoard({ initial, canWrite }: { initial: BoardDTO; canWr
             .filter(Boolean)
             .join(" · ") || undefined}
         />
-      </div>
+      </Bento>
 
       <section aria-labelledby="escalations-title" className="space-y-3">
         <div className="flex items-end justify-between gap-3">
@@ -264,7 +264,7 @@ function TaskRow({ t, meta }: { t: BoardTaskDTO; meta: React.ReactNode }) {
         <div className="min-w-0 flex-1">
           <span className="block truncate text-sm font-medium">{t.patient.fullName}</span>
           <span className="block truncate text-xs text-muted-foreground">{stepTitle(t.dayLabel, t.title)}</span>
-          <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-muted-foreground">
+          <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
             {meta}
             {t.hasHighRisk ? <Badge tone="warning">red-flag questions</Badge> : null}
             {t.lastError ? <Badge tone="danger">{t.lastError.slice(0, 40)}</Badge> : null}
@@ -285,7 +285,7 @@ function AnsweredRow({ c, time }: { c: BoardCheckInDTO; time: (iso: string) => s
             <TriageBadge level={c.triage} />
           </div>
           <span className="block truncate text-xs text-muted-foreground">{c.title}</span>
-          <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-muted-foreground">
+          <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
             <span>{time(c.submittedAt)}</span>
             {c.source === "staff" ? <span>by phone</span> : null}
             {c.satisfaction ? (

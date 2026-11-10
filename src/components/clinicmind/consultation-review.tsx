@@ -352,7 +352,7 @@ export function ConsultationReview(props: ConsultationReviewProps) {
         hint={
           <span className="flex justify-between gap-4">
             <span>Signed into the visit record.</span>
-            <span className="font-mono tabular-nums">
+            <span className="tabular-nums">
               {summary.length.toLocaleString()} / {SUMMARY_MAX_LENGTH.toLocaleString()}
             </span>
           </span>
@@ -639,7 +639,7 @@ function StopMedicationList({
                 <span className={cn("font-medium", checked && "line-through")}>{m.name}</span>
                 {details ? <span className="text-muted-foreground"> · {details}</span> : null}
                 {m.startDate ? (
-                  <span className="block font-mono text-[11px] text-muted-foreground">since {formatDate(m.startDate)}</span>
+                  <span className="tabular-nums block text-xs text-muted-foreground">since {formatDate(m.startDate)}</span>
                 ) : null}
               </span>
               {inPrescription ? <Badge tone="accent">in prescription</Badge> : null}

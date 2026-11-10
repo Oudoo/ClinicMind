@@ -73,7 +73,7 @@ export function PatientTimeline({ events }: { events: TimelineItem[] }) {
             <Badge tone={KIND_TONE[event.kind]}>{KIND_LABEL[event.kind]}</Badge>
             <time
               dateTime={event.occurredAt.toISOString()}
-              className="font-mono text-xs tabular-nums text-muted-foreground"
+              className="text-xs tabular-nums text-muted-foreground"
             >
               {formatDate(event.occurredAt)} · {formatTime(event.occurredAt)}
             </time>

@@ -165,7 +165,7 @@ export function NotificationPreferencesForm({
         {email ? (
           <>
             {" "}
-            (e-mails go to <span className="font-mono">{email}</span>)
+            (e-mails go to <span className="tabular-nums">{email}</span>)
           </>
         ) : null}
         .
@@ -187,7 +187,7 @@ export function NotificationPreferencesForm({
                 <div className="min-w-0">
                   <p className="text-sm font-medium">
                     {KIND_LABELS[kind]}
-                    {mailDefault ? <span className="ml-2 font-mono text-[10px] uppercase text-warning">e-mail by default</span> : null}
+                    {mailDefault ? <span className="tabular-nums ml-2 text-xs text-warning">e-mail by default</span> : null}
                   </p>
                   <p className="text-xs text-muted-foreground">{KIND_HINTS[kind]}</p>
                 </div>
@@ -239,7 +239,7 @@ export function NotificationPreferencesForm({
               />
             </button>
           </div>
-          <p className="font-mono text-[10px] uppercase text-muted-foreground">
+          <p className="tabular-nums text-xs text-muted-foreground">
             permission: {permission === "unsupported" ? "not supported here" : permission === "default" ? "not asked yet" : permission}
           </p>
           {notice ? <Alert tone="info">{notice}</Alert> : null}

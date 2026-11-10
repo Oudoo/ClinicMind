@@ -122,7 +122,7 @@ export default async function AuditLogPage({ searchParams }: { searchParams: Pro
                 const href = recordHref(row);
                 return (
                   <TR key={row.id} className="align-top">
-                    <TD className="whitespace-nowrap font-mono text-xs text-muted-foreground">
+                    <TD className="tabular-nums whitespace-nowrap text-xs text-muted-foreground">
                       <div>{formatDateInTz(row.createdAt, timezone)}</div>
                       <div>{formatTimeInTz(row.createdAt, timezone)}</div>
                     </TD>
@@ -133,7 +133,7 @@ export default async function AuditLogPage({ searchParams }: { searchParams: Pro
                       <div className="flex min-w-0 flex-col gap-1">
                         <div className="flex flex-wrap items-center gap-2">
                           <span className="font-medium">{row.label}</span>
-                          <Badge tone={actionTone(row.action)} className="font-mono">
+                          <Badge tone={actionTone(row.action)} className="tabular-nums">
                             {row.action}
                           </Badge>
                         </div>
@@ -159,7 +159,7 @@ export default async function AuditLogPage({ searchParams }: { searchParams: Pro
                       </div>
                     </TD>
                     <TD className="hidden whitespace-nowrap text-xs text-muted-foreground xl:table-cell">
-                      <div className="font-mono">{row.ip ?? "—"}</div>
+                      <div className="tabular-nums">{row.ip ?? "—"}</div>
                       {row.device ? (
                         <div className="max-w-[10rem] truncate" title={row.device}>
                           {describeDevice(row.device)}
@@ -208,7 +208,7 @@ function PersonCell({ row, query }: { row: AuditRow; query: Parameters<typeof au
       </Link>
       {row.actor.role ? <span className="text-xs text-muted-foreground">{ROLE_LABELS[row.actor.role] ?? row.actor.role}</span> : null}
       {row.actor.email && row.actor.email !== row.actor.name ? (
-        <span className="max-w-[12rem] truncate font-mono text-[11px] text-muted-foreground" title={row.actor.email}>
+        <span className="tabular-nums max-w-[12rem] truncate text-xs text-muted-foreground" title={row.actor.email}>
           {row.actor.email}
         </span>
       ) : null}
@@ -232,7 +232,7 @@ function RecordLink({ row, href }: { row: AuditRow; href: string | null }) {
           {text}
         </Link>
       ) : (
-        <span className="font-mono text-muted-foreground">{text}</span>
+        <span className="tabular-nums text-muted-foreground">{text}</span>
       )}
       {row.patient?.archived ? <Badge tone="danger">archived</Badge> : null}
       {row.patient && row.entity !== "Patient" ? <span className="text-muted-foreground">· {kind}</span> : null}
@@ -271,7 +271,7 @@ function Changes({ row }: { row: AuditRow }) {
             ))}
           </dl>
         ) : null}
-        <p className="font-mono text-[11px] text-muted-foreground">
+        <p className="font-mono text-xs text-muted-foreground">
           Entry {row.id}
           {row.entityId ? ` · ${row.entity} ${row.entityId}` : ""}
         </p>

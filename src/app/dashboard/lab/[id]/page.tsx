@@ -115,11 +115,11 @@ export default async function LabOrderPage({ params }: { params: Promise<{ id: s
             <>
               <p className="flex items-baseline justify-between gap-2">
                 <span className="text-sm text-muted-foreground">Amount</span>
-                <span className="font-mono tabular-nums">{formatNumber(order.bill.amount)} EGP</span>
+                <span className="tabular-nums">{formatNumber(order.bill.amount)} EGP</span>
               </p>
               <p className="flex items-baseline justify-between gap-2 text-sm">
                 <span className="text-muted-foreground">{order.bill.owed ? "Owed to the lab" : "Paid"}</span>
-                <span className="font-mono tabular-nums">{formatNumber(order.bill.owed || order.bill.paid)}</span>
+                <span className="tabular-nums">{formatNumber(order.bill.owed || order.bill.paid)}</span>
               </p>
               {canBill ? (
                 <Link href={`/dashboard/finance/expenses/${order.bill.expenseId}`} className="text-sm text-accent underline-offset-2 hover:underline">

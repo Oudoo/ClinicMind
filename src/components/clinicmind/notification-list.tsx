@@ -270,7 +270,7 @@ export function NotificationList({
               </Button>
             </div>
           ) : (
-            <p className="text-center font-mono text-[11px] text-muted-foreground">
+            <p className="tabular-nums text-center text-xs text-muted-foreground">
               {items.length} shown · read notifications are kept for 90 days
             </p>
           )}

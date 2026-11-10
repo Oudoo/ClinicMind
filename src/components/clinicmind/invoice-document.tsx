@@ -116,7 +116,7 @@ export function InvoiceDocument({ invoice }: { invoice: InvoiceDTO }) {
               {date(invoice.issuedAt)}
             </p>
           ) : null}
-          <p className="mt-1 inline-block rounded border border-border px-2 py-0.5 text-xs uppercase tracking-wide">
+          <p className="mt-1 inline-block rounded border border-border px-2 py-0.5 text-xs">
             {invoice.status === "PAID" && invoice.writtenOff > 0 ? t.closedWrittenOff : (t.status[invoice.status] ?? invoice.status)}
           </p>
         </div>
@@ -151,7 +151,7 @@ export function InvoiceDocument({ invoice }: { invoice: InvoiceDTO }) {
                   <span className="block text-xs text-muted-foreground sm:hidden">{date(l.chargedAt)}</span>
                 </td>
                 <td className="hidden whitespace-nowrap py-2 pe-3 text-muted-foreground sm:table-cell">{date(l.chargedAt)}</td>
-                <td className="whitespace-nowrap py-2 text-end font-mono tabular-nums" dir="ltr">
+                <td className="whitespace-nowrap py-2 text-end tabular-nums" dir="ltr">
                   {money(l.amount)}
                 </td>
               </tr>
@@ -163,7 +163,7 @@ export function InvoiceDocument({ invoice }: { invoice: InvoiceDTO }) {
       <dl className="ms-auto w-full max-w-xs space-y-1">
         <div className="flex justify-between gap-4 font-medium">
           <dt>{t.total}</dt>
-          <dd className="font-mono tabular-nums" dir="ltr">
+          <dd className="tabular-nums" dir="ltr">
             {money(invoice.total)}
           </dd>
         </div>
@@ -171,14 +171,14 @@ export function InvoiceDocument({ invoice }: { invoice: InvoiceDTO }) {
           <>
             <div className="flex justify-between gap-4 text-muted-foreground">
               <dt>{t.paid}</dt>
-              <dd className="font-mono tabular-nums" dir="ltr">
+              <dd className="tabular-nums" dir="ltr">
                 {money(invoice.paid)}
               </dd>
             </div>
             {invoice.claimed > 0 ? (
               <div className="flex justify-between gap-4 text-muted-foreground">
                 <dt>{t.claimed}</dt>
-                <dd className="font-mono tabular-nums" dir="ltr">
+                <dd className="tabular-nums" dir="ltr">
                   {money(invoice.claimed)}
                 </dd>
               </div>
@@ -186,14 +186,14 @@ export function InvoiceDocument({ invoice }: { invoice: InvoiceDTO }) {
             {invoice.writtenOff > 0 ? (
               <div className="flex justify-between gap-4 text-muted-foreground">
                 <dt>{t.writtenOff}</dt>
-                <dd className="font-mono tabular-nums" dir="ltr">
+                <dd className="tabular-nums" dir="ltr">
                   {money(invoice.writtenOff)}
                 </dd>
               </div>
             ) : null}
             <div className="flex justify-between gap-4 border-t border-border pt-1 font-semibold">
               <dt>{t.due}</dt>
-              <dd className="font-mono tabular-nums" dir="ltr">
+              <dd className="tabular-nums" dir="ltr">
                 {money(invoice.due)}
               </dd>
             </div>
@@ -209,12 +209,12 @@ export function InvoiceDocument({ invoice }: { invoice: InvoiceDTO }) {
               <li key={`${p.receiptNumber}-${i}`} className="flex items-start justify-between gap-2">
                 <span className="min-w-0">
                   {t.receipt}{" "}
-                  <span className="font-mono" dir="ltr">
+                  <span className="tabular-nums" dir="ltr">
                     {p.receiptNumber ?? "—"}
                   </span>{" "}
                   · {date(p.paidAt)} · {t.method[p.method] ?? p.method}
                 </span>
-                <span className="shrink-0 font-mono tabular-nums" dir="ltr">
+                <span className="shrink-0 tabular-nums" dir="ltr">
                   {money(p.amount)}
                 </span>
               </li>
@@ -240,7 +240,7 @@ export function InvoiceDocument({ invoice }: { invoice: InvoiceDTO }) {
                   </span>
                   {c.status === "CANCELLED" ? ` · ${t.claimCancelled}` : ""}
                 </span>
-                <span className="shrink-0 font-mono tabular-nums" dir="ltr">
+                <span className="shrink-0 tabular-nums" dir="ltr">
                   {money(c.amount)}
                 </span>
               </li>

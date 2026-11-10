@@ -124,7 +124,7 @@ export function LeadConvertDialog({
                         className={cn("inline-flex h-8 items-center gap-2 rounded-full border px-3 text-xs", patient?.id === m.id ? "border-accent bg-accent-muted text-accent" : "border-border hover:bg-muted")}
                       >
                         {m.fullName}
-                        {m.phone ? <span className="font-mono text-muted-foreground">{m.phone}</span> : null}
+                        {m.phone ? <span className="tabular-nums text-muted-foreground">{m.phone}</span> : null}
                       </button>
                     ))}
                   </div>

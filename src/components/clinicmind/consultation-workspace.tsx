@@ -256,11 +256,11 @@ function BookingNotesCard({ appointment, timezone }: { appointment: AppointmentD
                   {n.kind === "DICTATION" ? "Dictated" : "Typed"}
                 </Badge>
                 <span className="font-medium text-foreground">{n.author?.fullName ?? "Unknown"}</span>
-                <time dateTime={n.createdAt} className="font-mono tabular-nums">
+                <time dateTime={n.createdAt} className="tabular-nums">
                   {formatDateTimeInTz(new Date(n.createdAt), timezone)}
                 </time>
                 {n.language ? <span>{LANGUAGE_LABEL[n.language] ?? n.language}</span> : null}
-                {n.durationSeconds ? <span className="font-mono tabular-nums">{formatSeconds(n.durationSeconds)}</span> : null}
+                {n.durationSeconds ? <span className="tabular-nums">{formatSeconds(n.durationSeconds)}</span> : null}
                 <Button type="button" variant="ghost" size="sm" className="ml-auto h-7 px-2" onClick={() => insert([n])}>
                   <ClipboardPaste className="h-3.5 w-3.5" />
                   Insert

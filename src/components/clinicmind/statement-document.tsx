@@ -111,9 +111,9 @@ function SummaryRow({ label, balance, debit, credit, showPatient, className, tes
       {showPatient ? <td className={WIDE} /> : null}
       <td className={WIDE} />
       <td className="py-2 pe-2">{label}</td>
-      <td className={`${WIDE} whitespace-nowrap py-2 pe-2 text-end font-mono tabular-nums`}>{debit !== undefined ? <Num value={debit} /> : null}</td>
-      <td className={`${WIDE} whitespace-nowrap py-2 pe-2 text-end font-mono tabular-nums`}>{credit !== undefined ? <Num value={credit} /> : null}</td>
-      <td className={`${NARROW} whitespace-nowrap py-2 pe-2 text-end font-mono tabular-nums`}>{debit !== undefined || credit !== undefined ? <Movement debit={debit ?? 0} credit={credit ?? 0} /> : null}</td>
+      <td className={`${WIDE} whitespace-nowrap py-2 pe-2 text-end tabular-nums`}>{debit !== undefined ? <Num value={debit} /> : null}</td>
+      <td className={`${WIDE} whitespace-nowrap py-2 pe-2 text-end tabular-nums`}>{credit !== undefined ? <Num value={credit} /> : null}</td>
+      <td className={`${NARROW} whitespace-nowrap py-2 pe-2 text-end tabular-nums`}>{debit !== undefined || credit !== undefined ? <Movement debit={debit ?? 0} credit={credit ?? 0} /> : null}</td>
       <td className="whitespace-nowrap py-2 text-end font-mono tabular-nums" data-testid={testId}>
         {balance !== undefined ? <Num value={balance} /> : null}
       </td>
@@ -235,7 +235,7 @@ export function StatementDocument({ ledger, clinic, language, printedAt }: { led
                 <td className="py-2 pe-2">
                   <LedgerText entry={e} language={language} />
                   {/* On a phone the date, the patient and the reference go under the details. */}
-                  <span className={`${NARROW} block text-[11px] text-muted-foreground`}>
+                  <span className={`${NARROW} block text-xs text-muted-foreground`}>
                     {short(e.at)}
                     {showPatient ? (
                       <>
@@ -253,16 +253,16 @@ export function StatementDocument({ ledger, clinic, language, printedAt }: { led
                     ) : null}
                   </span>
                 </td>
-                <td className={`${WIDE} whitespace-nowrap py-2 pe-2 text-end font-mono tabular-nums`}>
+                <td className={`${WIDE} whitespace-nowrap py-2 pe-2 text-end tabular-nums`}>
                   <Num value={e.debit} blankZero />
                 </td>
-                <td className={`${WIDE} whitespace-nowrap py-2 pe-2 text-end font-mono tabular-nums`}>
+                <td className={`${WIDE} whitespace-nowrap py-2 pe-2 text-end tabular-nums`}>
                   <Num value={e.credit} blankZero />
                 </td>
-                <td className={`${NARROW} whitespace-nowrap py-2 pe-2 text-end font-mono tabular-nums`}>
+                <td className={`${NARROW} whitespace-nowrap py-2 pe-2 text-end tabular-nums`}>
                   <Movement debit={e.debit} credit={e.credit} />
                 </td>
-                <td className="whitespace-nowrap py-2 text-end font-mono tabular-nums">
+                <td className="whitespace-nowrap py-2 text-end tabular-nums">
                   <Num value={e.balance} />
                 </td>
               </tr>
@@ -321,13 +321,13 @@ export function StatementDocument({ ledger, clinic, language, printedAt }: { led
                     </td>
                   ) : null}
                   <td className={`${WIDE} whitespace-nowrap py-1 pe-2`}>{i.issuedAt ? short(i.issuedAt) : ""}</td>
-                  <td className={`${WIDE} py-1 pe-2 text-end font-mono tabular-nums`}>
+                  <td className={`${WIDE} py-1 pe-2 text-end tabular-nums`}>
                     <Num value={i.total} />
                   </td>
                   <td className={`${WIDE} py-1 pe-2 text-end font-mono tabular-nums`}>
                     <Num value={i.paid} />
                   </td>
-                  <td className="py-1 text-end font-mono tabular-nums">
+                  <td className="py-1 text-end tabular-nums">
                     <Num value={i.due} />
                   </td>
                 </tr>

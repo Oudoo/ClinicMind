@@ -168,7 +168,7 @@ export function EvidencePanel({ patientId, patientName = null }: { patientId: st
               ? "OpenEvidence opened in a new tab. Copy the question from here, without the patient's name:"
               : "OpenEvidence opened in a new tab; the question is copied without the patient's name. Paste it there:"}
           </p>
-          <p dir="auto" className="select-all rounded bg-muted/60 px-2 py-1 font-mono text-[11px] text-foreground">
+          <p dir="auto" className="tabular-nums select-all rounded bg-muted/60 px-2 py-1 text-xs text-foreground">
             {external.text}
           </p>
           <p className="text-muted-foreground">OpenEvidence is outside the clinic: never paste a name, phone number or ID into it.</p>
@@ -199,7 +199,7 @@ function EvidenceAnswer({ asked, result }: { asked: string; result: EvidenceAnsw
               <p key={i} dir="auto">
                 {s.text}{" "}
                 {s.cites.map((n) => (
-                  <a key={n} href={`#${anchor(n)}`} className="align-super font-mono text-[10px] text-accent no-underline hover:underline" aria-label={`Source ${n}`}>
+                  <a key={n} href={`#${anchor(n)}`} className="align-super font-mono text-xs text-accent no-underline hover:underline" aria-label={`Source ${n}`}>
                     [{n}]
                   </a>
                 ))}
@@ -236,7 +236,7 @@ function Citation({ c, id }: { c: EvidenceCitationDTO; id: string }) {
     <li id={id} className="scroll-mt-4 rounded-md border border-border px-3 py-2 text-xs">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <p className="min-w-0 font-medium text-foreground">
-          <span className="font-mono text-accent">[{c.n}]</span> {c.title}
+          <span className="tabular-nums text-accent">[{c.n}]</span> {c.title}
           {by ? <span className="font-normal text-muted-foreground"> · {by}</span> : null}
         </p>
         <Badge>{c.kindLabel}</Badge>

@@ -30,7 +30,7 @@ export function ExpenseNav({ current, toPay, overdue }: { current: ExpenseTab; t
                 )}
               >
                 {t.label}
-                {count ? <span className={cn("rounded-md px-1.5 font-mono text-[10px]", overdue ? "bg-danger/10 text-danger" : "bg-card text-muted-foreground")}>{count}</span> : null}
+                {count ? <span className={cn("tabular-nums rounded-md px-1.5 text-xs", overdue ? "bg-danger/10 text-danger" : "bg-card text-muted-foreground")}>{count}</span> : null}
               </Link>
             </li>
           );

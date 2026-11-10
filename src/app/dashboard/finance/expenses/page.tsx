@@ -132,7 +132,7 @@ export default async function ExpensesPage({ searchParams }: { searchParams: Pro
                         </div>
                         {isOwner && actions ? <div className="mt-2 flex flex-wrap gap-1 sm:hidden">{actions}</div> : null}
                       </TD>
-                      <TD className="whitespace-nowrap text-right font-mono tabular-nums">{formatNumber(r.amount)}</TD>
+                      <TD className="whitespace-nowrap text-right tabular-nums">{formatNumber(r.amount)}</TD>
                       <TD className="hidden text-xs md:table-cell">
                         {RECURRING_EVERY_LABELS[r.everyMonths as keyof typeof RECURRING_EVERY_LABELS]}, on the {r.dayOfMonth}
                         <div className="text-muted-foreground">{r.dueDays ? `Paid within ${plural(r.dueDays, "day")}` : "Paid on the day"}</div>
@@ -188,7 +188,7 @@ export default async function ExpensesPage({ searchParams }: { searchParams: Pro
                 </div>
                 <p className="text-sm">
                   <span className="data-label mr-2">Spent</span>
-                  <span className="font-mono tabular-nums">{formatNumber(list.amount)} EGP</span>
+                  <span className="tabular-nums">{formatNumber(list.amount)} EGP</span>
                 </p>
               </div>
               {list.byCategory.length ? (
@@ -199,7 +199,7 @@ export default async function ExpensesPage({ searchParams }: { searchParams: Pro
                         <Link href={`${monthHref(month)}&category=${c.category}`} className="truncate underline-offset-2 hover:underline">
                           {c.label}
                         </Link>
-                        <span className="font-mono text-xs tabular-nums">{formatNumber(c.amount)}</span>
+                        <span className="text-xs tabular-nums">{formatNumber(c.amount)}</span>
                       </div>
                       <div className="mt-0.5 h-1 overflow-hidden rounded-full bg-muted" aria-hidden="true">
                         <div className="h-full rounded-full bg-accent" style={{ width: `${Math.max(2, Math.round((c.amount * 100) / Math.max(1, list.amount)))}%` }} />
@@ -271,7 +271,7 @@ export default async function ExpensesPage({ searchParams }: { searchParams: Pro
                           {view === "due" && pay ? <div className="mt-2 sm:hidden">{pay}</div> : null}
                         </TD>
                         <TD className="hidden whitespace-nowrap text-right sm:table-cell">
-                          <span className="font-mono tabular-nums">{formatNumber(e.amount)}</span>
+                          <span className="tabular-nums">{formatNumber(e.amount)}</span>
                           {e.paid && e.owed ? <div className="text-xs text-muted-foreground">{formatNumber(e.owed)} owed</div> : null}
                         </TD>
                         <TD className="text-xs">

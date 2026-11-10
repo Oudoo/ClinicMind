@@ -116,7 +116,7 @@ export function ImportPosDialog({ timezone, onOpenChange, onDone }: { timezone: 
                     setFileName(null);
                   }}
                   placeholder={SAMPLE}
-                  className="min-h-[9rem] font-mono text-xs"
+                  className="tabular-nums min-h-[9rem] text-xs"
                   spellCheck={false}
                 />
               </Field>
@@ -202,10 +202,10 @@ function PreviewTable({ preview, timezone }: { preview: ImportPreview; timezone:
 function PreviewRow({ row, timezone }: { row: ImportPreviewRow; timezone: string }) {
   return (
     <TR className={row.ok ? undefined : "bg-danger/5"}>
-      <TD className="font-mono text-xs text-muted-foreground">{row.line}</TD>
+      <TD className="tabular-nums text-xs text-muted-foreground">{row.line}</TD>
       <TD>
         {row.patient ? <div className="font-medium">{row.patient.fullName}</div> : <div className="text-muted-foreground">{row.name || "—"}</div>}
-        <div className="font-mono text-xs text-muted-foreground">{row.phone ?? row.phoneText}</div>
+        <div className="tabular-nums text-xs text-muted-foreground">{row.phone ?? row.phoneText}</div>
         {row.problems.length ? (
           <ul className="mt-1 flex flex-wrap gap-1">
             {row.problems.map((p) => (
@@ -218,8 +218,8 @@ function PreviewRow({ row, timezone }: { row: ImportPreviewRow; timezone: string
           </ul>
         ) : null}
       </TD>
-      <TD className="whitespace-nowrap font-mono tabular-nums">{row.amount !== null ? `${formatNumber(row.amount)} EGP` : "—"}</TD>
-      <TD className="hidden whitespace-nowrap font-mono text-xs md:table-cell">{row.paidAt ? formatDateTimeInTz(new Date(row.paidAt), timezone) : row.dateText}</TD>
+      <TD className="whitespace-nowrap tabular-nums">{row.amount !== null ? `${formatNumber(row.amount)} EGP` : "—"}</TD>
+      <TD className="tabular-nums hidden whitespace-nowrap text-xs md:table-cell">{row.paidAt ? formatDateTimeInTz(new Date(row.paidAt), timezone) : row.dateText}</TD>
       <TD className="hidden text-xs md:table-cell">
         {row.kindLabel} · {row.methodLabel}
         {row.reference ? <div className="font-mono text-muted-foreground">{row.reference}</div> : null}

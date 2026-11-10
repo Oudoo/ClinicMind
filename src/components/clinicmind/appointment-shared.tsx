@@ -285,7 +285,7 @@ export function ConflictNotice({
             const end = new Date(c.endsAt);
             return (
               <li key={c.id} className="flex flex-wrap gap-x-2">
-                <span className="font-mono tabular-nums">
+                <span className="tabular-nums">
                   {formatDateInTz(start, timezone, { day: "2-digit", month: "short" })} {formatTimeInTz(start, timezone)}–
                   {formatTimeInTz(end, timezone)}
                 </span>

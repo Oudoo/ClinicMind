@@ -68,7 +68,7 @@ export function ReportTable({
                           className={cn(
                             "py-2",
                             ci === 0 ? "font-medium" : "whitespace-nowrap",
-                            numeric(col?.kind) && ci > 0 && "text-right font-mono tabular-nums",
+                            numeric(col?.kind) && ci > 0 && "text-right tabular-nums",
                             hideClass(col?.hide),
                           )}
                         >

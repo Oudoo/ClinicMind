@@ -16,7 +16,7 @@ import { listRecalls } from "@/modules/recalls/service";
 import type { RecallTab } from "@/modules/recalls/dto";
 import { Button } from "@/components/ui/button";
 import { Input, Select } from "@/components/ui/input";
-import { Badge, Card, EmptyState, SectionTitle } from "@/components/ui/primitives";
+import { Badge, Card, EmptyState, SectionTitle, Bento } from "@/components/ui/primitives";
 import { DeltaChip, Kpi } from "@/components/ui/kpi";
 import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/table";
 import { PeriodPicker } from "@/components/clinicmind/report-period-picker";
@@ -139,7 +139,7 @@ export default async function RecallsPage({ searchParams }: { searchParams: Prom
                   ) : (
                     t.label
                   )}
-                  {count ? <span className={cn("rounded-md px-1.5 font-mono text-[10px]", t.key === "today" ? "bg-danger/10 text-danger" : "bg-card text-muted-foreground")}>{count}</span> : null}
+                  {count ? <span className={cn("tabular-nums rounded-md px-1.5 text-xs", t.key === "today" ? "bg-danger/10 text-danger" : "bg-card text-muted-foreground")}>{count}</span> : null}
                 </Link>
               </li>
             );
@@ -234,7 +234,7 @@ async function ResultsTab({ tenantId, role, sp, timezone }: { tenantId: string; 
   return (
     <div className="space-y-6">
       <PeriodPicker basePath="/dashboard/recalls" preset={period.preset} fromKey={period.fromKey} toKey={period.toKey} previous={previous} keep={{ tab: "results" }} />
-      <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
+      <Bento>
         <Kpi label="Due" value={formatNumber(d.count)} hint={`Recalls due ${period.fromKey} → ${period.toKey}; ${formatNumber(p.count)} the period before`} />
         <Kpi label="Contacted" value={pct(d.contacted, d.count)} delta={rate(d.contacted, p.contacted)} hint={`${d.contacted} of ${d.count}, by the desk or an automatic message`} />
         <Kpi label="Booked" value={pct(d.booked, d.count)} tone="accent" delta={rate(d.booked, p.booked)} hint={`${d.booked} of ${d.count} booked a visit or came back`} />
@@ -261,7 +261,7 @@ async function ResultsTab({ tenantId, role, sp, timezone }: { tenantId: string; 
           />
         ) : null}
         <Kpi label="Ended" value={formatNumber(ended)} hint={`${r.ended.done} came back, ${r.ended.declined} declined, ${r.ended.unreachable} unreachable`} />
-      </div>
+      </Bento>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <Card className="overflow-hidden p-0">
@@ -282,9 +282,9 @@ async function ResultsTab({ tenantId, role, sp, timezone }: { tenantId: string; 
                 {r.byKind.map((k) => (
                   <TR key={k.kind}>
                     <TD className="font-medium">{k.label}</TD>
-                    <TD className="text-right font-mono tabular-nums">{k.due}</TD>
-                    <TD className="text-right font-mono tabular-nums">{k.contacted}</TD>
-                    <TD className="text-right font-mono tabular-nums">
+                    <TD className="text-right tabular-nums">{k.due}</TD>
+                    <TD className="text-right tabular-nums">{k.contacted}</TD>
+                    <TD className="text-right tabular-nums">
                       {k.booked} <span className="text-muted-foreground">({pct(k.booked, k.due)})</span>
                     </TD>
                   </TR>
@@ -352,11 +352,11 @@ async function ResultsTab({ tenantId, role, sp, timezone }: { tenantId: string; 
                 {r.byPerson.map((x) => (
                   <TR key={x.id ?? "automatic"}>
                     <TD className={cn("font-medium", x.id === null && "text-muted-foreground")}>{x.name}</TD>
-                    <TD className="text-right font-mono tabular-nums">{x.calls}</TD>
-                    <TD className="text-right font-mono tabular-nums">{x.messages}</TD>
-                    <TD className="text-right font-mono tabular-nums">{x.booked}</TD>
-                    <TD className="text-right font-mono tabular-nums">{x.declined}</TD>
-                    <TD className="text-right font-mono tabular-nums">{x.unreachable}</TD>
+                    <TD className="text-right tabular-nums">{x.calls}</TD>
+                    <TD className="text-right tabular-nums">{x.messages}</TD>
+                    <TD className="text-right tabular-nums">{x.booked}</TD>
+                    <TD className="text-right tabular-nums">{x.declined}</TD>
+                    <TD className="text-right tabular-nums">{x.unreachable}</TD>
                   </TR>
                 ))}
               </TBody>

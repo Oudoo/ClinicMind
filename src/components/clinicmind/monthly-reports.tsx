@@ -14,7 +14,7 @@ import {
 } from "@/modules/finance/monthly-reports";
 import type { ReportScope } from "@/modules/finance/reports";
 import { INSTALMENT_STATE_LABELS } from "@/modules/finance/instalment-schedule";
-import { Badge, Card, EmptyState, SectionTitle } from "@/components/ui/primitives";
+import { Badge, Card, EmptyState, SectionTitle, Bento } from "@/components/ui/primitives";
 import { Columns, HBars, Kpi } from "@/components/ui/kpi";
 import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/table";
 
@@ -28,7 +28,7 @@ import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/table";
 /** Whole EGP, a true minus sign for money that went the other way. */
 const egp = (v: number) => (v < 0 ? `−${formatNumber(-v)}` : formatNumber(v));
 const pct = (v: number | null) => (v === null ? "—" : `${v.toLocaleString("en-US", { maximumFractionDigits: 1 })}%`);
-const NUM = "text-right font-mono tabular-nums whitespace-nowrap";
+const NUM = "text-right tabular-nums whitespace-nowrap";
 const short = (label: string) => label.replace(/ \d{2}(\d{2})$/, " ’$1");
 
 export async function ProfitAndLoss({ scope }: { scope: ReportScope }) {
@@ -38,12 +38,12 @@ export async function ProfitAndLoss({ scope }: { scope: ReportScope }) {
   const costs = [...r.categories.map((c) => ({ label: c.label, value: t.byCategory[c.key] ?? 0 })), ...(t.doctorPay ? [{ label: "Doctors' pay", value: t.doctorPay }] : [])].sort((a, b) => b.value - a.value);
   return (
     <div className="space-y-4" data-testid="pnl-report">
-      <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
+      <Bento>
         <Kpi label="Revenue · EGP" value={egp(t.revenue)} tone="accent" hint={`${egp(t.production)} of work done, ${egp(t.writtenOff)} written off`} />
         <Kpi label="Expenses · EGP" value={egp(t.expenses)} hint={`${r.categories.length} categor${r.categories.length === 1 ? "y" : "ies"}`} />
         <Kpi label="Doctors' pay · EGP" value={egp(t.doctorPay)} hint={open ? "as the statements stand; a month is open" : "as their statements have it"} />
         <Kpi label="Profit · EGP" value={egp(t.profit)} tone={t.profit < 0 ? "warning" : "default"} hint={t.margin === null ? "no revenue" : `${pct(t.margin)} of revenue`} />
-      </div>
+      </Bento>
 
       <Card className="space-y-3">
         <SectionTitle title="Revenue and costs, month by month" description="Revenue (accent) against expenses and the doctors' pay (grey)." />
@@ -127,12 +127,12 @@ export async function OwedByAge({ scope }: { scope: ReportScope }) {
   const day = (iso: string) => formatDateInTz(new Date(iso), tz, { day: "numeric", month: "short", year: "numeric" });
   return (
     <div className="space-y-4" data-testid="owed-report">
-      <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
+      <Bento>
         <Kpi label="Owed to the clinic · EGP" value={egp(t.total)} tone="accent" hint="by patients and by payers, now" />
         <Kpi label="Over 90 days · EGP" value={egp(t.buckets[3])} tone={t.buckets[3] ? "warning" : "default"} hint={t.total ? `${pct(Math.round((t.buckets[3] / t.total) * 1000) / 10)} of it` : "nothing owed"} />
         <Kpi label="Payers late · EGP" value={egp(t.late)} tone={t.late ? "warning" : "default"} hint="past their days to pay" />
         <Kpi label="Not invoiced yet · EGP" value={egp(r.notInvoiced)} hint={`patients' credit held: ${egp(r.credit)}`} />
-      </div>
+      </Bento>
 
       <Card className="overflow-hidden p-0">
         <Table aria-label="Owed by age" data-testid="owed-table">
@@ -226,12 +226,12 @@ export async function Collection({ scope }: { scope: ReportScope }) {
   const t = r.totals;
   return (
     <div className="space-y-4" data-testid="collection-report">
-      <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
+      <Bento>
         <Kpi label="Collection rate" value={pct(t.rate)} tone="accent" hint={`of ${formatNumber(t.invoices)} invoices issued`} />
         <Kpi label="Collected · EGP" value={egp(t.collected)} hint={`${egp(t.fromPatients)} from patients, ${egp(t.fromPayers)} from payers`} />
         <Kpi label="Still owed · EGP" value={egp(t.payersOwe + t.patientsOwe)} tone={t.payersOwe + t.patientsOwe ? "warning" : "default"} hint={`${egp(t.payersOwe)} by payers, ${egp(t.patientsOwe)} by patients`} />
         <Kpi label="Written off · EGP" value={egp(t.writtenOff)} hint={`of ${egp(t.billed)} billed`} />
-      </div>
+      </Bento>
       <Card className="space-y-3">
         <SectionTitle title="Collected of what was billed, by month of issue" description="An older month has had longer to be paid." />
         <Columns items={r.months.map((m) => ({ label: short(m.label), value: m.rate ?? 0 }))} format={(v) => `${v}%`} />
@@ -275,12 +275,12 @@ export async function Acceptance({ scope }: { scope: ReportScope }) {
   const t = r.totals;
   return (
     <div className="space-y-4" data-testid="acceptance-report">
-      <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
+      <Bento>
         <Kpi label="Acceptance" value={pct(t.rate)} tone="accent" hint={`${formatNumber(t.accepted)} of ${formatNumber(t.presented)} plans given`} />
         <Kpi label="By value" value={pct(t.valueRate)} hint={`${egp(t.acceptedValue)} of ${egp(t.presentedValue)} EGP`} />
         <Kpi label="Declined or expired" value={formatNumber(t.declined + t.expired)} hint={`${formatNumber(t.declined)} declined, ${formatNumber(t.expired)} expired`} />
         <Kpi label="Waiting" value={formatNumber(t.open)} hint="given, still valid, no answer yet" />
-      </div>
+      </Bento>
       <Card className="overflow-hidden p-0">
         <Table aria-label="Case acceptance by month" data-testid="acceptance-table">
           <THead>
@@ -394,12 +394,12 @@ export async function InstalmentsDue({ scope }: { scope: ReportScope }) {
   const lateNow = r.late.reduce((s, l) => s + l.owed, 0);
   return (
     <div className="space-y-4" data-testid="instalments-report">
-      <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
+      <Bento>
         <Kpi label="Left to collect · EGP" value={egp(r.leftToCollect)} tone="accent" hint={`on ${r.activePlans} active plan${r.activePlans === 1 ? "" : "s"}`} />
         <Kpi label="Late now · EGP" value={egp(lateNow)} tone={lateNow ? "warning" : "default"} hint={`${r.late.length} instalment${r.late.length === 1 ? " past its" : "s past their"} day`} />
         <Kpi label="Next 30 days · EGP" value={egp(next30)} hint={`${r.next.length} instalment${r.next.length === 1 ? "" : "s"} falling due`} />
         <Kpi label="Paid in these months · EGP" value={egp(t.paid)} hint={`of ${egp(t.due)} due`} />
-      </div>
+      </Bento>
       <Card className="overflow-hidden p-0">
         <Table aria-label="Instalments due by month" data-testid="instalments-table">
           <THead>
@@ -453,12 +453,12 @@ export async function Sources({ scope }: { scope: ReportScope }) {
   const t = r.totals;
   return (
     <div className="space-y-4" data-testid="sources-report">
-      <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
+      <Bento>
         <Kpi label="Work done · EGP" value={egp(t.production)} tone="accent" hint={`for ${formatNumber(t.seen)} patients seen`} />
         <Kpi label="New patients" value={formatNumber(t.newPatients)} hint="registered in these months" />
         <Kpi label="Campaign cost · EGP" value={egp(t.cost)} hint="spread over the days each ran" />
         <Kpi label="Money in · EGP" value={egp(t.collected)} hint="from these patients, and their payers" />
-      </div>
+      </Bento>
       <Card className="space-y-3">
         <SectionTitle title="Work done by source" description="Where the patients first came from." />
         {r.rows.some((s) => s.production > 0) ? <HBars items={r.rows.filter((s) => s.production > 0).map((s) => ({ label: s.label, value: s.production }))} format={(v) => formatNumber(v)} labelWidth="w-32 sm:w-44" /> : <EmptyState title="No work done in these months" />}

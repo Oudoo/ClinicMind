@@ -61,7 +61,7 @@ export function EmbedSecretCard({ secretPrefix, rotatedAt, canRotate }: Props) {
           <KeyRound className="h-4 w-4 text-muted-foreground" />
           <span className="data-label">Embed secret</span>
           {live.secretPrefix ? (
-            <span className="font-mono text-xs">{live.secretPrefix}…</span>
+            <span className="tabular-nums text-xs">{live.secretPrefix}…</span>
           ) : (
             <Badge tone="warning">not generated</Badge>
           )}

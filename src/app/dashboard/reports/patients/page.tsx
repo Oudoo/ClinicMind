@@ -8,7 +8,7 @@ import { getTenantTimezone } from "@/modules/appointments/service";
 import { ACTIVE_DAYS, getPatientPopulation, type Split } from "@/modules/reporting/population";
 import { periodQuery, resolvePeriod } from "@/modules/reporting/period";
 import { parseReportQuery } from "@/modules/reporting/query";
-import { Badge, Card, EmptyState, SectionTitle } from "@/components/ui/primitives";
+import { Badge, Card, EmptyState, SectionTitle, Bento } from "@/components/ui/primitives";
 import { Columns, DeltaChip, HBars, Kpi } from "@/components/ui/kpi";
 import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/table";
 import { PeriodPicker } from "@/components/clinicmind/report-period-picker";
@@ -58,7 +58,7 @@ export default async function PatientDataPage({ searchParams }: { searchParams: 
       <SectionTitle title="Patient data" description="Who the clinic's patients are, what they come for, and who needs a follow-up booked." />
       <PeriodPicker basePath="/dashboard/reports/patients" preset={period.preset} fromKey={period.fromKey} toKey={period.toKey} previous={previous} />
 
-      <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-3 xl:grid-cols-6">
+      <Bento className="lg:grid-cols-3 xl:grid-cols-6">
         <Kpi label="Patients" value={fmtCount(pop.total)} tone="accent" hint="registered, not archived" />
         <Kpi label="Active" value={fmtCount(pop.active)} hint={`a visit in the last ${ACTIVE_DAYS} days${share(pop.active)}`} />
         <Kpi
@@ -78,7 +78,7 @@ export default async function PatientDataPage({ searchParams }: { searchParams: 
           }
         />
         <Kpi label="No follow-up booked" value={fmtCount(pop.followUpGaps.count)} tone={pop.followUpGaps.count ? "warning" : "default"} hint="after their last signed procedure" />
-      </div>
+      </Bento>
 
       <Card className="min-w-0 space-y-3">
         <SectionTitle title="New patients per month" description="Registrations over the last twelve months (clinic clock)." />
@@ -107,8 +107,8 @@ export default async function PatientDataPage({ searchParams }: { searchParams: 
                   {pop.topTreatments.map((t) => (
                     <TR key={t.key}>
                       <TD className="py-2 font-medium">{t.label}</TD>
-                      <TD className="py-2 text-right font-mono tabular-nums">{t.count}</TD>
-                      <TD className="py-2 text-right font-mono tabular-nums">{t.procedures}</TD>
+                      <TD className="py-2 text-right tabular-nums">{t.count}</TD>
+                      <TD className="py-2 text-right tabular-nums">{t.procedures}</TD>
                     </TR>
                   ))}
                 </TBody>
@@ -153,9 +153,9 @@ export default async function PatientDataPage({ searchParams }: { searchParams: 
                     </div>
                   </TD>
                   <TD className="hidden text-sm md:table-cell">
-                    {g.treatment} · <span className="font-mono text-xs">{date(g.performedAt)}</span>
+                    {g.treatment} · <span className="tabular-nums text-xs">{date(g.performedAt)}</span>
                   </TD>
-                  <TD className="text-right font-mono tabular-nums">{g.daysSince}</TD>
+                  <TD className="text-right tabular-nums">{g.daysSince}</TD>
                   <TD className="hidden text-sm text-muted-foreground lg:table-cell">{g.doctor ?? "—"}</TD>
                   <TD>
                     <Link href={`/dashboard/patients/${g.patientId}`} className="inline-flex h-8 w-8 items-center justify-center rounded-md hover:bg-muted" aria-label={`Book a follow-up for ${g.fullName}`} title="Open the patient to book a follow-up">

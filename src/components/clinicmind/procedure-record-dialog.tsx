@@ -316,7 +316,7 @@ export function RecordProcedureDialog({
                   : "Price set by hand"
                 : `List price on ${formatDateInTz(fromDateKey(date, timezone) ?? new Date(), timezone, { day: "numeric", month: "short", year: "numeric" })}`
               : range}{" "}
-            · to pay: <span className="font-mono tabular-nums text-foreground">{formatNumber(net)} EGP</span>
+            · to pay: <span className="tabular-nums text-foreground">{formatNumber(net)} EGP</span>
             {usesList && priceEdited ? (
               <button type="button" className="ml-2 underline underline-offset-2 hover:text-foreground" onClick={() => setPriceEdited(false)}>
                 Use the list price

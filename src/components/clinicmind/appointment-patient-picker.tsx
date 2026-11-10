@@ -154,7 +154,7 @@ export function PatientPicker({
                 >
                   <span className="truncate font-medium">{p.fullName}</span>
                   {p.phone ? (
-                    <span className="shrink-0 font-mono text-xs text-muted-foreground">{p.phone}</span>
+                    <span className="tabular-nums shrink-0 text-xs text-muted-foreground">{p.phone}</span>
                   ) : null}
                 </button>
               </li>

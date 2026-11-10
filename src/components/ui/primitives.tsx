@@ -1,14 +1,13 @@
 import * as React from "react";
 import { cn } from "@/lib/utils";
 
-/** A grid of equal tiles, for content that really is a set of equals (never as a page's structure). */
+/**
+ * Several figures (Metric, Kpi) in one surface, set apart by space instead of a card each:
+ * the figures support the page, they are not its structure. Four to a line on a wide screen
+ * unless `className` says otherwise (`lg:grid-cols-3`).
+ */
 export function Bento({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
-  return (
-    <div
-      className={cn("grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4", className)}
-      {...props}
-    />
-  );
+  return <div className={cn("bento stat-grid grid grid-cols-2 gap-x-6 gap-y-5 lg:grid-cols-4", className)} {...props} />;
 }
 
 /** One bordered surface for content that belongs together. Do not put a card inside a card: divide it with rules instead. */
@@ -59,7 +58,7 @@ export function Badge({
   );
 }
 
-/** One headline figure in its own card. For several figures side by side, use StatStrip. */
+/** A figure with its label and one line of context. Several of them go inside a Bento. */
 export function Metric({
   label,
   value,
@@ -69,22 +68,15 @@ export function Metric({
   label: string;
   value: React.ReactNode;
   hint?: string;
+  /** `warning` colours the figure; say why in the hint. `accent` is kept for callers and reads as default. */
   tone?: "default" | "accent" | "warning";
 }) {
   return (
-    <Card className="flex flex-col gap-2">
+    <div className="stat">
       <span className="data-label">{label}</span>
-      <span
-        className={cn(
-          "metric-value",
-          tone === "accent" && "text-accent",
-          tone === "warning" && "text-warning",
-        )}
-      >
-        {value}
-      </span>
+      <span className={cn("metric-value", tone === "warning" && "text-warning")}>{value}</span>
       {hint ? <span className="text-xs text-muted-foreground">{hint}</span> : null}
-    </Card>
+    </div>
   );
 }
 
@@ -118,9 +110,19 @@ export function SectionTitle({
   );
 }
 
-export function EmptyState({ title, hint }: { title: string; hint?: string }) {
+/**
+ * Nothing here yet: what is missing, and what to do about it. On the page it is a dashed box;
+ * `inCard` drops the box, for an empty list inside a card (no box inside a card).
+ */
+export function EmptyState({ title, hint, inCard = false, className }: { title: string; hint?: React.ReactNode; inCard?: boolean; className?: string }) {
   return (
-    <div className="flex flex-col items-center justify-center gap-1 rounded-lg border border-dashed border-border px-4 py-10 text-center">
+    <div
+      className={cn(
+        "flex flex-col items-center justify-center gap-1 text-center",
+        inCard ? "px-4 py-6" : "rounded-lg border border-dashed border-border px-4 py-10",
+        className,
+      )}
+    >
       <p className="text-sm font-medium">{title}</p>
       {hint ? <p className="max-w-prose text-sm text-muted-foreground">{hint}</p> : null}
     </div>

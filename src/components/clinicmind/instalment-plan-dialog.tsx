@@ -148,7 +148,7 @@ export function NewInstalmentPlanButton({
                   {schedule.map((s) => (
                     <li key={s.number} className="flex justify-between gap-3">
                       <span>{s.number === 0 ? "Down payment, today" : `${s.number}. ${day(s.dueKey)}`}</span>
-                      <span className="font-mono tabular-nums">{formatNumber(s.amount)} EGP</span>
+                      <span className="tabular-nums">{formatNumber(s.amount)} EGP</span>
                     </li>
                   ))}
                 </ol>

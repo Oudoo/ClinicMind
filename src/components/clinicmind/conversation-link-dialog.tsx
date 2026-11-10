@@ -108,7 +108,7 @@ export function ConversationLinkDialog({
                     >
                       <span className="min-w-0">
                         <span className="block truncate font-medium">{l.fullName}</span>
-                        <span className="block font-mono text-xs text-muted-foreground">{l.phone ?? "—"}</span>
+                        <span className="tabular-nums block text-xs text-muted-foreground">{l.phone ?? "—"}</span>
                       </span>
                       <StageBadge stage={l.stage} />
                     </button>

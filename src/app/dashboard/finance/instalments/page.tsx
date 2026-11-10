@@ -93,7 +93,7 @@ export default async function InstalmentsPage({ searchParams }: { searchParams: 
                   )}
                 >
                   {VIEW_LABELS[v]}
-                  {count ? <span className={cn("rounded-md px-1.5 font-mono text-[10px]", v === "overdue" ? "bg-danger/10 text-danger" : "bg-card text-muted-foreground")}>{count}</span> : null}
+                  {count ? <span className={cn("tabular-nums rounded-md px-1.5 text-xs", v === "overdue" ? "bg-danger/10 text-danger" : "bg-card text-muted-foreground")}>{count}</span> : null}
                 </Link>
               </li>
             );
@@ -154,7 +154,7 @@ export default async function InstalmentsPage({ searchParams }: { searchParams: 
                       {canAct ? <div className="mt-2 flex flex-wrap gap-1 sm:hidden">{actions}</div> : null}
                     </TD>
                     <TD className="hidden whitespace-nowrap text-right sm:table-cell">
-                      <span className="font-mono tabular-nums">{formatNumber(p.position.paid)}</span>
+                      <span className="tabular-nums">{formatNumber(p.position.paid)}</span>
                       <span className="text-xs text-muted-foreground"> / {formatNumber(p.total)}</span>
                       <div className="ml-auto mt-1 h-1 w-24 overflow-hidden rounded-full bg-muted" aria-hidden="true">
                         <div className="h-full rounded-full bg-accent" style={{ width: `${share}%` }} />

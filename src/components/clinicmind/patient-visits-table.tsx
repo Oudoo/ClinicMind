@@ -54,7 +54,7 @@ export function PatientVisitsTable({ rows }: { rows: VisitRow[] }) {
       <TBody>
         {rows.map((row) => (
           <TR key={row.id}>
-            <TD className="whitespace-nowrap font-mono text-xs tabular-nums">
+            <TD className="whitespace-nowrap text-xs tabular-nums">
               {formatDate(row.date)}{" "}
               <span className="text-muted-foreground">{formatTime(row.date)}</span>
             </TD>

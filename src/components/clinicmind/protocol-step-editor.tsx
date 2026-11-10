@@ -77,7 +77,7 @@ export function StepEditor({
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex min-w-0 items-center gap-2">
           <StepKindIcon kind={step.kind} className="h-4 w-4 shrink-0 text-muted-foreground" />
-          <span className="font-mono text-xs text-muted-foreground">
+          <span className="tabular-nums text-xs text-muted-foreground">
             Step {index + 1} · {dayLabel(step)}
           </span>
           {questions.some((q) => q.highRisk || q.danger) ? <Badge tone="danger">red flags</Badge> : null}

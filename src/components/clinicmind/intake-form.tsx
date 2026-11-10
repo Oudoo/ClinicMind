@@ -240,7 +240,7 @@ export function IntakeForm({ token, intake }: { token: string; intake: PublicInt
                     <Input id={`${id}-fullName`} className={bigInput} value={values.fullName} onChange={(e) => set("fullName", e.target.value)} maxLength={120} autoComplete="name" required aria-invalid={field("fullName") ? true : undefined} />
                   </Labelled>
                   <Labelled id={`${id}-phone`} label={copy.personal.phone} hint={copy.personal.phoneHint} error={field("phone")}>
-                    <Input id={`${id}-phone`} className={cn(bigInput, "font-mono")} dir="ltr" type="tel" inputMode="tel" value={values.phone} onChange={(e) => set("phone", e.target.value)} maxLength={30} autoComplete="tel" required aria-invalid={field("phone") ? true : undefined} />
+                    <Input id={`${id}-phone`} className={cn(bigInput, "tabular-nums")} dir="ltr" type="tel" inputMode="tel" value={values.phone} onChange={(e) => set("phone", e.target.value)} maxLength={30} autoComplete="tel" required aria-invalid={field("phone") ? true : undefined} />
                   </Labelled>
                   <label className="flex min-h-12 items-center gap-3 rounded-lg border border-border px-3 text-sm">
                     <Checkbox className="h-5 w-5" checked={values.whatsappSame} onChange={(e) => set("whatsappSame", e.target.checked)} />
@@ -248,7 +248,7 @@ export function IntakeForm({ token, intake }: { token: string; intake: PublicInt
                   </label>
                   {!values.whatsappSame ? (
                     <Labelled id={`${id}-whatsapp`} label={copy.personal.whatsapp} error={field("whatsapp")}>
-                      <Input id={`${id}-whatsapp`} className={cn(bigInput, "font-mono")} dir="ltr" type="tel" inputMode="tel" value={values.whatsapp} onChange={(e) => set("whatsapp", e.target.value)} maxLength={30} aria-invalid={field("whatsapp") ? true : undefined} />
+                      <Input id={`${id}-whatsapp`} className={cn(bigInput, "tabular-nums")} dir="ltr" type="tel" inputMode="tel" value={values.whatsapp} onChange={(e) => set("whatsapp", e.target.value)} maxLength={30} aria-invalid={field("whatsapp") ? true : undefined} />
                     </Labelled>
                   ) : null}
                   <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -292,7 +292,7 @@ export function IntakeForm({ token, intake }: { token: string; intake: PublicInt
                     </Labelled>
                     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                       <Labelled id={`${id}-ecPhone`} label={copy.contact.emergencyPhone} optional={copy.optional} error={field("emergencyContactPhone")}>
-                        <Input id={`${id}-ecPhone`} className={cn(bigInput, "font-mono")} dir="ltr" type="tel" inputMode="tel" value={values.emergencyContactPhone} onChange={(e) => set("emergencyContactPhone", e.target.value)} maxLength={30} autoComplete="off" aria-invalid={field("emergencyContactPhone") ? true : undefined} />
+                        <Input id={`${id}-ecPhone`} className={cn(bigInput, "tabular-nums")} dir="ltr" type="tel" inputMode="tel" value={values.emergencyContactPhone} onChange={(e) => set("emergencyContactPhone", e.target.value)} maxLength={30} autoComplete="off" aria-invalid={field("emergencyContactPhone") ? true : undefined} />
                       </Labelled>
                       <Labelled id={`${id}-ecRel`} label={copy.contact.emergencyRelation} hint={copy.contact.relationHint} optional={copy.optional} error={field("emergencyContactRelation")}>
                         <Input id={`${id}-ecRel`} className={bigInput} value={values.emergencyContactRelation} onChange={(e) => set("emergencyContactRelation", e.target.value)} maxLength={60} autoComplete="off" />

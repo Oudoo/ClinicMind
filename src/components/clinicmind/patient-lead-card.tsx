@@ -113,7 +113,7 @@ export async function PatientLeadCard({ tenantId, role, patientId }: { tenantId:
                 <Link href={`/dashboard/leads/${l.id}`} className="min-w-0 truncate hover:text-accent hover:underline">
                   {l.interests.map((k) => names.get(k) ?? k).join(", ") || "Enquiry"} · {date(l.createdAt)}
                 </Link>
-                <span className="shrink-0 font-mono text-[10px] uppercase text-muted-foreground">{STAGE_LABELS[l.stage]}</span>
+                <span className="tabular-nums shrink-0 text-xs text-muted-foreground">{STAGE_LABELS[l.stage]}</span>
               </li>
             ))}
           </ul>

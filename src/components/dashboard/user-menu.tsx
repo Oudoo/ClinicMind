@@ -5,7 +5,7 @@ import { useState } from "react";
 import { ChevronDown, LogOut, Settings, UserRound } from "lucide-react";
 import Link from "next/link";
 import { announceAuthChange, clearBrowserState } from "@/lib/auth/browser-session";
-import { initials } from "@/lib/utils";
+import { initials, roleLabel } from "@/lib/utils";
 
 export interface ShellUser {
   email: string | null;
@@ -16,16 +16,6 @@ export interface ShellUser {
   /** False for embed-token sessions, which have nothing to sign out of here. */
   canSignOut: boolean;
 }
-
-/** The role as the clinic says it, under the person's name. */
-const ROLE_NAMES: Record<string, string> = {
-  SUPER_ADMIN: "Platform administrator",
-  CLINIC_OWNER: "Clinic owner",
-  DOCTOR: "Doctor",
-  NURSE: "Nurse",
-  RECEPTIONIST: "Reception",
-  ASSISTANT: "Assistant",
-};
 
 export function UserMenu({ user }: { user: ShellUser }) {
   const [pending, setPending] = useState(false);
@@ -62,7 +52,7 @@ export function UserMenu({ user }: { user: ShellUser }) {
           </span>
           <span className="hidden flex-col leading-tight sm:flex">
             <span className="max-w-[12rem] truncate text-xs font-medium">{name}</span>
-            <span className="text-xs text-muted-foreground">{ROLE_NAMES[user.role] ?? user.role}</span>
+            <span className="text-xs text-muted-foreground">{roleLabel(user.role)}</span>
           </span>
           <ChevronDown className="hidden h-3.5 w-3.5 text-muted-foreground sm:block" />
         </button>

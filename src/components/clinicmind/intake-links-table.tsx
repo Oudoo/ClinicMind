@@ -92,7 +92,7 @@ export function IntakeLinksTable({ links, timezone }: { links: IntakeLinkDTO[]; 
                   <TR key={link.id}>
                     <TD>
                       <div className="font-medium">{link.label ?? (link.kind === "PATIENT" ? "Personal link" : "Open link")}</div>
-                      <div className="font-mono text-[11px] text-muted-foreground">
+                      <div className="font-mono text-xs text-muted-foreground">
                         {link.tokenPrefix}… · {date(link.createdAt)}
                       </div>
                       {/* Phones: kind, uses and status live here so the actions stay on screen. */}
@@ -109,7 +109,7 @@ export function IntakeLinksTable({ links, timezone }: { links: IntakeLinkDTO[]; 
                         </div>
                         <div className="flex flex-wrap items-center gap-1.5">
                           <Badge tone={STATUS_TONE[link.status]}>{link.status}</Badge>
-                          <span className="font-mono tabular-nums">
+                          <span className="tabular-nums">
                             {link.uses}
                             {link.maxUses ? ` / ${link.maxUses}` : ""} used · {link.submissionCount} {link.submissionCount === 1 ? "form" : "forms"}
                           </span>
@@ -124,14 +124,14 @@ export function IntakeLinksTable({ links, timezone }: { links: IntakeLinkDTO[]; 
                       ) : (
                         <Badge>{link.kind === "OPEN" ? "Open" : "Patient"}</Badge>
                       )}
-                      <div className="text-[11px] text-muted-foreground">{link.language === "ar" ? "Arabic" : "English"}</div>
+                      <div className="text-xs text-muted-foreground">{link.language === "ar" ? "Arabic" : "English"}</div>
                     </TD>
                     <TD className="hidden text-sm text-muted-foreground lg:table-cell">{link.createdBy?.fullName ?? "—"}</TD>
-                    <TD className="hidden whitespace-nowrap font-mono text-xs text-muted-foreground lg:table-cell">{date(link.expiresAt)}</TD>
-                    <TD className="hidden font-mono text-xs tabular-nums md:table-cell">
+                    <TD className="tabular-nums hidden whitespace-nowrap text-xs text-muted-foreground lg:table-cell">{date(link.expiresAt)}</TD>
+                    <TD className="hidden text-xs tabular-nums md:table-cell">
                       {link.uses}
                       {link.maxUses ? ` / ${link.maxUses}` : ""}
-                      <div className="text-[11px] text-muted-foreground">
+                      <div className="text-xs text-muted-foreground">
                         {link.submissionCount} {link.submissionCount === 1 ? "form" : "forms"}
                       </div>
                     </TD>

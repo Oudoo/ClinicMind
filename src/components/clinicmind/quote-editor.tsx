@@ -346,7 +346,7 @@ export function QuoteEditor({
                         : "—"}
                     </span>
                     <span className="flex items-center gap-2">
-                      <span className="font-mono text-sm font-medium tabular-nums text-foreground">{net !== null ? `${formatNumber(net)} EGP` : ""}</span>
+                      <span className="text-sm font-medium tabular-nums text-foreground">{net !== null ? `${formatNumber(net)} EGP` : ""}</span>
                       <Button type="button" variant="ghost" size="sm" aria-label="Remove this treatment" onClick={() => setPhase(phase.key, (x) => ({ ...x, items: x.items.filter((r) => r.key !== row.key) }))}>
                         <Trash2 className="h-4 w-4" aria-hidden="true" />
                       </Button>
@@ -377,15 +377,15 @@ export function QuoteEditor({
         <dl className="space-y-1 self-end text-sm">
           <div className="flex justify-between gap-4 text-muted-foreground">
             <dt>Before discounts</dt>
-            <dd className="font-mono tabular-nums">{formatNumber(totals.list)}</dd>
+            <dd className="tabular-nums">{formatNumber(totals.list)}</dd>
           </div>
           <div className="flex justify-between gap-4 text-muted-foreground">
             <dt>Discounts</dt>
-            <dd className="font-mono tabular-nums">−{formatNumber(totals.discount)}</dd>
+            <dd className="tabular-nums">−{formatNumber(totals.discount)}</dd>
           </div>
           <div className="flex justify-between gap-4 border-t border-border pt-1 font-semibold">
             <dt>Total (EGP)</dt>
-            <dd className="font-mono tabular-nums" data-testid="editor-total">
+            <dd className="tabular-nums" data-testid="editor-total">
               {formatNumber(totals.total)}
             </dd>
           </div>

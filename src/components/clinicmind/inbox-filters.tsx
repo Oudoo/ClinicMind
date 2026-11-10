@@ -45,7 +45,7 @@ export function InboxFilters({ state, counts }: { state: InboxState; counts: Inb
               )}
             >
               {INBOX_FILTER_LABELS[f]}
-              {count !== null ? <span className="font-mono text-[10px]">{count}</span> : null}
+              {count !== null ? <span className="tabular-nums text-xs">{count}</span> : null}
             </button>
           );
         })}

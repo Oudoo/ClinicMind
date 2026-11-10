@@ -32,7 +32,7 @@ function dobLabel(key: string | undefined): string | null {
 /** A phone number kept left-to-right inside Arabic text (otherwise the "+" jumps to the end). */
 function Phone({ value }: { value: string | null | undefined }) {
   return value ? (
-    <bdi dir="ltr" className="font-mono text-xs">
+    <bdi dir="ltr" className="tabular-nums text-xs">
       {value}
     </bdi>
   ) : null;
@@ -100,7 +100,7 @@ export function IntakeReviewQueue({
             )}
           >
             {t.label}
-            {t.count !== null ? <span className="font-mono tabular-nums">{t.count}</span> : null}
+            {t.count !== null ? <span className="tabular-nums">{t.count}</span> : null}
           </Link>
         ))}
       </nav>
@@ -171,7 +171,7 @@ function SubmissionCard({ submission: s, timezone, treatments }: { submission: I
             <Badge tone={STATUS_TONE[s.status]}>{s.status}</Badge>
             <Badge tone="accent">{s.language === "ar" ? "Arabic" : "English"}</Badge>
           </div>
-          <p className="font-mono text-xs text-muted-foreground">
+          <p className="tabular-nums text-xs text-muted-foreground">
             {s.phone ?? "—"}
             {s.email ? ` · ${s.email}` : ""}
           </p>
@@ -228,7 +228,7 @@ function SubmissionCard({ submission: s, timezone, treatments }: { submission: I
             <Link href={`/dashboard/patients/${s.matchedPatient.id}`} className="font-medium text-foreground underline-offset-2 hover:underline">
               {s.matchedPatient.fullName}
             </Link>
-            {s.matchedPatient.phone ? <span className="font-mono"> · {s.matchedPatient.phone}</span> : null} — same phone number as an existing patient.
+            {s.matchedPatient.phone ? <span className="tabular-nums"> · {s.matchedPatient.phone}</span> : null} — same phone number as an existing patient.
           </span>
         </Alert>
       ) : null}
@@ -301,7 +301,7 @@ function Row({ label, value, mono }: { label: string; value: ReactNode; mono?: b
   return (
     <div className="flex flex-col gap-0.5 text-sm sm:flex-row sm:justify-between sm:gap-3">
       <dt className="shrink-0 text-xs text-muted-foreground">{label}</dt>
-      <dd dir="auto" className={cn("min-w-0 break-words sm:text-right", mono && "font-mono text-xs", empty && "text-muted-foreground")}>
+      <dd dir="auto" className={cn("min-w-0 break-words sm:text-right", mono && "tabular-nums text-xs", empty && "text-muted-foreground")}>
         {empty ? "—" : value}
       </dd>
     </div>

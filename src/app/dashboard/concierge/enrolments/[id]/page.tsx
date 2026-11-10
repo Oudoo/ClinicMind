@@ -91,7 +91,7 @@ export default async function EnrolmentPage({ params }: { params: Promise<{ id: 
             <p className="font-medium">{enrolment.patient.fullName}</p>
           )}
           {enrolment.patient.phone ? (
-            <p className="flex items-center gap-1 font-mono text-xs text-muted-foreground">
+            <p className="tabular-nums flex items-center gap-1 text-xs text-muted-foreground">
               <Phone className="h-3.5 w-3.5" aria-hidden="true" />
               <a href={`tel:${enrolment.patient.phone}`} className="hover:text-foreground">
                 {enrolment.patient.phone}
@@ -111,7 +111,7 @@ export default async function EnrolmentPage({ params }: { params: Promise<{ id: 
         <Card className="space-y-1 p-4 sm:p-5">
           <p className="data-label">Protocol</p>
           <p className="font-medium">
-            {enrolment.protocol.name} <span className="font-mono text-xs text-muted-foreground">v{enrolment.protocol.version}</span>
+            {enrolment.protocol.name} <span className="tabular-nums text-xs text-muted-foreground">v{enrolment.protocol.version}</span>
           </p>
           <p className="text-xs text-muted-foreground">
             {p.total} steps over {enrolment.protocol.lengthDays} days · started {formatDateInTz(new Date(enrolment.startedAt), timezone)}

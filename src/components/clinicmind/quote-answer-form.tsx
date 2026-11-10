@@ -150,7 +150,7 @@ export function QuoteAnswerForm({ quote, mode, onDone }: { quote: PublicQuoteDTO
                     </span>
                     {i.site ? <span className="block text-xs text-muted-foreground">{i.site}</span> : null}
                   </span>
-                  <span className="shrink-0 font-mono text-sm tabular-nums" dir="ltr">
+                  <span className="shrink-0 text-sm tabular-nums" dir="ltr">
                     {formatNumber(i.net)}
                   </span>
                 </label>
@@ -163,7 +163,7 @@ export function QuoteAnswerForm({ quote, mode, onDone }: { quote: PublicQuoteDTO
 
       <p className="flex items-baseline justify-between gap-4 border-t border-border pt-2 font-semibold">
         <span>{t.total}</span>
-        <span className="font-mono tabular-nums" dir="ltr" data-testid="quote-chosen-total">
+        <span className="tabular-nums" dir="ltr" data-testid="quote-chosen-total">
           {formatNumber(total)}
         </span>
       </p>

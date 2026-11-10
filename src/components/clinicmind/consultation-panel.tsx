@@ -187,7 +187,7 @@ function CaptureForm({ presetPatient, canSign, canAskEvidence, onChanged, onClos
         hint={
           <span className="flex justify-between gap-4">
             <span>At least {TRANSCRIPT_MIN_LENGTH} characters.</span>
-            <span className="font-mono tabular-nums">
+            <span className="tabular-nums">
               {transcript.length.toLocaleString()} / {TRANSCRIPT_MAX_LENGTH.toLocaleString()}
             </span>
           </span>

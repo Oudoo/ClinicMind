@@ -46,7 +46,7 @@ export async function PatientIntakeCard({
             <li key={s.id} className="flex items-start justify-between gap-3 rounded-md border border-border p-3">
               <div className="min-w-0">
                 <p className="text-sm font-medium">Form {s.status === "PENDING" ? "awaiting review" : s.status === "ACCEPTED" ? "accepted" : "rejected"}</p>
-                <p className="font-mono text-xs text-muted-foreground">
+                <p className="tabular-nums text-xs text-muted-foreground">
                   {formatDateInTz(new Date(s.submittedAt), timezone)}
                   {s.data.treatmentKeys.length ? ` · ${s.data.treatmentKeys.join(", ")}` : ""}
                 </p>

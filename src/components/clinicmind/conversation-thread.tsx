@@ -104,7 +104,7 @@ export function ConversationThread({
             </div>
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
               {conversation.contactPhone ? (
-                <span className="inline-flex items-center gap-1.5 font-mono">
+                <span className="tabular-nums inline-flex items-center gap-1.5">
                   {conversation.contactPhone}
                   {wa ? (
                     <a href={wa} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-0.5 font-sans text-success hover:underline" title="Open a WhatsApp chat (wa.me)">
@@ -144,7 +144,7 @@ export function ConversationThread({
         {days.map((day) => (
           <Fragment key={day.key}>
             <div className="flex justify-center">
-              <span className="rounded-full bg-card px-3 py-0.5 font-mono text-[11px] text-muted-foreground shadow-sm">{day.label}</span>
+              <span className="tabular-nums rounded-full bg-card px-3 py-0.5 text-xs text-muted-foreground shadow-sm">{day.label}</span>
             </div>
             {day.messages.map((m) => (
               <MessageBubble key={m.id} message={m} timezone={timezone} />
@@ -185,7 +185,7 @@ function MessageBubble({ message: m, timezone }: { message: MessageDTO; timezone
         >
           {m.body}
         </div>
-        <p className={cn("flex flex-wrap items-center gap-x-1.5 font-mono text-[10px] text-muted-foreground", out && "justify-end")}>
+        <p className={cn("tabular-nums flex flex-wrap items-center gap-x-1.5 text-xs text-muted-foreground", out && "justify-end")}>
           <span className={cn(m.author === "AI" && "text-accent")}>{authorLabel(m.author, m.authorName)}</span>
           <span aria-hidden="true">·</span>
           <time dateTime={m.createdAt} title={`${clinicDate(new Date(m.createdAt), timezone, { weekday: true, year: true })} ${clinicTime(new Date(m.createdAt), timezone)}`}>
@@ -198,13 +198,13 @@ function MessageBubble({ message: m, timezone }: { message: MessageDTO; timezone
               {DELIVERY_SHORT[m.delivery]}
             </span>
           ) : !m.readAt ? (
-            <Badge tone="accent" className="px-1 py-0 text-[9px]">
+            <Badge tone="accent" className="px-1 py-0 text-xs">
               new
             </Badge>
           ) : null}
           {m.templateKey && !m.templateKey.startsWith("concierge:") ? <span>· template</span> : null}
         </p>
-        {m.delivery === "FAILED" && m.failedReason ? <p className={cn("text-[11px] text-danger", out && "text-right")}>{m.failedReason}</p> : null}
+        {m.delivery === "FAILED" && m.failedReason ? <p className={cn("text-xs text-danger", out && "text-right")}>{m.failedReason}</p> : null}
       </div>
     </div>
   );
@@ -373,7 +373,7 @@ function ObjectionTagger({ conversation, canWrite, timezone, now }: { conversati
             >
               {on ? <Check className="h-3 w-3" aria-hidden="true" /> : null}
               {OBJECTION_LABELS[tag]}
-              {ai ? <span className="font-mono text-[9px] uppercase text-accent">AI</span> : null}
+              {ai ? <span className="tabular-nums text-xs text-accent">AI</span> : null}
             </button>
           ) : (
             <Badge key={tag} tone="warning">

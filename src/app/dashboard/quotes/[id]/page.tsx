@@ -110,7 +110,7 @@ export default async function QuotePage({ params }: { params: Promise<{ id: stri
                       {i.site ? <span className="text-muted-foreground"> · {i.site}</span> : null}
                     </span>
                     <span className="flex items-center gap-2">
-                      <span className="font-mono text-xs tabular-nums">{formatNumber(i.net)} EGP</span>
+                      <span className="text-xs tabular-nums">{formatNumber(i.net)} EGP</span>
                       <Badge tone={STATUS_TONE[i.procedure!.status as ProcedureStatusValue] ?? "default"}>{PROCEDURE_STATUS_LABELS[i.procedure!.status as ProcedureStatusValue] ?? i.procedure!.status}</Badge>
                     </span>
                   </li>
@@ -149,7 +149,7 @@ export default async function QuotePage({ params }: { params: Promise<{ id: stri
                     {p.title}
                   </Link>
                   <span className="flex items-center gap-2">
-                    <span className="font-mono text-xs tabular-nums">
+                    <span className="text-xs tabular-nums">
                       {formatNumber(p.position.paid)} / {formatNumber(p.total)} EGP
                     </span>
                     <Badge tone={p.status === "COMPLETED" ? "success" : p.status === "ACTIVE" ? (p.position.overdue ? "danger" : "accent") : "default"}>

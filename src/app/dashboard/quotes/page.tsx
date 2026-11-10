@@ -140,13 +140,13 @@ export default async function QuotesPage({ searchParams }: { searchParams: Promi
                     </Link>
                   </TD>
                   <TD className="hidden text-muted-foreground md:table-cell">{row.doctorName ?? "—"}</TD>
-                  <TD className="whitespace-nowrap text-right font-mono tabular-nums">
+                  <TD className="whitespace-nowrap text-right tabular-nums">
                     {formatNumber(row.total)}
-                    {row.state === "ACCEPTED" && row.acceptedTotal !== null && row.acceptedTotal !== row.total ? <div className="text-[11px] text-success">{formatNumber(row.acceptedTotal)} accepted</div> : null}
+                    {row.state === "ACCEPTED" && row.acceptedTotal !== null && row.acceptedTotal !== row.total ? <div className="text-xs text-success">{formatNumber(row.acceptedTotal)} accepted</div> : null}
                   </TD>
                   <TD className="text-right">
                     <QuoteStateBadge state={row.state} />
-                    {row.state === "SENT" ? <div className="mt-0.5 text-[11px] text-muted-foreground">until {dayOfKey(row.validUntilKey)}</div> : null}
+                    {row.state === "SENT" ? <div className="mt-0.5 text-xs text-muted-foreground">until {dayOfKey(row.validUntilKey)}</div> : null}
                   </TD>
                 </TR>
               ))}
@@ -203,7 +203,7 @@ export default async function QuotesPage({ searchParams }: { searchParams: Promi
               {a.byTreatment.map((t) => (
                 <li key={t.treatmentId} className="flex items-baseline justify-between gap-3">
                   <span className="min-w-0">{t.name}</span>
-                  <span className="shrink-0 font-mono text-xs tabular-nums text-muted-foreground">
+                  <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
                     {rate(t.acceptedValue, t.presentedValue)} of {formatNumber(t.presentedValue)} EGP
                   </span>
                 </li>

@@ -75,7 +75,7 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
       <Card className="space-y-5">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div className="flex min-w-0 items-start gap-4">
-            <span aria-hidden="true" className="flex h-14 w-14 shrink-0 items-center justify-center rounded-lg bg-accent-muted font-mono text-lg text-accent">
+            <span aria-hidden="true" className="tabular-nums flex h-14 w-14 shrink-0 items-center justify-center rounded-lg bg-accent-muted text-lg text-accent">
               {initials(lead.fullName)}
             </span>
             <div className="min-w-0 space-y-2">
@@ -89,7 +89,7 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
                 {lead.campaign ? <span>{lead.campaign.name}</span> : null}
                 <span>· came in {ageLabel(lead.createdAt, now)} ago ({date(lead.createdAt)})</span>
               </p>
-              <dl className="flex flex-wrap items-center gap-x-5 gap-y-1 font-mono text-xs text-muted-foreground">
+              <dl className="tabular-nums flex flex-wrap items-center gap-x-5 gap-y-1 text-xs text-muted-foreground">
                 {lead.phone ? (
                   <div className="flex items-center gap-1.5">
                     <dt className="sr-only">Phone</dt>
@@ -204,7 +204,7 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
                     <li key={f.id} className="flex flex-col gap-2 p-3 sm:flex-row sm:items-center sm:justify-between">
                       <div className="min-w-0 space-y-0.5">
                         <p className="text-sm" dir="auto">{f.note ?? "Follow up"}</p>
-                        <p className="flex flex-wrap items-center gap-x-2 font-mono text-xs text-muted-foreground">
+                        <p className="tabular-nums flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground">
                           <span className={overdue ? "text-danger" : undefined}>{whenLabel(f.dueAt, timezone, now)}</span>
                           {overdue ? <Badge tone="danger">{overdueLabel(f.dueAt.toISOString(), now)}</Badge> : null}
                           {f.channel ? <span>· {CHANNEL_LABELS[f.channel]}</span> : null}
@@ -229,7 +229,7 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
                   {done.map((f) => (
                     <li key={f.id} className="rounded-md bg-muted/50 p-3 text-sm">
                       <p dir="auto">{f.outcome ?? "Done"}</p>
-                      <p className="font-mono text-xs text-muted-foreground">
+                      <p className="tabular-nums text-xs text-muted-foreground">
                         {f.doneAt ? whenLabel(f.doneAt, timezone, now) : ""} · {f.doneBy?.fullName ?? "—"}
                         {f.note ? ` · ${f.note}` : ""}
                       </p>
@@ -253,7 +253,7 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
                           <span className="flex flex-wrap items-center gap-2">
                             <ChannelBadge channel={c.channel} />
                             <Badge tone={c.status === "WAITING_ON_CLINIC" ? "warning" : c.status === "CLOSED" ? "default" : "accent"}>{CONVERSATION_STATUS_LABELS[c.status]}</Badge>
-                            <span className="font-mono text-xs text-muted-foreground">{c._count.messages} messages</span>
+                            <span className="tabular-nums text-xs text-muted-foreground">{c._count.messages} messages</span>
                           </span>
                           {last ? (
                             <span className="block truncate text-sm text-muted-foreground" dir="auto">
@@ -262,7 +262,7 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
                             </span>
                           ) : null}
                         </span>
-                        <span className="shrink-0 font-mono text-xs text-muted-foreground">{whenLabel(c.updatedAt, timezone, now)}</span>
+                        <span className="tabular-nums shrink-0 text-xs text-muted-foreground">{whenLabel(c.updatedAt, timezone, now)}</span>
                       </Link>
                     </li>
                   );
@@ -279,7 +279,7 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
             <SectionTitle title="Consultation" />
             {lead.consultation ? (
               <div className="space-y-2 rounded-md border border-border p-3">
-                <p className="flex items-center gap-2 font-mono text-sm tabular-nums">
+                <p className="flex items-center gap-2 text-sm tabular-nums">
                   <CalendarCheck className="h-4 w-4 text-accent" aria-hidden="true" />
                   {formatDateInTz(lead.consultation.startsAt, timezone, { weekday: "short", day: "2-digit", month: "short", year: "numeric" })} · {formatTimeInTz(lead.consultation.startsAt, timezone)}
                 </p>
@@ -303,7 +303,7 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
                 <UserRound className="h-5 w-5 text-accent" aria-hidden="true" />
                 <span className="min-w-0">
                   <span className="block truncate text-sm font-medium">{lead.patient.fullName}</span>
-                  <span className="block font-mono text-xs text-muted-foreground">{lead.patient.phone ?? "—"}</span>
+                  <span className="tabular-nums block text-xs text-muted-foreground">{lead.patient.phone ?? "—"}</span>
                 </span>
               </Link>
             ) : (
@@ -320,7 +320,7 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
                     <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warning" aria-hidden="true" />
                     <span className="min-w-0">
                       <span className="block">{e.summary}</span>
-                      <span className="block font-mono text-xs text-muted-foreground">
+                      <span className="tabular-nums block text-xs text-muted-foreground">
                         {e.status.toLowerCase()} · respond by {whenLabel(e.dueAt, timezone, now)}
                       </span>
                     </span>

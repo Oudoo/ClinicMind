@@ -166,10 +166,10 @@ export default async function CashPage({ searchParams }: { searchParams: Promise
                 {day.totals.map((t) => (
                   <tr key={t.method} className="border-b border-border/60">
                     <td className="py-2 pe-3">{t.label}</td>
-                    <td className="py-2 pe-3 text-end font-mono tabular-nums">{formatNumber(t.expected)}</td>
-                    {t.counted !== null ? <td className="py-2 pe-3 text-end font-mono tabular-nums">{formatNumber(t.counted)}</td> : null}
+                    <td className="py-2 pe-3 text-end tabular-nums">{formatNumber(t.expected)}</td>
+                    {t.counted !== null ? <td className="py-2 pe-3 text-end tabular-nums">{formatNumber(t.counted)}</td> : null}
                     {t.difference !== null ? (
-                      <td className={cn("py-2 text-end font-mono tabular-nums", t.difference < 0 && "text-danger", t.difference > 0 && "text-warning")}>{t.difference > 0 ? `+${formatNumber(t.difference)}` : formatNumber(t.difference)}</td>
+                      <td className={cn("py-2 text-end tabular-nums", t.difference < 0 && "text-danger", t.difference > 0 && "text-warning")}>{t.difference > 0 ? `+${formatNumber(t.difference)}` : formatNumber(t.difference)}</td>
                     ) : null}
                   </tr>
                 ))}
@@ -231,10 +231,10 @@ function MethodsTable({ methods }: { methods: MethodLine[] }) {
                 {m.reason ? <span className="block text-xs text-muted-foreground">{m.reason}</span> : null}
                 {m.expectedAtCount !== null ? <span className="block text-xs text-warning">Expected at the count: {formatNumber(m.expectedAtCount)} (changed since)</span> : null}
               </td>
-              <td className="py-1.5 pe-3 text-end font-mono tabular-nums">{formatNumber(m.expected)}</td>
-              {counted ? <td className="py-1.5 pe-3 text-end font-mono tabular-nums">{m.counted === null ? "—" : formatNumber(m.counted)}</td> : null}
+              <td className="py-1.5 pe-3 text-end tabular-nums">{formatNumber(m.expected)}</td>
+              {counted ? <td className="py-1.5 pe-3 text-end tabular-nums">{m.counted === null ? "—" : formatNumber(m.counted)}</td> : null}
               {counted ? (
-                <td className={cn("py-1.5 text-end font-mono tabular-nums", (m.difference ?? 0) < 0 && "text-danger", (m.difference ?? 0) > 0 && "text-warning")}>
+                <td className={cn("py-1.5 text-end tabular-nums", (m.difference ?? 0) < 0 && "text-danger", (m.difference ?? 0) > 0 && "text-warning")}>
                   {m.difference === null ? "—" : m.difference > 0 ? `+${formatNumber(m.difference)}` : formatNumber(m.difference)}
                 </td>
               ) : null}

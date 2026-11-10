@@ -90,10 +90,10 @@ export default async function SuppliersPage({ searchParams }: { searchParams: Pr
                     </div>
                   </TD>
                   <TD className="whitespace-nowrap text-right">
-                    <span className="font-mono tabular-nums">{formatNumber(s.owed)}</span>
+                    <span className="tabular-nums">{formatNumber(s.owed)}</span>
                     {s.openBills ? <div className="text-xs text-muted-foreground">{`${s.openBills} bill${s.openBills === 1 ? "" : "s"}`}</div> : null}
                   </TD>
-                  <TD className="hidden whitespace-nowrap text-right font-mono tabular-nums md:table-cell">{formatNumber(s.billedThisYear)}</TD>
+                  <TD className="hidden whitespace-nowrap text-right tabular-nums md:table-cell">{formatNumber(s.billedThisYear)}</TD>
                   <TD className="hidden whitespace-nowrap text-xs lg:table-cell">{s.lastBilledOn ? dayLabel(s.lastBilledOn) : "—"}</TD>
                 </TR>
               ))}
@@ -107,7 +107,7 @@ export default async function SuppliersPage({ searchParams }: { searchParams: Pr
         {suppliers.length ? (
           <p className="border-t border-border px-4 py-3 text-right text-sm">
             <span className="data-label mr-2">Owed in all</span>
-            <span className="font-mono tabular-nums">{formatNumber(owed)} EGP</span>
+            <span className="tabular-nums">{formatNumber(owed)} EGP</span>
           </p>
         ) : null}
       </Card>

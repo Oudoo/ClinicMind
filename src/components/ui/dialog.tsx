@@ -24,7 +24,7 @@ export function DialogContent({
 }) {
   return (
     <DialogPrimitive.Portal>
-      <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-charcoal-slate/40 backdrop-blur-[2px] data-[state=open]:animate-fade-in" />
+      <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-charcoal-slate/40 data-[state=open]:animate-fade-in" />
       <DialogPrimitive.Content
         className={cn(
           // Tall forms scroll inside the dialog instead of overflowing the viewport.

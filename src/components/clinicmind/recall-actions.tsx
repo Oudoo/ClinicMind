@@ -188,7 +188,7 @@ function CallDialog({ recall, timezone, onOpenChange, onDone }: { recall: Recall
         <form onSubmit={submit} className="space-y-4" noValidate>
           {error ? <Alert>{error}</Alert> : null}
           {recall.patient.phone || recall.patient.whatsapp ? (
-            <a href={`tel:${recall.patient.phone ?? recall.patient.whatsapp}`} className="inline-flex items-center gap-2 font-mono text-sm text-accent hover:underline">
+            <a href={`tel:${recall.patient.phone ?? recall.patient.whatsapp}`} className="tabular-nums inline-flex items-center gap-2 text-sm text-accent hover:underline">
               <Phone className="h-4 w-4" aria-hidden="true" />
               {recall.patient.phone ?? recall.patient.whatsapp}
             </a>
@@ -483,7 +483,7 @@ function BookRecallDialog({ recall, timezone, onOpenChange, onDone }: { recall: 
                       aria-selected={selected}
                       onClick={() => setTime(label)}
                       className={cn(
-                        "h-9 rounded-md border font-mono text-xs tabular-nums transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                        "h-9 rounded-md border text-xs tabular-nums transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                         selected ? "border-accent bg-accent text-accent-foreground" : "border-border bg-card hover:bg-muted",
                       )}
                     >

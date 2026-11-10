@@ -32,7 +32,7 @@ import {
 } from "@/modules/finance/reports";
 import { listReportDoctors } from "@/modules/reporting/service";
 import { periodQuery } from "@/modules/reporting/period";
-import { Badge, Card, EmptyState, SectionTitle } from "@/components/ui/primitives";
+import { Badge, Card, EmptyState, SectionTitle, Bento } from "@/components/ui/primitives";
 import { Kpi } from "@/components/ui/kpi";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/input";
@@ -53,7 +53,7 @@ const first = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v
 
 /** Whole EGP, a true minus sign for money that went the other way. */
 const egp = (v: number) => (v < 0 ? `−${formatNumber(-v)}` : formatNumber(v));
-const NUM = "text-right font-mono tabular-nums whitespace-nowrap";
+const NUM = "text-right tabular-nums whitespace-nowrap";
 
 const DESCRIPTIONS: Record<FinanceReportKey, string> = {
   day: "One day, the way it is closed: the drawer against the books, the day's figures beside Dentalore's, and every receipt traced to where its money went.",
@@ -290,13 +290,13 @@ async function DayClose({ scope }: { scope: ReportScope }) {
         ))}
       </div>
 
-      <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-5">
+      <Bento className="lg:grid-cols-5">
         <Kpi label="Income · EGP" value={egp(r.income.net)} tone="accent" hint={`${formatNumber(r.income.receipts)} receipts`} />
         <Kpi label="Production · EGP" value={egp(r.production.net)} hint={`${formatNumber(r.production.procedures)} procedures and sessions`} />
         <Kpi label="Discounts · EGP" value={egp(r.adjustments.DISCOUNT.amount)} hint={`${r.adjustments.DISCOUNT.count} given`} />
         <Kpi label="Written off · EGP" value={egp(r.adjustments.WRITE_OFF.amount)} hint={`${r.adjustments.WRITE_OFF.count} written off`} />
         <Kpi label="Refunds · EGP" value={egp(r.income.refunds)} hint="money paid back" />
-      </div>
+      </Bento>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <Card className="min-w-0 space-y-3">
@@ -376,7 +376,7 @@ async function DayClose({ scope }: { scope: ReportScope }) {
                     <ul className="space-y-1">
                       {x.legs.map((leg, i) => (
                         <li key={i}>
-                          <span className="font-mono text-xs tabular-nums">{egp(leg.amount)}</span>{" "}
+                          <span className="text-xs tabular-nums">{egp(leg.amount)}</span>{" "}
                           {leg.kind === "invoice" ? (
                             <>
                               on{" "}
@@ -411,13 +411,13 @@ async function DayClose({ scope }: { scope: ReportScope }) {
 
 function ProductionKpis({ t }: { t: ProductionTotals }) {
   return (
-    <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-5">
+    <Bento className="lg:grid-cols-5">
       <Kpi label="Net production · EGP" value={egp(t.net)} tone="accent" hint={`${formatNumber(t.procedures)} procedures and sessions`} />
       <Kpi label="Gross production · EGP" value={egp(t.gross)} hint="before any discount" />
       <Kpi label="Discounts · EGP" value={egp(t.discounts)} hint="on procedures and invoices" />
       <Kpi label="Cancelled work · EGP" value={egp(t.cancelled)} hint="reversed after it was charged" />
       <Kpi label="Consultation fees · EGP" value={egp(t.fees)} hint="charged and paid at once" />
-    </div>
+    </Bento>
   );
 }
 
@@ -428,14 +428,14 @@ async function Income({ scope, day }: { scope: ReportScope; day: (key: string) =
   const drawer = (date: string) => `/dashboard/finance/cash?${new URLSearchParams({ date, ...(scope.clinicId ? { clinicId: scope.clinicId } : {}) }).toString()}`;
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-3 xl:grid-cols-6">
+      <Bento className="lg:grid-cols-3 xl:grid-cols-6">
         <Kpi label="Net income · EGP" value={egp(t.net)} tone="accent" hint={`${formatNumber(t.receipts)} receipts`} />
         <Kpi label="Payments · EGP" value={egp(t.payments)} hint="towards invoices and credit" />
         <Kpi label="Deposits · EGP" value={egp(t.deposits)} hint="taken ahead of procedures" />
         <Kpi label="Consultation fees · EGP" value={egp(t.fees)} hint="paid at the visit" />
         <Kpi label="Insurers · EGP" value={egp(t.insurers)} hint="paid towards their claims" />
         <Kpi label="Refunds · EGP" value={egp(t.refunds)} tone={t.refunds < 0 ? "warning" : "default"} hint="money paid back" />
-      </div>
+      </Bento>
       <Card className="overflow-hidden p-0">
         {days.length ? (
           <Table aria-label="Daily income">
@@ -662,14 +662,14 @@ async function Adjustments({ scope, day, href }: { scope: ReportScope; day: (key
         <ul className="flex flex-wrap gap-2">
           <li>
             <Link href={href({ type: undefined })} aria-current={!type ? "page" : undefined} className={cn("inline-flex items-center gap-2 rounded-full border px-3 py-1 text-sm", !type ? "border-accent bg-accent-muted" : "border-border hover:bg-muted")}>
-              All <span className="font-mono text-xs tabular-nums text-muted-foreground">{all}</span>
+              All <span className="text-xs tabular-nums text-muted-foreground">{all}</span>
             </Link>
           </li>
           {ADJUSTMENT_TYPES.map((k) => (
             <li key={k}>
               <Link href={href({ type: k })} aria-current={type === k ? "page" : undefined} className={cn("inline-flex items-center gap-2 rounded-full border px-3 py-1 text-sm", type === k ? "border-accent bg-accent-muted" : "border-border hover:bg-muted")}>
                 {ADJUSTMENT_LABELS[k]}
-                <span className="font-mono text-xs tabular-nums text-muted-foreground">
+                <span className="text-xs tabular-nums text-muted-foreground">
                   {r.totals[k].count} · {egp(r.totals[k].amount)}
                 </span>
               </Link>
@@ -726,12 +726,12 @@ async function Balances({ scope }: { scope: ReportScope }) {
   const tz = scope.timezone;
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
+      <Bento>
         <Kpi label="Owed · EGP" value={egp(t.owed)} tone={t.owed ? "warning" : "default"} hint={`${t.owing} patient${t.owing === 1 ? "" : "s"} owing`} />
         <Kpi label="In credit · EGP" value={egp(t.credit)} hint={`${t.inCredit} patient${t.inCredit === 1 ? "" : "s"} paid ahead`} />
         <Kpi label="Due on invoices · EGP" value={egp(t.dueOnInvoices)} hint="issued and not paid" />
         <Kpi label="Not invoiced · EGP" value={egp(t.notInvoiced)} hint="charged, on no issued invoice yet" />
-      </div>
+      </Bento>
       <Card className="overflow-hidden p-0">
         <Table aria-label="Due on invoices by age">
           <THead>
@@ -778,7 +778,7 @@ async function Balances({ scope }: { scope: ReportScope }) {
                     <Link href={`/dashboard/patients/${b.patientId}?tab=account`} className="font-medium underline-offset-2 hover:underline">
                       {b.patientName}
                     </Link>
-                    {b.phone ? <span className="block font-mono text-xs text-muted-foreground">{b.phone}</span> : null}
+                    {b.phone ? <span className="tabular-nums block text-xs text-muted-foreground">{b.phone}</span> : null}
                   </TD>
                   <TD className={cn(NUM, "font-medium", b.balance < 0 && "text-success")}>{b.balance < 0 ? `${egp(-b.balance)} credit` : egp(b.balance)}</TD>
                   <TD className={cn(NUM, "hidden sm:table-cell")}>{egp(b.dueOnInvoices)}</TD>
@@ -859,14 +859,14 @@ async function Procedures({ scope, href }: { scope: ReportScope; href: (e: Recor
           <ul className="flex flex-wrap gap-2">
             <li>
               <Link href={href({ status: undefined, doctorId })} aria-current={!status ? "page" : undefined} className={cn("inline-flex items-center gap-2 rounded-full border px-3 py-1 text-sm", !status ? "border-accent bg-accent-muted" : "border-border hover:bg-muted")}>
-                All <span className="font-mono text-xs tabular-nums text-muted-foreground">{all}</span>
+                All <span className="text-xs tabular-nums text-muted-foreground">{all}</span>
               </Link>
             </li>
             {PROCEDURE_STATUSES.map((k) => (
               <li key={k}>
                 <Link href={href({ status: k, doctorId })} aria-current={status === k ? "page" : undefined} className={cn("inline-flex items-center gap-2 rounded-full border px-3 py-1 text-sm", status === k ? "border-accent bg-accent-muted" : "border-border hover:bg-muted")}>
                   {k === "STARTED" ? "Under way" : k === "SIGNED" ? "Done" : PROCEDURE_STATUS_LABELS[k]}
-                  <span className="font-mono text-xs tabular-nums text-muted-foreground">{r.counts[k]}</span>
+                  <span className="text-xs tabular-nums text-muted-foreground">{r.counts[k]}</span>
                 </Link>
               </li>
             ))}

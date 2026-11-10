@@ -122,13 +122,13 @@ export default async function TenantPage({ params }: { params: Promise<{ id: str
                   <TR key={u.id}>
                     <TD>
                       <div className="font-medium">{u.fullName ?? u.email}</div>
-                      {u.fullName ? <div className="font-mono text-xs text-muted-foreground">{u.email}</div> : null}
+                      {u.fullName ? <div className="tabular-nums text-xs text-muted-foreground">{u.email}</div> : null}
                     </TD>
-                    <TD className="font-mono text-xs uppercase text-muted-foreground">{u.role.replace("_", " ")}</TD>
+                    <TD className="tabular-nums text-xs text-muted-foreground">{u.role.replace("_", " ")}</TD>
                     <TD>
                       <Badge tone={USER_TONE[u.status] ?? "default"}>{u.status.toLowerCase()}</Badge>
                     </TD>
-                    <TD className="font-mono text-xs text-muted-foreground">{u.createdAt ? formatDate(u.createdAt) : "—"}</TD>
+                    <TD className="tabular-nums text-xs text-muted-foreground">{u.createdAt ? formatDate(u.createdAt) : "—"}</TD>
                   </TR>
                 ))}
               </TBody>

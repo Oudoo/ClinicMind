@@ -122,7 +122,7 @@ export function EmbedBootstrap({
             <Activity className="h-3.5 w-3.5" />
           </div>
           <span className="font-display text-sm font-semibold">{productName}</span>
-          <span className="font-mono text-[10px] text-muted-foreground">· {tenantName}</span>
+          <span className="tabular-nums text-xs text-muted-foreground">· {tenantName}</span>
         </header>
         <div className="flex-1 overflow-hidden p-3">
           <AssistantChat />

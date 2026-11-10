@@ -161,7 +161,7 @@ export default async function AiReviewPage({ searchParams }: { searchParams: Pro
                   <span className="min-w-0" dir="auto">
                     {s.title}
                   </span>
-                  <span className="shrink-0 font-mono text-xs tabular-nums text-muted-foreground">{s.cited}</span>
+                  <span className="shrink-0 text-xs tabular-nums text-muted-foreground">{s.cited}</span>
                 </li>
               ))}
             </ul>
@@ -209,7 +209,7 @@ export default async function AiReviewPage({ searchParams }: { searchParams: Pro
             {r.overrides.byRule.map((o) => (
               <li key={o.label} className="flex items-baseline justify-between gap-3">
                 <span>{o.label}</span>
-                <span className="font-mono text-xs tabular-nums text-muted-foreground">{o.count}</span>
+                <span className="text-xs tabular-nums text-muted-foreground">{o.count}</span>
               </li>
             ))}
           </ul>

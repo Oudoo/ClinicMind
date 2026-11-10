@@ -303,7 +303,7 @@ function ImportDialog({ campaign, onOpenChange }: { campaign: CampaignDTO; onOpe
                 setPreview(null);
               }}
               placeholder={SAMPLE}
-              className="min-h-[8rem] font-mono text-xs"
+              className="tabular-nums min-h-[8rem] text-xs"
             />
           </Field>
           <div className="flex flex-wrap items-center gap-2">
@@ -336,10 +336,10 @@ function ImportDialog({ campaign, onOpenChange }: { campaign: CampaignDTO; onOpe
                     <TBody>
                       {preview.rows.map((r) => (
                         <TR key={r.line}>
-                          <TD className="font-mono text-xs text-muted-foreground">{r.line}</TD>
-                          <TD className="font-mono text-xs">{r.periodStart}</TD>
-                          <TD className="font-mono text-xs">{r.periodEnd}</TD>
-                          <TD className="text-right font-mono text-xs tabular-nums">{formatNumber(r.amount)}</TD>
+                          <TD className="tabular-nums text-xs text-muted-foreground">{r.line}</TD>
+                          <TD className="tabular-nums text-xs">{r.periodStart}</TD>
+                          <TD className="tabular-nums text-xs">{r.periodEnd}</TD>
+                          <TD className="text-right text-xs tabular-nums">{formatNumber(r.amount)}</TD>
                         </TR>
                       ))}
                     </TBody>

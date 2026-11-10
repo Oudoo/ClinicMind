@@ -148,7 +148,7 @@ export default async function PatientPage({ params, searchParams }: { params: Pr
             <div className="flex min-w-0 items-start gap-4">
               <span
                 aria-hidden="true"
-                className="flex h-14 w-14 shrink-0 items-center justify-center rounded-lg bg-accent-muted font-mono text-lg text-accent"
+                className="tabular-nums flex h-14 w-14 shrink-0 items-center justify-center rounded-lg bg-accent-muted text-lg text-accent"
               >
                 {initials(patient.fullName)}
               </span>
@@ -171,7 +171,7 @@ export default async function PatientPage({ params, searchParams }: { params: Pr
                     </>
                   ) : null}
                 </p>
-                <dl className="flex flex-wrap gap-x-5 gap-y-1 font-mono text-xs text-muted-foreground">
+                <dl className="tabular-nums flex flex-wrap gap-x-5 gap-y-1 text-xs text-muted-foreground">
                   <ContactItem icon={Phone} label="Phone" value={patient.phone} />
                   <ContactItem icon={MessageCircle} label="WhatsApp" value={patient.whatsapp} />
                   <ContactItem icon={Mail} label="E-mail" value={patient.email} />
@@ -292,7 +292,7 @@ export default async function PatientPage({ params, searchParams }: { params: Pr
                             <TD className="font-medium">{m.name}</TD>
                             <TD className="text-muted-foreground">{m.dosage ?? "—"}</TD>
                             <TD className="hidden text-muted-foreground sm:table-cell">{m.frequency ?? "—"}</TD>
-                            <TD className="hidden whitespace-nowrap font-mono text-xs text-muted-foreground md:table-cell">
+                            <TD className="tabular-nums hidden whitespace-nowrap text-xs text-muted-foreground md:table-cell">
                               {m.startDate ? formatDate(m.startDate) : "—"}
                             </TD>
                           </TR>
@@ -337,7 +337,7 @@ export default async function PatientPage({ params, searchParams }: { params: Pr
                             className="flex items-start justify-between gap-3 rounded-md border border-border p-3"
                           >
                             <div className="min-w-0">
-                              <p className="font-mono text-xs tabular-nums">
+                              <p className="text-xs tabular-nums">
                                 {formatDate(a.startsAt)} · {formatTime(a.startsAt)}–{formatTime(a.endsAt)}
                               </p>
                               <p className="truncate text-sm font-medium">{a.reason ?? "Appointment"}</p>
@@ -444,7 +444,7 @@ function HistoryList({ label, items, tone }: { label: string; items: string[]; t
     <div className="rounded-md border border-border p-4">
       <div className="mb-2 flex items-center justify-between">
         <span className="data-label">{label}</span>
-        <span className="font-mono text-xs text-muted-foreground">{items.length}</span>
+        <span className="tabular-nums text-xs text-muted-foreground">{items.length}</span>
       </div>
       {items.length ? (
         <ul className="flex flex-wrap gap-1">

@@ -74,7 +74,7 @@ export function DictationField({ children, onDictated, patientId, language = "au
       >
         {busy ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : recording ? <Square className="h-3.5 w-3.5 fill-current" aria-hidden="true" /> : <Mic className="h-4 w-4" aria-hidden="true" />}
         {recording ? (
-          <span className="font-mono text-[11px] tabular-nums" aria-live="polite">
+          <span className="text-xs tabular-nums" aria-live="polite">
             {mm}:{ss}
           </span>
         ) : null}

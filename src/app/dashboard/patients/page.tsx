@@ -108,7 +108,7 @@ export default async function PatientsPage({ searchParams }: { searchParams: Pro
                         <div className="flex min-w-[9rem] items-center gap-3">
                           <span
                             aria-hidden="true"
-                            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-accent-muted font-mono text-xs text-accent"
+                            className="tabular-nums flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-accent-muted text-xs text-accent"
                           >
                             {initials(p.fullName)}
                           </span>
@@ -130,8 +130,8 @@ export default async function PatientsPage({ searchParams }: { searchParams: Pro
                           </div>
                         </div>
                       </TD>
-                      <TD className={cn(DENSE, "font-mono tabular-nums text-muted-foreground")}>{age ?? "—"}</TD>
-                      <TD className={cn(DENSE, "font-mono text-xs text-muted-foreground")}>
+                      <TD className={cn(DENSE, "tabular-nums text-muted-foreground")}>{age ?? "—"}</TD>
+                      <TD className={cn(DENSE, "tabular-nums text-xs text-muted-foreground")}>
                         <div className="whitespace-nowrap">{p.phone ?? "—"}</div>
                         {p.email ? (
                           <div className="hidden max-w-[10rem] truncate md:block" title={p.email}>
@@ -161,15 +161,15 @@ export default async function PatientsPage({ searchParams }: { searchParams: Pro
                           {conditions.length > 2 ? <Badge>+{conditions.length - 2}</Badge> : null}
                         </div>
                       </TD>
-                      <TD className={cn(DENSE, "hidden whitespace-nowrap font-mono text-xs text-muted-foreground xl:table-cell")}>
+                      <TD className={cn(DENSE, "tabular-nums hidden whitespace-nowrap text-xs text-muted-foreground xl:table-cell")}>
                         {date(p.lastVisitAt) ?? "—"}
-                        <div className="text-[11px]">{p._count.visits} {p._count.visits === 1 ? "visit" : "visits"}</div>
+                        <div className="text-xs">{p._count.visits} {p._count.visits === 1 ? "visit" : "visits"}</div>
                       </TD>
-                      <TD className={cn(DENSE, "hidden whitespace-nowrap font-mono text-xs text-muted-foreground lg:table-cell")}>
+                      <TD className={cn(DENSE, "tabular-nums hidden whitespace-nowrap text-xs text-muted-foreground lg:table-cell")}>
                         {p.nextAppointmentAt ? (
                           <>
                             {date(p.nextAppointmentAt)}
-                            <div className="text-[11px]">
+                            <div className="text-xs">
                               {formatTimeInTz(p.nextAppointmentAt, timezone)}
                               {p.upcomingCount > 1 ? ` · +${p.upcomingCount - 1} more` : ""}
                             </div>

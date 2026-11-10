@@ -36,7 +36,7 @@ export function ConciergeTabs({ active, badges = {} }: { active: ConciergeTab; b
                 ) : (
                   t.label
                 )}
-                {count ? <span className="rounded-md bg-danger/10 px-1.5 font-mono text-[10px] text-danger">{count}</span> : null}
+                {count ? <span className="tabular-nums rounded-md bg-danger/10 px-1.5 text-xs text-danger">{count}</span> : null}
               </Link>
             </li>
           );

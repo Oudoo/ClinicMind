@@ -24,8 +24,8 @@ export function InvoiceSplitPanel({ split }: { split: InvoiceSplit }) {
       <p>
         {split.claimed > 0 ? (
           <>
-            On issue, <span className="font-mono font-medium">{formatNumber(split.claimed)}</span> EGP is claimed from {payers.join(" and ")}; the patient pays{" "}
-            <span className="font-mono font-medium">{formatNumber(split.patientPays)}</span> EGP.
+            On issue, <span className="tabular-nums font-medium">{formatNumber(split.claimed)}</span> EGP is claimed from {payers.join(" and ")}; the patient pays{" "}
+            <span className="tabular-nums font-medium">{formatNumber(split.patientPays)}</span> EGP.
           </>
         ) : (
           <>Nothing on it is claimed: the patient pays it all.</>
@@ -52,8 +52,8 @@ export function InvoiceSplitPanel({ split }: { split: InvoiceSplit }) {
                   {l.note ? ` · ${NOTE_WORDS[l.note]}` : ""}
                 </span>
               </TD>
-              <TD className="whitespace-nowrap text-right font-mono tabular-nums">{formatNumber(l.patientShare)}</TD>
-              <TD className="whitespace-nowrap text-right font-mono tabular-nums">{formatNumber(l.payerShare)}</TD>
+              <TD className="whitespace-nowrap text-right tabular-nums">{formatNumber(l.patientShare)}</TD>
+              <TD className="whitespace-nowrap text-right tabular-nums">{formatNumber(l.payerShare)}</TD>
             </TR>
           ))}
         </TBody>

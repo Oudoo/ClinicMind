@@ -171,7 +171,7 @@ function InviteLink({ url }: { url: string }) {
   const [copied, setCopied] = useState(false);
   return (
     <div className="flex items-center gap-2">
-      <code className="max-w-[18rem] truncate rounded bg-background px-2 py-1 font-mono text-[11px] text-foreground sm:max-w-md">
+      <code className="max-w-[18rem] truncate rounded bg-background px-2 py-1 font-mono text-xs text-foreground sm:max-w-md">
         {url}
       </code>
       <Button

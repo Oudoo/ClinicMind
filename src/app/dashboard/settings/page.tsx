@@ -73,7 +73,7 @@ export default async function SettingsPage() {
                 value={
                   <span className="flex items-center gap-2">
                     <span className="h-4 w-4 rounded border border-border" style={{ background: accent }} />
-                    <span className="font-mono text-xs">{accent}</span>
+                    <span className="tabular-nums text-xs">{accent}</span>
                   </span>
                 }
               />
@@ -135,10 +135,10 @@ export default async function SettingsPage() {
                   <td className="py-2.5 pr-4">
                     <div className="font-medium">{member.fullName ?? member.email}</div>
                     {member.fullName ? (
-                      <div className="font-mono text-xs text-muted-foreground">{member.email}</div>
+                      <div className="tabular-nums text-xs text-muted-foreground">{member.email}</div>
                     ) : null}
                   </td>
-                  <td className="py-2.5 pr-4 font-mono text-xs uppercase text-muted-foreground">
+                  <td className="tabular-nums py-2.5 pr-4 text-xs text-muted-foreground">
                     {member.role}
                   </td>
                   <td className="py-2.5 pr-4">
@@ -147,7 +147,7 @@ export default async function SettingsPage() {
                   <td className="py-2.5 pr-4">
                     <ClinicianToggle userId={member.id} initial={member.isClinician} self={member.id === ctx.userId} />
                   </td>
-                  <td className="py-2.5 pr-4 font-mono text-xs text-muted-foreground">
+                  <td className="tabular-nums py-2.5 pr-4 text-xs text-muted-foreground">
                     {formatDate(member.createdAt)}
                   </td>
                   <td className="py-2.5 text-right">

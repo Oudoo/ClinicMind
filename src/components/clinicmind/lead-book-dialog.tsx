@@ -167,7 +167,7 @@ export function LeadBookDialog({
                       aria-selected={selected}
                       onClick={() => setTime(label)}
                       className={cn(
-                        "h-9 rounded-md border font-mono text-xs tabular-nums transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                        "h-9 rounded-md border text-xs tabular-nums transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                         selected ? "border-accent bg-accent text-accent-foreground" : "border-border bg-card hover:bg-muted",
                       )}
                     >

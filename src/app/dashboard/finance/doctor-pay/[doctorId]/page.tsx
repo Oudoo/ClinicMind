@@ -149,18 +149,18 @@ export default async function StatementPage({ params, searchParams }: { params: 
                           {l.sessionsToDate > 1 ? ` · ${l.sessionsToDate} sessions` : ""}
                         </div>
                       </TD>
-                      <TD className="hidden text-right font-mono tabular-nums md:table-cell">
+                      <TD className="hidden text-right tabular-nums md:table-cell">
                         {formatNumber(l.billedInMonth)}
                         {l.billedToDate !== l.billedInMonth ? <div className="text-xs text-muted-foreground">{formatNumber(l.billedToDate)} to date</div> : null}
                       </TD>
-                      <TD className="hidden text-right font-mono tabular-nums md:table-cell">
+                      <TD className="hidden text-right tabular-nums md:table-cell">
                         {formatNumber(l.collectedInMonth)}
                         {l.collectedToDate !== l.collectedInMonth ? <div className="text-xs text-muted-foreground">{formatNumber(l.collectedToDate)} to date</div> : null}
                       </TD>
-                      <TD className="hidden text-right font-mono tabular-nums lg:table-cell">{l.costsToDate ? formatNumber(l.costsToDate) : "—"}</TD>
-                      <TD className="hidden text-right font-mono tabular-nums lg:table-cell">{formatNumber(l.earnedToDate)}</TD>
-                      <TD className="hidden text-right font-mono tabular-nums lg:table-cell">{l.paidBefore ? formatNumber(l.paidBefore) : "—"}</TD>
-                      <TD className={`text-right font-mono tabular-nums ${l.due < 0 ? "text-danger" : ""}`}>{formatNumber(l.due)}</TD>
+                      <TD className="hidden text-right tabular-nums lg:table-cell">{l.costsToDate ? formatNumber(l.costsToDate) : "—"}</TD>
+                      <TD className="hidden text-right tabular-nums lg:table-cell">{formatNumber(l.earnedToDate)}</TD>
+                      <TD className="hidden text-right tabular-nums lg:table-cell">{l.paidBefore ? formatNumber(l.paidBefore) : "—"}</TD>
+                      <TD className={`text-right tabular-nums ${l.due < 0 ? "text-danger" : ""}`}>{formatNumber(l.due)}</TD>
                     </TR>
                   ))}
                   <TR className="hover:bg-transparent">
@@ -170,7 +170,7 @@ export default async function StatementPage({ params, searchParams }: { params: 
                     <TD className="hidden lg:table-cell" />
                     <TD className="hidden lg:table-cell" />
                     <TD className="hidden lg:table-cell" />
-                    <TD className="text-right font-mono font-medium tabular-nums">{formatNumber(s.earned)}</TD>
+                    <TD className="text-right font-medium tabular-nums">{formatNumber(s.earned)}</TD>
                   </TR>
                 </TBody>
               </Table>

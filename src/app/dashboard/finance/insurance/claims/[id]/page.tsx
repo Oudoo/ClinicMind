@@ -16,7 +16,7 @@ import { ClaimStatusBadge } from "@/components/clinicmind/insurance-shared";
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Claim" };
 
-const NUM = "whitespace-nowrap text-right font-mono tabular-nums";
+const NUM = "whitespace-nowrap text-right tabular-nums";
 
 /** `/dashboard/finance/insurance/claims/[id]` — a claim line by line: the shares, the approval used, and the payer's answers. */
 export default async function ClaimPage({ params }: { params: Promise<{ id: string }> }) {
@@ -68,9 +68,9 @@ export default async function ClaimPage({ params }: { params: Promise<{ id: stri
           )}
         </p>
         <p>
-          Claimed <span className="font-mono">{formatNumber(claim.amount)}</span> EGP · paid <span className="font-mono">{formatNumber(claim.paid)}</span> · refused{" "}
-          <span className="font-mono">{formatNumber(claim.refused)}</span> · owed <span className="font-mono font-medium">{formatNumber(claim.owed)}</span> · the patient&apos;s share{" "}
-          <span className="font-mono">{formatNumber(claim.patientShare)}</span>
+          Claimed <span className="tabular-nums">{formatNumber(claim.amount)}</span> EGP · paid <span className="tabular-nums">{formatNumber(claim.paid)}</span> · refused{" "}
+          <span className="tabular-nums">{formatNumber(claim.refused)}</span> · owed <span className="tabular-nums font-medium">{formatNumber(claim.owed)}</span> · the patient&apos;s share{" "}
+          <span className="tabular-nums">{formatNumber(claim.patientShare)}</span>
         </p>
         {claim.cancelReason ? <p className="text-muted-foreground">Cancelled: {claim.cancelReason}</p> : null}
       </Card>

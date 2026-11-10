@@ -61,7 +61,7 @@ function RecallRow({ recall: r, timezone, canWrite }: { recall: RecallDTO; timez
             {r.patient.fullName}
           </Link>
           {phone ? (
-            <a href={`tel:${phone}`} className="font-mono text-xs text-muted-foreground hover:text-foreground">
+            <a href={`tel:${phone}`} className="tabular-nums text-xs text-muted-foreground hover:text-foreground">
               {phone}
             </a>
           ) : (
@@ -73,7 +73,7 @@ function RecallRow({ recall: r, timezone, canWrite }: { recall: RecallDTO; timez
           <div className="flex flex-wrap items-center gap-1.5">
             <BandBadge recall={r} />
             <Badge>{r.kindLabel}</Badge>
-            {r.value > 0 ? <span className="font-mono text-xs tabular-nums text-muted-foreground">{egp(r.value)}</span> : null}
+            {r.value > 0 ? <span className="text-xs tabular-nums text-muted-foreground">{egp(r.value)}</span> : null}
           </div>
           <p className="text-xs text-muted-foreground">
             Due {formatDateInTz(new Date(r.dueAt), timezone, { day: "numeric", month: "short", year: "numeric" })} – {formatDateInTz(new Date(r.windowEndAt), timezone, { day: "numeric", month: "short" })} · {owner} · {CHANNEL_LABEL[r.channel as keyof typeof CHANNEL_LABEL] ?? r.channel}

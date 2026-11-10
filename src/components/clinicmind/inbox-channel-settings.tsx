@@ -38,7 +38,7 @@ function EnvFlag({ ok, label, hint }: { ok: boolean; label: string; hint: string
     <li className="flex items-start gap-2 text-xs">
       {ok ? <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-success" aria-hidden="true" /> : <TriangleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0 text-warning" aria-hidden="true" />}
       <span>
-        <span className="font-mono">{label}</span> {ok ? "is set on the server." : "is not set on the server"}
+        <span className="tabular-nums">{label}</span> {ok ? "is set on the server." : "is not set on the server"}
         {ok ? null : <span className="text-muted-foreground"> — {hint}</span>}
       </span>
     </li>
@@ -168,7 +168,7 @@ export function InboxChannelSettings({ status }: { status: IntegrationStatusDTO 
       <section className="space-y-3 rounded-lg border border-border p-4" aria-label="Inbound webhook">
         <p className="text-sm font-medium">Inbound webhook</p>
         <p className="text-xs text-muted-foreground">
-          Patients' messages arrive here. The clinic's inbox signs each POST with the secret (HMAC-SHA256 of the raw body, hex, in <span className="font-mono">X-ClinicMind-Signature</span>); WhatsApp Cloud signs with Meta's app secret.
+          Patients' messages arrive here. The clinic's inbox signs each POST with the secret (HMAC-SHA256 of the raw body, hex, in <span className="tabular-nums">X-ClinicMind-Signature</span>); WhatsApp Cloud signs with Meta's app secret.
         </p>
         <div className="flex items-center gap-2">
           <code className="min-w-0 flex-1 truncate rounded-md bg-muted px-2 py-1.5 font-mono text-xs" title={status.inboundUrl}>
@@ -181,7 +181,7 @@ export function InboxChannelSettings({ status }: { status: IntegrationStatusDTO 
         </div>
         <div className="flex flex-wrap items-center justify-between gap-2">
           <span className="text-sm">
-            Secret: {status.hasSecret ? <span className="font-mono text-xs">{status.secretPrefix}…</span> : <Badge tone="warning">not generated</Badge>}
+            Secret: {status.hasSecret ? <span className="tabular-nums text-xs">{status.secretPrefix}…</span> : <Badge tone="warning">not generated</Badge>}
           </span>
           <Button type="button" variant="outline" size="sm" disabled={busy} onClick={() => (status.hasSecret ? setConfirmRotate(true) : void rotate())}>
             <KeyRound className="h-4 w-4" />

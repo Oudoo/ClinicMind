@@ -82,7 +82,7 @@ export function NotificationBody({
           <span className="data-label truncate">{KIND_LABELS[n.kind]}</span>
           {!compact && n.level !== "INFO" ? <LevelBadge level={n.level} /> : null}
           {!compact && n.emailedAt ? (
-            <span className="inline-flex items-center gap-1 text-[10px] text-muted-foreground" title="A copy went to your e-mail">
+            <span className="inline-flex items-center gap-1 text-xs text-muted-foreground" title="A copy went to your e-mail">
               <Mail className="h-3 w-3" aria-hidden="true" /> e-mailed
             </span>
           ) : null}
@@ -91,7 +91,7 @@ export function NotificationBody({
         {n.body ? (
           <p className={cn("mt-0.5 whitespace-pre-line text-xs text-muted-foreground", compact ? "line-clamp-1" : "line-clamp-5")}>{n.body}</p>
         ) : null}
-        <p className="mt-1 font-mono text-[10px] text-muted-foreground" title={timezone ? formatDateTimeInTz(created, timezone) : created.toLocaleString()}>
+        <p className="tabular-nums mt-1 text-xs text-muted-foreground" title={timezone ? formatDateTimeInTz(created, timezone) : created.toLocaleString()}>
           {relativeTime(created, now)}
         </p>
       </div>

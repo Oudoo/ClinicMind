@@ -110,7 +110,18 @@
 
   /* A headline figure. */
   .metric-value {
-    @apply font-display text-3xl font-semibold tracking-[-0.02em] tabular-nums;
+    @apply font-display text-2xl font-semibold tracking-[-0.02em] tabular-nums;
+  }
+
+  /*
+   * A figure with its label (Metric, Kpi). On its own it is a card; several together sit in one
+   * surface (Bento, `.stat-grid`), set apart by space, not in a card each.
+   */
+  .stat {
+    @apply flex min-w-0 flex-col gap-1 rounded-lg border border-border bg-card p-5 shadow-[0_1px_2px_rgba(26,32,44,0.04)];
+  }
+  .stat-grid > .stat {
+    @apply rounded-none border-0 bg-transparent p-0 shadow-none;
   }
 
   /*

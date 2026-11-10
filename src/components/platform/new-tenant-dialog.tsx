@@ -199,7 +199,7 @@ export function NewTenantDialog({ rootDomain, scheme }: { rootDomain: string; sc
                     onChange={(e) => setAccent(e.target.value.toUpperCase())}
                     className="h-10 w-12 shrink-0 cursor-pointer rounded-lg border border-input bg-background p-1"
                   />
-                  <Input id="nt-accent" value={accent} onChange={(e) => setAccent(e.target.value)} className="font-mono" />
+                  <Input id="nt-accent" value={accent} onChange={(e) => setAccent(e.target.value)} className="tabular-nums" />
                 </div>
               </Field>
               <Field label="Logo URL" htmlFor="nt-logo" hint={issues["branding.logoUrl"] ?? "Optional · https"}>

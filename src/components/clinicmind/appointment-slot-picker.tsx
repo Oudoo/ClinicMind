@@ -141,8 +141,8 @@ function SlotButton({
         !taken && cell.past && "cursor-not-allowed border-transparent bg-muted/50 text-muted-foreground/60",
       )}
     >
-      <span className="font-mono tabular-nums">{time}</span>
-      {taken ? <span className="font-mono text-[10px] uppercase">{cell.takenBy.map((t) => t.patientInitials).join("·")}</span> : null}
+      <span className="tabular-nums">{time}</span>
+      {taken ? <span className="tabular-nums text-xs">{cell.takenBy.map((t) => t.patientInitials).join("·")}</span> : null}
     </button>
   );
 }

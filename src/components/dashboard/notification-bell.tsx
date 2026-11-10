@@ -233,7 +233,7 @@ export function NotificationBell() {
           {unread > 0 ? (
             <span
               data-testid="notification-badge"
-              className="absolute -right-0.5 -top-0.5 flex h-[1.125rem] min-w-[1.125rem] items-center justify-center rounded-full bg-danger px-1 font-mono text-[10px] font-medium leading-none text-white"
+              className="tabular-nums absolute -right-0.5 -top-0.5 flex h-[1.125rem] min-w-[1.125rem] items-center justify-center rounded-full bg-danger px-1 text-xs font-medium leading-none text-white"
             >
               {badge}
             </span>
@@ -250,7 +250,7 @@ export function NotificationBell() {
           <div className="flex items-center justify-between gap-2 border-b border-border px-3 py-2">
             <p className="text-sm font-medium">
               Notifications
-              {unread ? <span className="ml-2 font-mono text-xs text-muted-foreground">{unread} unread</span> : null}
+              {unread ? <span className="tabular-nums ml-2 text-xs text-muted-foreground">{unread} unread</span> : null}
             </p>
             <button
               type="button"

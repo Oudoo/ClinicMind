@@ -15,7 +15,7 @@ import { listReportDoctors } from "@/modules/reporting/service";
 import { listTreatments } from "@/modules/treatments/service";
 import { listPriceList } from "@/modules/finance/prices";
 import { discountLimitOf } from "@/modules/finance/discounts";
-import { Badge, Card, EmptyState, SectionTitle } from "@/components/ui/primitives";
+import { Badge, Card, EmptyState, SectionTitle, Bento } from "@/components/ui/primitives";
 import { Columns, DeltaChip, HBars, Kpi } from "@/components/ui/kpi";
 import { Pagination } from "@/components/ui/pagination";
 import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/table";
@@ -106,7 +106,7 @@ export default async function FinancePage({ searchParams }: { searchParams: Prom
 
       <PeriodPicker basePath="/dashboard/finance" preset={period.preset} fromKey={period.fromKey} toKey={period.toKey} previous={previous} />
 
-      <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-3 xl:grid-cols-6">
+      <Bento className="lg:grid-cols-3 xl:grid-cols-6">
         <Kpi
           label="Production · EGP"
           value={tile(s.revenue.current)}
@@ -146,7 +146,7 @@ export default async function FinancePage({ searchParams }: { searchParams: Prom
           delta={<DeltaChip current={s.outstanding.amount} previous={s.outstanding.previousAmount} goodWhen="down" format={fmtEgp} />}
           hint={`${s.outstanding.patients} patients · was ${fmtEgp(s.outstanding.previousAmount)}${s.owedByPayers ? ` · insurers owe ${fmtEgp(s.owedByPayers)} more` : ""}`}
         />
-      </div>
+      </Bento>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <Card className="min-w-0 space-y-4">
@@ -196,7 +196,7 @@ export default async function FinancePage({ searchParams }: { searchParams: Prom
                   <li key={m.method} className="space-y-1">
                     <div className="flex items-baseline justify-between gap-2 text-sm">
                       <span>{m.label}</span>
-                      <span className="font-mono text-xs tabular-nums text-muted-foreground">
+                      <span className="text-xs tabular-nums text-muted-foreground">
                         {fmtEgp(m.amount)} · {fmtPct(methodTotal ? m.amount / methodTotal : null)}
                       </span>
                     </div>
@@ -233,7 +233,7 @@ export default async function FinancePage({ searchParams }: { searchParams: Prom
                       {owing.balance > 0 ? `Owes ${fmtEgp(owing.balance)}` : owing.balance < 0 ? `In credit ${fmtEgp(-owing.balance)}` : "Settled"}
                       {owing.notInvoiced ? ` · ${fmtEgp(owing.notInvoiced)} not invoiced yet` : ""}
                       {owing.credit ? ` · ${fmtEgp(owing.credit)} credit` : ""}
-                      {owingPatient.phone ? <span className="font-mono"> · {owingPatient.phone}</span> : null}
+                      {owingPatient.phone ? <span className="tabular-nums"> · {owingPatient.phone}</span> : null}
                     </p>
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
@@ -251,11 +251,11 @@ export default async function FinancePage({ searchParams }: { searchParams: Prom
                           <Link href={`/dashboard/finance/invoices/${i.id}`} className="font-mono text-xs font-medium underline-offset-2 hover:underline">
                             {i.number}
                           </Link>
-                          <div className="font-mono text-xs text-muted-foreground">
+                          <div className="tabular-nums text-xs text-muted-foreground">
                             {i.issuedAt ? date(new Date(i.issuedAt)) : ""} · {fmtEgp(i.total)}
                           </div>
                         </div>
-                        <span className="shrink-0 font-mono tabular-nums text-warning">{fmtEgp(i.due)}</span>
+                        <span className="shrink-0 tabular-nums text-warning">{fmtEgp(i.due)}</span>
                       </li>
                     ))}
                   </ul>
@@ -291,10 +291,10 @@ export default async function FinancePage({ searchParams }: { searchParams: Prom
                     </Link>
                     {o.oldestDueAt ? <div className="text-xs text-muted-foreground lg:hidden">invoiced {date(new Date(o.oldestDueAt))}</div> : null}
                   </TD>
-                  <TD className="whitespace-nowrap text-right font-mono tabular-nums text-warning">{fmtEgp(o.amount)}</TD>
-                  <TD className="hidden whitespace-nowrap text-right font-mono tabular-nums md:table-cell">{fmtEgp(o.dueOnInvoices)}</TD>
-                  <TD className="hidden whitespace-nowrap text-right font-mono tabular-nums md:table-cell">{fmtEgp(o.notInvoiced)}</TD>
-                  <TD className="hidden font-mono text-xs lg:table-cell">{o.oldestDueAt ? date(new Date(o.oldestDueAt)) : "—"}</TD>
+                  <TD className="whitespace-nowrap text-right tabular-nums text-warning">{fmtEgp(o.amount)}</TD>
+                  <TD className="hidden whitespace-nowrap text-right tabular-nums md:table-cell">{fmtEgp(o.dueOnInvoices)}</TD>
+                  <TD className="hidden whitespace-nowrap text-right tabular-nums md:table-cell">{fmtEgp(o.notInvoiced)}</TD>
+                  <TD className="tabular-nums hidden text-xs lg:table-cell">{o.oldestDueAt ? date(new Date(o.oldestDueAt)) : "—"}</TD>
                   <TD>
                     <Link href={owingHref(o.patientId)} className="inline-flex h-8 w-8 items-center justify-center rounded-md hover:bg-muted" aria-label={`Details for ${o.fullName}`} scroll={false}>
                       <ChevronRight className="h-4 w-4" aria-hidden="true" />
@@ -352,7 +352,7 @@ export default async function FinancePage({ searchParams }: { searchParams: Prom
             <TBody>
               {recent.payments.map((p) => (
                 <TR key={p.id}>
-                  <TD className="whitespace-nowrap font-mono text-xs">
+                  <TD className="tabular-nums whitespace-nowrap text-xs">
                     {date(p.paidAt)}
                     <div className="text-muted-foreground">{formatTimeInTz(p.paidAt, timezone)}</div>
                   </TD>
@@ -370,7 +370,7 @@ export default async function FinancePage({ searchParams }: { searchParams: Prom
                     {p.importBatchId ? <Badge className="ml-1">POS</Badge> : null}
                   </TD>
                   <TD className="hidden text-sm md:table-cell">{METHOD_LABELS[p.method]}</TD>
-                  <TD className={p.kind === "REFUND" ? "whitespace-nowrap text-right font-mono tabular-nums text-danger" : "whitespace-nowrap text-right font-mono tabular-nums"}>
+                  <TD className={p.kind === "REFUND" ? "whitespace-nowrap text-right tabular-nums text-danger" : "whitespace-nowrap text-right tabular-nums"}>
                     {p.kind === "REFUND" ? "−" : ""}
                     {formatNumber(p.amount)}
                   </TD>
@@ -416,9 +416,9 @@ function BreakdownTable({ rows, total, first }: { rows: { id: string; label: str
               <TD className={`${cell} max-w-[9rem] truncate sm:max-w-[12rem]`} title={r.label}>
                 {r.label}
               </TD>
-              <TD className={`${cell} hidden text-right font-mono tabular-nums sm:table-cell`}>{r.count}</TD>
-              <TD className={`${cell} whitespace-nowrap text-right font-mono tabular-nums`}>{fmtEgp(r.amount)}</TD>
-              <TD className={`${cell} hidden text-right font-mono tabular-nums text-muted-foreground md:table-cell`}>{fmtPct(total ? r.amount / total : null)}</TD>
+              <TD className={`${cell} hidden text-right tabular-nums sm:table-cell`}>{r.count}</TD>
+              <TD className={`${cell} whitespace-nowrap text-right tabular-nums`}>{fmtEgp(r.amount)}</TD>
+              <TD className={`${cell} hidden text-right tabular-nums text-muted-foreground md:table-cell`}>{fmtPct(total ? r.amount / total : null)}</TD>
             </TR>
           ))}
         </TBody>

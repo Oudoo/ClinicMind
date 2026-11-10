@@ -103,15 +103,15 @@ export default async function ExpensePage({ params }: { params: Promise<{ id: st
         <Card className="space-y-2">
           <p className="flex items-baseline justify-between gap-2">
             <span className="data-label">Amount</span>
-            <span className="font-mono text-lg tabular-nums">{formatNumber(expense.amount)} EGP</span>
+            <span className="text-lg tabular-nums">{formatNumber(expense.amount)} EGP</span>
           </p>
           <p className="flex items-baseline justify-between gap-2 text-sm">
             <span className="text-muted-foreground">Paid</span>
-            <span className="font-mono tabular-nums">{formatNumber(expense.paid)}</span>
+            <span className="tabular-nums">{formatNumber(expense.paid)}</span>
           </p>
           <p className="flex items-baseline justify-between gap-2 text-sm">
             <span className="text-muted-foreground">Owed</span>
-            <span className={`font-mono tabular-nums ${expense.overdue ? "text-danger" : ""}`}>{formatNumber(expense.owed)}</span>
+            <span className={`tabular-nums ${expense.overdue ? "text-danger" : ""}`}>{formatNumber(expense.owed)}</span>
           </p>
         </Card>
       </div>
@@ -134,7 +134,7 @@ export default async function ExpensePage({ params }: { params: Promise<{ id: st
                   {p.voidedAt ? <span className="ml-2 no-underline">Voided</span> : null}
                 </div>
                 <span className="flex items-center gap-1">
-                  <span className="font-mono tabular-nums">{formatNumber(p.amount)}</span>
+                  <span className="tabular-nums">{formatNumber(p.amount)}</span>
                   {isOwner && !p.voidedAt && live ? <VoidExpensePaymentButton paymentId={p.id} amount={p.amount} /> : null}
                 </span>
               </li>

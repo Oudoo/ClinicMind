@@ -101,7 +101,7 @@ export function PatientPicker({
         <div className="flex items-center justify-between gap-3 rounded-lg border border-border bg-muted/40 px-3 py-2">
           <div className="min-w-0">
             <p className="truncate text-sm font-medium">{value.fullName}</p>
-            {value.phone ? <p className="font-mono text-xs text-muted-foreground">{value.phone}</p> : null}
+            {value.phone ? <p className="tabular-nums text-xs text-muted-foreground">{value.phone}</p> : null}
           </div>
           <Button id={inputId} type="button" variant="ghost" size="sm" onClick={() => onChange(null)} disabled={disabled}>
             <X />
@@ -164,7 +164,7 @@ export function PatientPicker({
                 >
                   <span className="truncate font-medium">{patient.fullName}</span>
                   {patient.phone ? (
-                    <span className="shrink-0 font-mono text-xs text-muted-foreground">{patient.phone}</span>
+                    <span className="tabular-nums shrink-0 text-xs text-muted-foreground">{patient.phone}</span>
                   ) : null}
                 </button>
               </li>

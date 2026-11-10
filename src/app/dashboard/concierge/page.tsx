@@ -164,16 +164,16 @@ function EnrolmentRow({ e, when, timezone }: { e: EnrolmentSummaryDTO; when: (is
       </TD>
       <TD className="hidden md:table-cell">
         <p className="text-sm">{e.protocol.name}</p>
-        <p className="font-mono text-xs text-muted-foreground">v{e.protocol.version}</p>
+        <p className="tabular-nums text-xs text-muted-foreground">v{e.protocol.version}</p>
       </TD>
       <TD>
-        <p className="whitespace-nowrap font-mono text-xs tabular-nums">
+        <p className="whitespace-nowrap text-xs tabular-nums">
           {e.status === "ACTIVE" || e.status === "PAUSED" ? `Day ${Math.min(p.day, e.protocol.lengthDays)} of ${e.protocol.lengthDays}` : `${p.done}/${p.total} steps`}
         </p>
         <div className="mt-1 h-1.5 w-20 overflow-hidden rounded bg-muted sm:w-28" aria-hidden="true">
           <div className="h-full rounded bg-accent" style={{ width: `${pct}%` }} />
         </div>
-        {p.awaiting ? <p className="mt-1 text-[11px] text-muted-foreground">{p.awaiting} awaiting answer</p> : null}
+        {p.awaiting ? <p className="mt-1 text-xs text-muted-foreground">{p.awaiting} awaiting answer</p> : null}
       </TD>
       <TD className="hidden lg:table-cell">
         {p.nextTitle && p.nextDueAt && p.nextKind ? (

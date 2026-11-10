@@ -228,7 +228,7 @@ async function LeadListTab({
                     <Link href={`/dashboard/leads/${lead.id}`} className="block truncate font-medium underline-offset-2 hover:text-accent hover:underline">
                       {lead.fullName}
                     </Link>
-                    <span className="block truncate font-mono text-xs text-muted-foreground">{lead.phone ?? lead.email ?? "—"}</span>
+                    <span className="tabular-nums block truncate text-xs text-muted-foreground">{lead.phone ?? lead.email ?? "—"}</span>
                   </TD>
                   <TD>
                     <StageBadge stage={lead.stage} />
@@ -244,10 +244,10 @@ async function LeadListTab({
                     </span>
                   </TD>
                   <TD className="hidden max-w-[12rem] truncate text-xs text-muted-foreground xl:table-cell">{lead.campaign?.name ?? "—"}</TD>
-                  <TD className="hidden whitespace-nowrap font-mono text-xs text-muted-foreground sm:table-cell" title={formatDateInTz(new Date(lead.createdAt), timezone)}>
+                  <TD className="tabular-nums hidden whitespace-nowrap text-xs text-muted-foreground sm:table-cell" title={formatDateInTz(new Date(lead.createdAt), timezone)}>
                     {ageLabel(lead.createdAt, now)}
                   </TD>
-                  <TD className={cn("hidden whitespace-nowrap font-mono text-xs lg:table-cell", due && due < now ? "text-danger" : "text-muted-foreground")}>
+                  <TD className={cn("tabular-nums hidden whitespace-nowrap text-xs lg:table-cell", due && due < now ? "text-danger" : "text-muted-foreground")}>
                     {due ? whenLabel(due, timezone, now) : "—"}
                   </TD>
                 </TR>
@@ -304,7 +304,7 @@ async function FollowUpsTab({
             )}
           >
             {SCOPE_LABELS[s]}
-            <span className={cn("font-mono", s === "overdue" && counts.overdue ? "text-danger" : undefined)}>{counts[s]}</span>
+            <span className={cn("tabular-nums", s === "overdue" && counts.overdue ? "text-danger" : undefined)}>{counts[s]}</span>
           </Link>
         ))}
       </div>
@@ -325,7 +325,7 @@ async function FollowUpsTab({
                     {overdue ? <Badge tone="danger">{overdueLabel(f.dueAt, now)}</Badge> : null}
                   </div>
                   <p className="text-sm" dir="auto">{f.note ?? <span className="text-muted-foreground">No note</span>}</p>
-                  <p className="flex flex-wrap items-center gap-x-2 gap-y-1 font-mono text-xs text-muted-foreground">
+                  <p className="tabular-nums flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
                     <span className={overdue ? "text-danger" : undefined}>Due {whenLabel(due, timezone, now)}</span>
                     {f.channel ? <span>· {CHANNEL_LABELS[f.channel]}</span> : null}
                     <span className="inline-flex items-center gap-1">
@@ -390,7 +390,7 @@ async function CampaignsTab({ tenantId, canWrite, treatments, timezone }: { tena
                     {c.name}
                   </span>
                   <span className="block truncate text-xs text-muted-foreground">{c.treatment?.name ?? "Brand (any treatment)"}</span>
-                  <span className="flex flex-wrap items-center gap-1.5 font-mono text-[11px] text-muted-foreground">
+                  <span className="flex flex-wrap items-center gap-1.5 font-mono text-xs text-muted-foreground">
                     <span className="truncate">{c.externalId}</span>
                     {c.active ? null : <Badge>ended</Badge>}
                     {c.startedAt ? <span className="hidden md:inline">· since {formatDateInTz(new Date(c.startedAt), timezone, { day: "2-digit", month: "short", year: "numeric" })}</span> : null}
@@ -399,15 +399,15 @@ async function CampaignsTab({ tenantId, canWrite, treatments, timezone }: { tena
                 <TD className="hidden sm:table-cell">
                   <Badge tone={c.platform === "META" ? "accent" : c.platform === "GOOGLE" ? "success" : "default"}>{PLATFORM_LABELS[c.platform]}</Badge>
                 </TD>
-                <TD className="text-right font-mono tabular-nums">
+                <TD className="text-right tabular-nums">
                   <Link href={leadsHref("list", { campaignId: c.id })} className="hover:text-accent hover:underline">
                     {c.leads}
                   </Link>
                 </TD>
-                <TD className="hidden text-right font-mono tabular-nums md:table-cell">{c.consultations}</TD>
-                <TD className="hidden text-right font-mono tabular-nums lg:table-cell">{c.won}</TD>
-                <TD className="whitespace-nowrap text-right font-mono text-xs tabular-nums">{egp(c.totalCost)}</TD>
-                <TD className="hidden whitespace-nowrap text-right font-mono text-xs tabular-nums text-muted-foreground lg:table-cell">{c.leads ? egp(Math.round(c.totalCost / c.leads)) : "—"}</TD>
+                <TD className="hidden text-right tabular-nums md:table-cell">{c.consultations}</TD>
+                <TD className="hidden text-right tabular-nums lg:table-cell">{c.won}</TD>
+                <TD className="whitespace-nowrap text-right text-xs tabular-nums">{egp(c.totalCost)}</TD>
+                <TD className="hidden whitespace-nowrap text-right text-xs tabular-nums text-muted-foreground lg:table-cell">{c.leads ? egp(Math.round(c.totalCost / c.leads)) : "—"}</TD>
                 {canWrite ? (
                   <TD className="px-2 text-right">
                     <CampaignRowActions campaign={c} treatments={treatments} />
@@ -418,11 +418,11 @@ async function CampaignsTab({ tenantId, canWrite, treatments, timezone }: { tena
             <TR className="bg-muted/40 font-medium hover:bg-muted/40">
               <TD>Total</TD>
               <TD className="hidden sm:table-cell" />
-              <TD className="text-right font-mono tabular-nums">{totals.leads}</TD>
-              <TD className="hidden text-right font-mono tabular-nums md:table-cell">{totals.consultations}</TD>
-              <TD className="hidden text-right font-mono tabular-nums lg:table-cell">{totals.won}</TD>
-              <TD className="whitespace-nowrap text-right font-mono text-xs tabular-nums">{egp(totals.cost)}</TD>
-              <TD className="hidden whitespace-nowrap text-right font-mono text-xs tabular-nums lg:table-cell">{totals.leads ? egp(Math.round(totals.cost / totals.leads)) : "—"}</TD>
+              <TD className="text-right tabular-nums">{totals.leads}</TD>
+              <TD className="hidden text-right tabular-nums md:table-cell">{totals.consultations}</TD>
+              <TD className="hidden text-right tabular-nums lg:table-cell">{totals.won}</TD>
+              <TD className="whitespace-nowrap text-right text-xs tabular-nums">{egp(totals.cost)}</TD>
+              <TD className="hidden whitespace-nowrap text-right text-xs tabular-nums lg:table-cell">{totals.leads ? egp(Math.round(totals.cost / totals.leads)) : "—"}</TD>
               {canWrite ? <TD /> : null}
             </TR>
           </TBody>

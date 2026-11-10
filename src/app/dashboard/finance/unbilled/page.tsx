@@ -98,7 +98,7 @@ export default async function UnbilledPage({ searchParams }: { searchParams: Pro
               <li key={v.appointmentId} className="flex flex-col gap-2 py-3 sm:flex-row sm:items-center sm:justify-between">
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className="font-mono text-xs text-muted-foreground">{time(v.startsAt)}</span>
+                    <span className="tabular-nums text-xs text-muted-foreground">{time(v.startsAt)}</span>
                     <Link href={`/dashboard/patients/${v.patientId}`} className="font-medium underline-offset-2 hover:underline">
                       {v.patientName}
                     </Link>
@@ -147,11 +147,11 @@ export default async function UnbilledPage({ searchParams }: { searchParams: Pro
                 <li key={p.procedureId} className="flex flex-col gap-2 py-3 sm:flex-row sm:items-center sm:justify-between">
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
-                      <span className="font-mono text-xs text-muted-foreground">{time(p.performedAt)}</span>
+                      <span className="tabular-nums text-xs text-muted-foreground">{time(p.performedAt)}</span>
                       <Link href={`/dashboard/patients/${p.patientId}`} className="font-medium underline-offset-2 hover:underline">
                         {p.patientName}
                       </Link>
-                      <span className="font-mono text-xs tabular-nums">{formatNumber(p.net)} EGP</span>
+                      <span className="text-xs tabular-nums">{formatNumber(p.net)} EGP</span>
                     </div>
                     <p className="text-xs text-muted-foreground">
                       {p.label}

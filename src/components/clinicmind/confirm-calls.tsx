@@ -48,7 +48,7 @@ export function ConfirmCalls({ rows, timezone, canWrite }: { rows: ToConfirmRow[
             <li key={r.id} className="flex flex-col gap-2 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-5">
               <div className="min-w-0">
                 <p className="text-sm">
-                  <span className="font-mono tabular-nums">{formatDateInTz(at, timezone, { weekday: "short", day: "numeric", month: "short" })} {formatTimeInTz(at, timezone)}</span>
+                  <span className="tabular-nums">{formatDateInTz(at, timezone, { weekday: "short", day: "numeric", month: "short" })} {formatTimeInTz(at, timezone)}</span>
                   {" · "}
                   <Link href={`/dashboard/patients/${r.patient.id}?tab=overview`} className="font-medium hover:underline">
                     {r.patient.fullName}
@@ -58,7 +58,7 @@ export function ConfirmCalls({ rows, timezone, canWrite }: { rows: ToConfirmRow[
                 <div className="mt-1 flex flex-wrap items-center gap-2">
                   <Badge tone={r.reason === "reschedule" ? "danger" : "warning"}>{r.reason === "reschedule" ? "Asked for another time" : "Not confirmed"}</Badge>
                   {r.patient.phone ? (
-                    <a href={`tel:${r.patient.phone}`} className="font-mono text-xs text-muted-foreground hover:text-foreground">
+                    <a href={`tel:${r.patient.phone}`} className="tabular-nums text-xs text-muted-foreground hover:text-foreground">
                       {r.patient.phone}
                     </a>
                   ) : null}

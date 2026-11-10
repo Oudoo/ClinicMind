@@ -23,7 +23,7 @@ type SearchParams = Record<string, string | string[] | undefined>;
 const first = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v);
 
 const VIEW_LABELS: Record<InsuranceView, string> = { owed: "Owed", open: "To send", sent: "Sent", approvals: "Approvals", payers: "Payers" };
-const NUM = "whitespace-nowrap text-right font-mono tabular-nums";
+const NUM = "whitespace-nowrap text-right tabular-nums";
 
 /**
  * `/dashboard/finance/insurance` — insurers and companies (`insurance:read`):
@@ -96,7 +96,7 @@ export default async function InsurancePage({ searchParams }: { searchParams: Pr
                   )}
                 >
                   {VIEW_LABELS[v]}
-                  {count ? <span className="rounded-md bg-card px-1.5 font-mono text-[10px] text-muted-foreground">{count}</span> : null}
+                  {count ? <span className="tabular-nums rounded-md bg-card px-1.5 text-xs text-muted-foreground">{count}</span> : null}
                 </Link>
               </li>
             );

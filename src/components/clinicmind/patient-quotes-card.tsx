@@ -46,7 +46,7 @@ export async function PatientQuotesCard({ tenantId, role, patientId, canWrite }:
                   </span>
                 </span>
                 <span className="shrink-0 text-right">
-                  <span className="block font-mono text-sm tabular-nums">{formatNumber(q.state === "ACCEPTED" && q.acceptedTotal !== null ? q.acceptedTotal : q.total)} EGP</span>
+                  <span className="block text-sm tabular-nums">{formatNumber(q.state === "ACCEPTED" && q.acceptedTotal !== null ? q.acceptedTotal : q.total)} EGP</span>
                   <QuoteStateBadge state={q.state} />
                 </span>
               </Link>

@@ -62,11 +62,11 @@ export function EnrolmentFilters({
     <div className="flex flex-col gap-3 border-b border-border p-4 sm:p-5 lg:flex-row lg:items-center lg:justify-between">
       <div className="flex flex-wrap gap-2" role="group" aria-label="Status">
         <button type="button" className={chip(!filters.status)} onClick={() => go({ ...filters, status: undefined })} aria-pressed={!filters.status}>
-          All <span className="font-mono text-xs tabular-nums text-muted-foreground">{total}</span>
+          All <span className="text-xs tabular-nums text-muted-foreground">{total}</span>
         </button>
         {STATUSES.map((s) => (
           <button key={s} type="button" className={chip(filters.status === s)} onClick={() => go({ ...filters, status: s })} aria-pressed={filters.status === s}>
-            {ENROLMENT_STATUS_TEXT[s]} <span className="font-mono text-xs tabular-nums text-muted-foreground">{counts[s]}</span>
+            {ENROLMENT_STATUS_TEXT[s]} <span className="text-xs tabular-nums text-muted-foreground">{counts[s]}</span>
           </button>
         ))}
       </div>

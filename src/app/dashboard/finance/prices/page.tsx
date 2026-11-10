@@ -128,7 +128,7 @@ export default async function PriceListPage({ searchParams }: { searchParams: Pr
             {groups.map((g) => (
               <TBody key={g.category}>
                 <TR className="bg-muted/40 hover:bg-muted/40">
-                  <TD colSpan={canManage ? 6 : 5} className="py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  <TD colSpan={canManage ? 6 : 5} className="py-2 text-xs font-semibold text-muted-foreground">
                     {CATEGORY_LABELS[g.category]}
                   </TD>
                 </TR>
@@ -137,7 +137,7 @@ export default async function PriceListPage({ searchParams }: { searchParams: Pr
                     <TD className="hidden font-mono text-xs sm:table-cell">{i.code}</TD>
                     <TD>
                       {/* On a phone the code rides above the name, leaving the width to the price. */}
-                      <div className="font-mono text-[11px] text-muted-foreground sm:hidden">{i.code}</div>
+                      <div className="font-mono text-xs text-muted-foreground sm:hidden">{i.code}</div>
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="font-medium">{i.name}</span>
                         {i.active ? null : <Badge tone="warning">Retired</Badge>}
@@ -159,7 +159,7 @@ export default async function PriceListPage({ searchParams }: { searchParams: Pr
                         <span className="text-xs text-muted-foreground">No price yet</span>
                       ) : (
                         <>
-                          <div className="font-mono tabular-nums">{formatNumber(i.price)} EGP</div>
+                          <div className="tabular-nums">{formatNumber(i.price)} EGP</div>
                           <div className="text-xs text-muted-foreground">
                             {i.branchPrice && query.clinicId ? `${branchName.get(query.clinicId) ?? "Branch"} · ` : ""}since {i.priceSince ? day(i.priceSince) : "—"}
                           </div>
@@ -174,7 +174,7 @@ export default async function PriceListPage({ searchParams }: { searchParams: Pr
                     <TD className="hidden whitespace-nowrap text-sm lg:table-cell">
                       {i.next ? (
                         <>
-                          <span className="font-mono tabular-nums">{formatNumber(i.next.amount)} EGP</span>
+                          <span className="tabular-nums">{formatNumber(i.next.amount)} EGP</span>
                           <div className="text-xs text-muted-foreground">
                             from {day(i.next.effectiveFrom)}
                             {i.next.clinicId ? ` · ${branchName.get(i.next.clinicId) ?? "branch"}` : ""}

@@ -119,7 +119,7 @@ export default async function SupplierPage({ params, searchParams }: { params: P
                     ) : null}
                   </TD>
                   <TD className="whitespace-nowrap text-right">
-                    <span className="font-mono tabular-nums">{formatNumber(e.amount)}</span>
+                    <span className="tabular-nums">{formatNumber(e.amount)}</span>
                     {e.paid && e.owed ? <div className="text-xs text-muted-foreground">{formatNumber(e.owed)} owed</div> : null}
                   </TD>
                   <TD className="text-xs">

@@ -159,7 +159,7 @@ export function TenantAiForm({ tenantId, initial }: { tenantId: string; initial:
                 value={models[m.key] ?? ""}
                 onChange={(e) => setModels((cur) => ({ ...cur, [m.key]: e.target.value }))}
                 placeholder={m.placeholder}
-                className="font-mono text-xs"
+                className="tabular-nums text-xs"
               />
             </Field>
           ))}

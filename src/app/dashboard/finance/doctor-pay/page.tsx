@@ -103,11 +103,11 @@ export default async function DoctorPayPage({ searchParams }: { searchParams: Pr
                       {r.statement.unruled ? <span className="text-warning"> · {r.statement.unruled} with no rule</span> : null}
                     </div>
                   </TD>
-                  <TD className="hidden text-right font-mono tabular-nums md:table-cell">{formatNumber(r.statement.billed)}</TD>
-                  <TD className="hidden text-right font-mono tabular-nums md:table-cell">{formatNumber(r.statement.collected)}</TD>
-                  <TD className="hidden text-right font-mono tabular-nums lg:table-cell">{formatNumber(r.statement.costs)}</TD>
-                  <TD className="text-right font-mono tabular-nums">{formatNumber(r.statement.earned)}</TD>
-                  <TD className="text-right font-mono tabular-nums">
+                  <TD className="hidden text-right tabular-nums md:table-cell">{formatNumber(r.statement.billed)}</TD>
+                  <TD className="hidden text-right tabular-nums md:table-cell">{formatNumber(r.statement.collected)}</TD>
+                  <TD className="hidden text-right tabular-nums lg:table-cell">{formatNumber(r.statement.costs)}</TD>
+                  <TD className="text-right tabular-nums">{formatNumber(r.statement.earned)}</TD>
+                  <TD className="text-right tabular-nums">
                     {formatNumber(r.statement.payable)}
                     {r.statement.carriedForward ? <div className="text-xs text-danger">{formatNumber(-r.statement.carriedForward)} owed back</div> : null}
                   </TD>

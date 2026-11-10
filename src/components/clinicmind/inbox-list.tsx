@@ -49,7 +49,7 @@ export function InboxList({
               className={cn("flex gap-3 px-3 py-3 transition-colors hover:bg-muted/50 sm:px-4", selected && "bg-accent-muted/60 hover:bg-accent-muted/60")}
             >
               <span className="relative mt-0.5 shrink-0">
-                <span aria-hidden="true" className="flex h-9 w-9 items-center justify-center rounded-md bg-muted font-mono text-xs text-muted-foreground">
+                <span aria-hidden="true" className="tabular-nums flex h-9 w-9 items-center justify-center rounded-md bg-muted text-xs text-muted-foreground">
                   {initials(row.displayName.replace(/^\+/, "")) || "?"}
                 </span>
                 {unread ? <span className="absolute -right-1 -top-1 h-3 w-3 rounded-full bg-accent ring-2 ring-card" title={`${row.unread} unread`} /> : null}
@@ -57,7 +57,7 @@ export function InboxList({
               <span className="min-w-0 flex-1">
                 <span className="flex items-baseline justify-between gap-2">
                   <span className={cn("truncate text-sm", unread ? "font-semibold" : "font-medium")}>{row.displayName}</span>
-                  <span className={cn("shrink-0 font-mono text-[11px]", unread ? "text-accent" : "text-muted-foreground")}>
+                  <span className={cn("tabular-nums shrink-0 text-xs", unread ? "text-accent" : "text-muted-foreground")}>
                     {last ? whenLabel(last.createdAt, timezone, now) : whenLabel(row.updatedAt, timezone, now)}
                   </span>
                 </span>

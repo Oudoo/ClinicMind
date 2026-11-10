@@ -136,7 +136,7 @@ export function LeadStageStepper({ lead, lostAtStage, canWrite }: { lead: { id: 
           <>
             <span
               className={cn(
-                "flex h-5 w-5 shrink-0 items-center justify-center rounded-full font-mono text-[10px]",
+                "tabular-nums flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-xs",
                 state === "done" && "bg-success/15 text-success",
                 state === "current" && (lead.stage === "LOST" ? "bg-danger text-white" : "bg-accent text-accent-foreground"),
                 state === "todo" && "bg-muted text-muted-foreground",

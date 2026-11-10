@@ -21,7 +21,7 @@ import { ContractButton, PayerButton, RecordAnswerButton, VoidPayerPaymentButton
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Payer" };
 
-const NUM = "whitespace-nowrap text-right font-mono tabular-nums";
+const NUM = "whitespace-nowrap text-right tabular-nums";
 
 /**
  * `/dashboard/finance/insurance/payers/[id]` — one insurer or company: its
@@ -261,19 +261,19 @@ function ContractTerms({ contract, dayKey }: { contract: ContractDTO; dayKey: (k
       <dl className="grid grid-cols-2 gap-2 rounded-lg bg-muted/60 p-3">
         <div>
           <dt className="data-label">Off our prices</dt>
-          <dd className="font-mono tabular-nums">{contract.discountPct}%</dd>
+          <dd className="tabular-nums">{contract.discountPct}%</dd>
         </div>
         <div>
           <dt className="data-label">The patient pays</dt>
-          <dd className="font-mono tabular-nums">{contract.copayPct}%</dd>
+          <dd className="tabular-nums">{contract.copayPct}%</dd>
         </div>
         <div>
           <dt className="data-label">Yearly limit</dt>
-          <dd className="font-mono tabular-nums">{contract.annualLimit ? `${formatNumber(contract.annualLimit)} EGP` : "None"}</dd>
+          <dd className="tabular-nums">{contract.annualLimit ? `${formatNumber(contract.annualLimit)} EGP` : "None"}</dd>
         </div>
         <div>
           <dt className="data-label">Approval first</dt>
-          <dd className="font-mono tabular-nums">{contract.approvalAbove !== null ? `Above ${formatNumber(contract.approvalAbove)} EGP` : "Where a rule says"}</dd>
+          <dd className="tabular-nums">{contract.approvalAbove !== null ? `Above ${formatNumber(contract.approvalAbove)} EGP` : "Where a rule says"}</dd>
         </div>
       </dl>
       <ul className="space-y-0.5">

@@ -132,15 +132,15 @@ export function ReportAlertRules({ rules, canEdit, timezone }: { rules: AlertRul
                 <dl className="mt-2 grid grid-cols-1 gap-1 text-xs sm:grid-cols-3">
                   <div>
                     <dt className="data-label inline">Last value </dt>
-                    <dd className="inline font-mono tabular-nums">{shown(r.metric, r.lastValue)}</dd>
+                    <dd className="inline tabular-nums">{shown(r.metric, r.lastValue)}</dd>
                   </div>
                   <div>
                     <dt className="data-label inline">Evaluated </dt>
-                    <dd className="inline font-mono">{r.lastEvaluatedAt ? formatDateTimeInTz(new Date(r.lastEvaluatedAt), timezone) : "not yet"}</dd>
+                    <dd className="tabular-nums inline">{r.lastEvaluatedAt ? formatDateTimeInTz(new Date(r.lastEvaluatedAt), timezone) : "not yet"}</dd>
                   </div>
                   <div>
                     <dt className="data-label inline">Last fired </dt>
-                    <dd className="inline font-mono">
+                    <dd className="tabular-nums inline">
                       {r.lastFiredAt ? (
                         <span className="inline-flex items-center gap-1 text-warning">
                           <BellRing className="h-3 w-3" aria-hidden="true" />

@@ -73,7 +73,7 @@ export default async function PlatformPage() {
                     {t.owner ? (
                       <div className="flex flex-col gap-0.5">
                         <span className="text-sm">{t.owner.fullName ?? t.owner.email}</span>
-                        <span className="flex items-center gap-2 font-mono text-xs text-muted-foreground">
+                        <span className="tabular-nums flex items-center gap-2 text-xs text-muted-foreground">
                           {t.owner.fullName ? t.owner.email : null}
                           <Badge tone={USER_TONE[t.owner.status] ?? "default"}>{t.owner.status.toLowerCase()}</Badge>
                         </span>
@@ -92,9 +92,9 @@ export default async function PlatformPage() {
                       `${t.slug}.${env.ROOT_DOMAIN}`
                     )}
                   </TD>
-                  <TD className="hidden text-right font-mono text-xs tabular-nums md:table-cell">{t.counts.users}</TD>
-                  <TD className="hidden text-right font-mono text-xs tabular-nums md:table-cell">{t.counts.patients}</TD>
-                  <TD className="hidden font-mono text-xs text-muted-foreground lg:table-cell">{t.createdAt ? formatDate(t.createdAt) : "—"}</TD>
+                  <TD className="hidden text-right text-xs tabular-nums md:table-cell">{t.counts.users}</TD>
+                  <TD className="hidden text-right text-xs tabular-nums md:table-cell">{t.counts.patients}</TD>
+                  <TD className="tabular-nums hidden text-xs text-muted-foreground lg:table-cell">{t.createdAt ? formatDate(t.createdAt) : "—"}</TD>
                 </TR>
               ))}
             </TBody>

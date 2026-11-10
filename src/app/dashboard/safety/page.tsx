@@ -123,7 +123,7 @@ export default async function SafetyOverridesPage({ searchParams }: { searchPara
                   <li key={o.id} className="space-y-1.5 px-4 py-3 text-sm">
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <SeverityBadge severity={o.severity} />
-                      <span className="font-mono text-xs tabular-nums text-muted-foreground">
+                      <span className="text-xs tabular-nums text-muted-foreground">
                         {at.date} · {at.time}
                       </span>
                     </div>
@@ -155,7 +155,7 @@ export default async function SafetyOverridesPage({ searchParams }: { searchPara
                     const at = when(o.createdAt);
                     return (
                       <TR key={o.id} className="align-top">
-                        <TD className="whitespace-nowrap px-3 align-top font-mono text-xs tabular-nums text-muted-foreground sm:px-3">
+                        <TD className="whitespace-nowrap px-3 align-top text-xs tabular-nums text-muted-foreground sm:px-3">
                           {at.date}
                           <div>{at.time}</div>
                           <div className="mt-1.5">

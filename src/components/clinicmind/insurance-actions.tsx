@@ -874,7 +874,7 @@ export function RecordAnswerButton({ payerId, payerName, batchId, today, label =
                         <span className="font-medium">
                           {l.patientName} <span className="font-mono text-xs text-muted-foreground">{l.claimNumber}</span>
                         </span>
-                        <span className="font-mono text-xs tabular-nums">owed {formatNumber(l.owed)}</span>
+                        <span className="text-xs tabular-nums">owed {formatNumber(l.owed)}</span>
                       </div>
                       <p className="text-xs text-muted-foreground">{l.description}</p>
                       <div className="mt-2 flex flex-wrap items-center gap-2">
@@ -903,7 +903,7 @@ export function RecordAnswerButton({ payerId, payerName, batchId, today, label =
               </div>
             )}
             <p className="text-sm">
-              Paid <span className="font-mono tabular-nums">{formatNumber(totals.paid)}</span> EGP · refused <span className="font-mono tabular-nums">{formatNumber(totals.refused)}</span> EGP
+              Paid <span className="tabular-nums">{formatNumber(totals.paid)}</span> EGP · refused <span className="tabular-nums">{formatNumber(totals.refused)}</span> EGP
             </p>
             <DialogFooter>
               <DialogClose asChild>

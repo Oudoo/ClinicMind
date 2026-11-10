@@ -54,7 +54,7 @@ export function InstalmentPlanList({ plans, patient, timezone, canPay, canRefund
                     {plan.quote?.number ? ` · treatment plan ${plan.quote.number}` : ""}
                   </p>
                 </div>
-                <div className="shrink-0 text-right font-mono text-sm tabular-nums">
+                <div className="shrink-0 text-right text-sm tabular-nums">
                   {formatNumber(plan.position.paid)} <span className="text-muted-foreground">/ {formatNumber(plan.total)} EGP</span>
                 </div>
               </div>
@@ -103,7 +103,7 @@ export function InstalmentPlanList({ plans, patient, timezone, canPay, canRefund
                       <tr key={i.id}>
                         <td className="whitespace-nowrap py-1 pr-2">{i.number === 0 ? "Down" : `No. ${i.number}`}</td>
                         <td className="whitespace-nowrap py-1 pr-2 text-muted-foreground">{day(i.dueKey)}</td>
-                        <td className="whitespace-nowrap py-1 pr-2 text-right font-mono tabular-nums" title={i.covered > 0 && i.owed > 0 ? `${formatNumber(i.covered)} of it paid` : undefined}>
+                        <td className="whitespace-nowrap py-1 pr-2 text-right tabular-nums" title={i.covered > 0 && i.owed > 0 ? `${formatNumber(i.covered)} of it paid` : undefined}>
                           {i.covered > 0 && i.owed > 0 ? `${formatNumber(i.covered)}/` : ""}
                           {formatNumber(i.amount)}
                         </td>

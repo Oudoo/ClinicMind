@@ -116,16 +116,16 @@ export function LostReasonBadge({ reason }: { reason: LostReasonKey | null }) {
 
 /** The owner's initials in a small square, the full name on hover. */
 export function OwnerChip({ owner, size = "sm" }: { owner: { fullName: string } | null; size?: "sm" | "md" }) {
-  const box = size === "sm" ? "h-6 w-6 text-[10px]" : "h-8 w-8 text-xs";
+  const box = size === "sm" ? "h-6 w-6 text-xs" : "h-8 w-8 text-xs";
   if (!owner) {
     return (
-      <span title="Unassigned" className={cn("inline-flex shrink-0 items-center justify-center rounded-md border border-dashed border-border font-mono text-muted-foreground", box)}>
+      <span title="Unassigned" className={cn("tabular-nums inline-flex shrink-0 items-center justify-center rounded-md border border-dashed border-border text-muted-foreground", box)}>
         –
       </span>
     );
   }
   return (
-    <span title={owner.fullName} className={cn("inline-flex shrink-0 items-center justify-center rounded-md bg-accent-muted font-mono text-accent", box)}>
+    <span title={owner.fullName} className={cn("tabular-nums inline-flex shrink-0 items-center justify-center rounded-md bg-accent-muted text-accent", box)}>
       {initials(owner.fullName.replace(/^Dr\.?\s+/i, ""))}
     </span>
   );

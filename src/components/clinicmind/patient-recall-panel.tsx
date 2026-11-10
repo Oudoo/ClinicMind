@@ -97,7 +97,7 @@ function PanelRow({ recall: r, timezone, canWrite }: { recall: RecallDTO; timezo
       <div className="flex flex-wrap items-center gap-1.5">
         <BandBadge recall={r} />
         <Badge>{r.kindLabel}</Badge>
-        {r.value > 0 ? <span className="font-mono text-xs tabular-nums text-muted-foreground">{egp(r.value)}</span> : null}
+        {r.value > 0 ? <span className="text-xs tabular-nums text-muted-foreground">{egp(r.value)}</span> : null}
       </div>
       <p className="text-xs text-muted-foreground">
         Due {day(r.dueAt, timezone)} – {day(r.windowEndAt, timezone)} · {r.statusLabel}

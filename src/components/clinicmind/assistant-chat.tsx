@@ -278,7 +278,7 @@ export function AssistantChat({ initialPatient = null }: { initialPatient?: Pati
         ) : (
           <PatientPicker onSelect={setPatient} />
         )}
-        <span className="text-[11px] text-muted-foreground sm:ml-auto">
+        <span className="text-xs text-muted-foreground sm:ml-auto">
           {patient ? "Answers are limited to this patient's records." : "All of this clinic's records."}
         </span>
       </div>
@@ -326,7 +326,7 @@ export function AssistantChat({ initialPatient = null }: { initialPatient?: Pati
                 {turn.role === "user" ? (
                   <>
                     {turn.patient ? (
-                      <p className="mb-1 text-[11px] opacity-80">
+                      <p className="mb-1 text-xs opacity-80">
                         <UserRound className="mr-1 inline h-3 w-3" />
                         {turn.patient.fullName}
                       </p>
@@ -389,14 +389,14 @@ export function AssistantChat({ initialPatient = null }: { initialPatient?: Pati
                 dir="auto"
                 onClick={() => send(s)}
                 disabled={loading}
-                className="max-w-full truncate rounded-md border border-border px-2 py-1 text-[11px] text-muted-foreground hover:border-accent hover:text-accent disabled:opacity-50"
+                className="max-w-full truncate rounded-md border border-border px-2 py-1 text-xs text-muted-foreground hover:border-accent hover:text-accent disabled:opacity-50"
               >
                 {s}
               </button>
             ))}
           </div>
         ) : null}
-        <p className="mt-2 text-[11px] text-muted-foreground">{DISCLAIMER}</p>
+        <p className="mt-2 text-xs text-muted-foreground">{DISCLAIMER}</p>
       </form>
     </div>
   );
@@ -428,7 +428,7 @@ function CohortAnswer({ turn, onMore }: { turn: ChatTurn; onMore: () => void }) 
       {cohort.criteria.length ? (
         <div className="flex flex-wrap gap-1.5" aria-label="Understood as">
           {cohort.criteria.map((c) => (
-            <span key={c} className="max-w-full break-words rounded-md bg-muted px-2 py-0.5 text-[11px] text-muted-foreground">
+            <span key={c} className="max-w-full break-words rounded-md bg-muted px-2 py-0.5 text-xs text-muted-foreground">
               {c}
             </span>
           ))}
@@ -473,11 +473,11 @@ function PatientRowItem({ row }: { row: CohortRow }) {
   const who = [row.age !== null ? `${row.age}` : null, sexLabel(row.sex)].filter(Boolean).join(" · ");
   return (
     <li className="flex gap-2 px-3 py-2">
-      <span className="mt-0.5 shrink-0 font-mono text-[11px] text-accent">[{row.index}]</span>
+      <span className="tabular-nums mt-0.5 shrink-0 text-xs text-accent">[{row.index}]</span>
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-baseline gap-x-2">
           <PatientLink href={row.href} label={row.name} />
-          {who ? <span className="text-[11px] text-muted-foreground">{who}</span> : null}
+          {who ? <span className="text-xs text-muted-foreground">{who}</span> : null}
         </div>
         {row.facts.length ? (
           <ul className="mt-1 space-y-0.5">
@@ -567,7 +567,7 @@ function RagAnswer({ turn }: { turn: ChatTurn }) {
   return (
     <div className="space-y-3">
       {turn.scope?.label ? (
-        <p className="text-[11px] text-muted-foreground">
+        <p className="text-xs text-muted-foreground">
           Limited to: <span className="font-medium text-foreground">{turn.scope.label}</span>
           {turn.scope.patients !== null && turn.scope.patients !== 1 ? ` (${turn.scope.patients} patients)` : null}
         </p>
@@ -626,8 +626,8 @@ function CitationRow({ citation }: { citation: Citation }) {
     <div className="flex gap-2 text-xs text-muted-foreground">
       <Quote className="mt-0.5 h-3 w-3 shrink-0 text-accent" />
       <span className="min-w-0 break-words">
-        <span className="font-mono text-accent">[{citation.index}]</span>{" "}
-        <span className="font-mono uppercase">{citation.source.replace(/_/g, " ")}</span>
+        <span className="tabular-nums text-accent">[{citation.index}]</span>{" "}
+        <span className="tabular-nums">{citation.source.replace(/_/g, " ")}</span>
         {label ? (
           <>
             {" · "}

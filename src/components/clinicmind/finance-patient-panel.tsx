@@ -133,21 +133,21 @@ export function FinancePatientPanel({
       <dl className={cn("grid gap-2 rounded-lg bg-muted/60 p-3 text-center", account?.claimed ? "grid-cols-2 sm:grid-cols-4" : "grid-cols-3")}>
         <div>
           <dt className="data-label">Billed</dt>
-          <dd className="font-mono text-sm tabular-nums">{formatNumber(billed)}</dd>
+          <dd className="text-sm tabular-nums">{formatNumber(billed)}</dd>
         </div>
         <div>
           <dt className="data-label" title="Everything received for this patient, consultation fees and deposits included, net of refunds (and what family paid for them)">Received</dt>
-          <dd className="font-mono text-sm tabular-nums">{paid === null ? "—" : formatNumber(paid)}</dd>
+          <dd className="text-sm tabular-nums">{paid === null ? "—" : formatNumber(paid)}</dd>
         </div>
         {account?.claimed ? (
           <div>
             <dt className="data-label" title="Claimed from the patient's insurer or company, less what it refused">Claimed</dt>
-            <dd className="font-mono text-sm tabular-nums">{formatNumber(account.claimed)}</dd>
+            <dd className="text-sm tabular-nums">{formatNumber(account.claimed)}</dd>
           </div>
         ) : null}
         <div>
           <dt className="data-label">Balance</dt>
-          <dd className={owing > 0 ? "font-mono text-sm tabular-nums text-warning" : owing < 0 ? "font-mono text-sm tabular-nums text-accent" : "font-mono text-sm tabular-nums"}>{formatNumber(owing)}</dd>
+          <dd className={owing > 0 ? "text-sm tabular-nums text-warning" : owing < 0 ? "text-sm tabular-nums text-accent" : "text-sm tabular-nums"}>{formatNumber(owing)}</dd>
         </div>
       </dl>
 
@@ -192,11 +192,11 @@ export function FinancePatientPanel({
                       <p className="mt-0.5 text-xs text-muted-foreground">
                         {p.undated ? (
                           <span>
-                            Accepted <span className="font-mono">{date(p.performedAt)}</span>
+                            Accepted <span className="tabular-nums">{date(p.performedAt)}</span>
                             {p.quoteNumber ? <span className="font-mono"> · {p.quoteNumber}</span> : null} · no day yet
                           </span>
                         ) : (
-                          <span className="font-mono">{date(p.performedAt)}</span>
+                          <span className="tabular-nums">{date(p.performedAt)}</span>
                         )}
                         {p.doctorName ? ` · ${p.doctorName}` : ""}
                       </p>
@@ -212,8 +212,8 @@ export function FinancePatientPanel({
                       {p.zeroChargeReason ? <p className="mt-0.5 text-xs text-muted-foreground">No charge: {p.zeroChargeReason}</p> : null}
                     </div>
                     <div className="shrink-0 text-right">
-                      <div className="font-mono text-sm tabular-nums">{formatNumber(net)} EGP</div>
-                      {p.discount ? <div className="font-mono text-[11px] text-muted-foreground">−{formatNumber(p.discount)} discount</div> : null}
+                      <div className="text-sm tabular-nums">{formatNumber(net)} EGP</div>
+                      {p.discount ? <div className="tabular-nums text-xs text-muted-foreground">−{formatNumber(p.discount)} discount</div> : null}
                     </div>
                   </div>
                   {p.status !== "CANCELLED" ? (
@@ -297,7 +297,7 @@ export function FinancePatientPanel({
                   </p>
                 </div>
                 <div className="flex shrink-0 items-center gap-2">
-                  <span className="font-mono text-sm tabular-nums">{formatNumber(inv.total)}</span>
+                  <span className="text-sm tabular-nums">{formatNumber(inv.total)}</span>
                   <Badge tone={inv.status === "PAID" && inv.writtenOff ? "default" : (INVOICE_TONE[inv.status] ?? "default")}>
                     {inv.status === "PAID" && inv.writtenOff ? "Written off" : (INVOICE_LABEL[inv.status] ?? inv.status)}
                   </Badge>
@@ -324,7 +324,7 @@ export function FinancePatientPanel({
                         {p.imported ? <Badge>POS import</Badge> : null}
                       </div>
                       <p className="mt-0.5 flex flex-wrap gap-x-1.5 text-xs text-muted-foreground">
-                        <span className="whitespace-nowrap font-mono">{date(p.paidAt)}</span>
+                        <span className="tabular-nums whitespace-nowrap">{date(p.paidAt)}</span>
                         {p.receiptNumber ? <span className="whitespace-nowrap font-mono">· {p.receiptNumber}</span> : null}
                         {p.procedureLabel ? <span className="whitespace-nowrap">· {p.procedureLabel}</span> : null}
                         {p.reference ? <span className="whitespace-nowrap font-mono">· {p.reference}</span> : null}
@@ -332,7 +332,7 @@ export function FinancePatientPanel({
                       {p.note ? <p className="mt-0.5 text-xs">{p.note}</p> : null}
                     </div>
                     <div className="flex shrink-0 items-center gap-1">
-                      <span className={amount < 0 ? "font-mono text-sm tabular-nums text-danger" : "font-mono text-sm tabular-nums"}>
+                      <span className={amount < 0 ? "text-sm tabular-nums text-danger" : "text-sm tabular-nums"}>
                         {amount < 0 ? "−" : ""}
                         {formatNumber(Math.abs(amount))}
                       </span>

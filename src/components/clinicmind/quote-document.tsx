@@ -65,7 +65,7 @@ export function QuoteDocument({ quote }: { quote: PublicQuoteDTO }) {
             <span className="text-muted-foreground">{t.validUntil}: </span>
             <span className={quote.state === "EXPIRED" ? "text-danger" : undefined}>{validUntil}</span>
           </p>
-          <p className="mt-1 inline-block rounded border border-border px-2 py-0.5 text-xs uppercase tracking-wide" data-testid="quote-state">
+          <p className="mt-1 inline-block rounded border border-border px-2 py-0.5 text-xs" data-testid="quote-state">
             {t.state[quote.state]}
           </p>
         </div>
@@ -124,7 +124,7 @@ export function QuoteDocument({ quote }: { quote: PublicQuoteDTO }) {
             {quote.phases.length > 1 ? (
               <p className="flex justify-between gap-4 text-xs text-muted-foreground">
                 <span>{t.phaseTotal}</span>
-                <span className="font-mono tabular-nums" dir="ltr">
+                <span className="tabular-nums" dir="ltr">
                   {money(phaseTotal)}
                 </span>
               </p>
@@ -138,13 +138,13 @@ export function QuoteDocument({ quote }: { quote: PublicQuoteDTO }) {
           <>
             <div className="flex justify-between gap-4 text-muted-foreground">
               <dt>{t.beforeDiscounts}</dt>
-              <dd className="font-mono tabular-nums" dir="ltr">
+              <dd className="tabular-nums" dir="ltr">
                 {money(quote.listTotal)}
               </dd>
             </div>
             <div className="flex justify-between gap-4 text-muted-foreground">
               <dt>{t.discounts}</dt>
-              <dd className="font-mono tabular-nums" dir="ltr">
+              <dd className="tabular-nums" dir="ltr">
                 −{money(quote.discountTotal)}
               </dd>
             </div>
@@ -152,14 +152,14 @@ export function QuoteDocument({ quote }: { quote: PublicQuoteDTO }) {
         ) : null}
         <div className="flex justify-between gap-4 border-t border-border pt-1 font-semibold">
           <dt>{t.total}</dt>
-          <dd className="font-mono tabular-nums" dir="ltr" data-testid="quote-total">
+          <dd className="tabular-nums" dir="ltr" data-testid="quote-total">
             {money(quote.total)}
           </dd>
         </div>
         {answered && quote.acceptedTotal !== null && quote.acceptedTotal !== quote.total ? (
           <div className="flex justify-between gap-4 font-semibold text-success">
             <dt>{t.acceptedTotal}</dt>
-            <dd className="font-mono tabular-nums" dir="ltr">
+            <dd className="tabular-nums" dir="ltr">
               {money(quote.acceptedTotal)}
             </dd>
           </div>
@@ -226,10 +226,10 @@ function ItemRow({ item, quote, money }: { item: PublicQuoteItemDTO; quote: Publ
           </span>
         ) : null}
       </td>
-      <td className="whitespace-nowrap py-2 text-end font-mono tabular-nums" dir="ltr">
+      <td className="whitespace-nowrap py-2 text-end tabular-nums" dir="ltr">
         <span className={declined ? "text-muted-foreground line-through" : undefined}>{money(item.net)}</span>
         {item.discount > 0 ? (
-          <span className="block text-[11px] text-muted-foreground">
+          <span className="block text-xs text-muted-foreground">
             {money(item.price)} · {t.discount(money(item.discount))}
           </span>
         ) : null}

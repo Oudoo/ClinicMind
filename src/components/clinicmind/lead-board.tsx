@@ -101,7 +101,7 @@ function LeadCard({
         {lead.stage === "LOST" ? <LostReasonBadge reason={lead.lostReason} /> : null}
         {lead.patientId ? <Badge tone="success">Patient</Badge> : null}
       </div>
-      <div className="mt-2 flex items-center justify-between gap-2 font-mono text-[11px] text-muted-foreground">
+      <div className="tabular-nums mt-2 flex items-center justify-between gap-2 text-xs text-muted-foreground">
         {lead.wonAt ? (
           <span className="inline-flex items-center gap-1 text-success" title="Won">
             <Trophy className="h-3 w-3" aria-hidden="true" />

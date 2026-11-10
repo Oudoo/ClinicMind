@@ -49,7 +49,7 @@ export async function MessagingIntegrationCard({ tenantId, role }: { tenantId: s
         <Row label="Last outbound" value={when(status.lastOutboundAt)} />
         {status.provider === "whatsapp_cloud" ? <Row label="Phone number id" value={<span className="font-mono text-xs">{status.phoneNumberId ?? "—"}</span>} /> : null}
         {status.provider === "inbox_webhook" ? <Row label="Outbound URL" value={<span className="break-all font-mono text-xs">{status.outboundUrl ?? "—"}</span>} /> : null}
-        <Row label="Webhook secret" value={status.hasSecret ? <span className="font-mono text-xs">{status.secretPrefix}…</span> : <span className="text-muted-foreground">not generated</span>} />
+        <Row label="Webhook secret" value={status.hasSecret ? <span className="tabular-nums text-xs">{status.secretPrefix}…</span> : <span className="text-muted-foreground">not generated</span>} />
       </dl>
       {manage ? (
         <InboxChannelSettings status={status} />

@@ -1,12 +1,11 @@
 import * as React from "react";
 import { TrendingDown, TrendingUp, Check, AlertTriangle } from "lucide-react";
-import { Card } from "@/components/ui/primitives";
 import { cn } from "@/lib/utils";
 
 /**
- * Dashboard building blocks: a KPI tile with the change against a comparison
- * period and a sparkline, a change chip, week-over-week columns and horizontal
- * bars. Pure markup and inline SVG, so they render in server components.
+ * Dashboard building blocks: a figure with the change against a comparison
+ * period (several go inside a Bento), a change chip, a trend line, week-over-week
+ * columns and horizontal bars. Pure markup and inline SVG, so they render in server components.
  */
 
 export type Direction = "up" | "down";
@@ -116,7 +115,6 @@ export function Kpi({
   delta,
   hint,
   target,
-  spark,
   tone = "default",
 }: {
   label: string;
@@ -124,22 +122,14 @@ export function Kpi({
   delta?: React.ReactNode;
   hint?: React.ReactNode;
   target?: { ok: boolean; text: string };
-  spark?: number[];
+  /** `warning` colours the figure; `accent` is kept for callers and reads as default. */
   tone?: "default" | "accent" | "warning";
 }) {
   return (
-    <Card className="flex min-w-0 flex-col gap-1.5 p-4 sm:p-5">
+    <div className="stat">
       <span className="data-label">{label}</span>
-      <div className="flex flex-wrap items-baseline gap-2">
-        <span
-          className={cn(
-            "font-display text-2xl font-semibold tracking-tightest tabular-nums sm:text-3xl",
-            tone === "accent" && "text-accent",
-            tone === "warning" && "text-warning",
-          )}
-        >
-          {value}
-        </span>
+      <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+        <span className={cn("metric-value", tone === "warning" && "text-warning")}>{value}</span>
         {delta}
       </div>
       {hint || target ? (
@@ -153,12 +143,7 @@ export function Kpi({
           ) : null}
         </div>
       ) : null}
-      {spark && spark.length ? (
-        <div className="mt-auto pt-1">
-          <Spark values={spark} tone={tone === "warning" ? "warning" : "accent"} />
-        </div>
-      ) : null}
-    </Card>
+    </div>
   );
 }
 

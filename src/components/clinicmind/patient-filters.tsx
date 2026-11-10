@@ -193,7 +193,7 @@ export function PatientFilters({
 
       {/* Active filters */}
       <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-        <span className="font-mono tabular-nums">
+        <span className="tabular-nums">
           {total} {total === 1 ? "match" : "matches"}
         </span>
         {chips.map((chip) => (
@@ -202,7 +202,7 @@ export function PatientFilters({
             type="button"
             onClick={() => navigate(withoutFilter(query, chip.key as PatientFilterKey))}
             aria-label={`Clear filter ${chip.label}`}
-            className="inline-flex h-7 max-w-full items-center gap-1 rounded-md bg-accent-muted px-2 text-[11px] font-medium text-accent hover:bg-accent/20"
+            className="inline-flex h-7 max-w-full items-center gap-1 rounded-md bg-accent-muted px-2 text-xs font-medium text-accent hover:bg-accent/20"
           >
             <span className="truncate">{chip.label}</span>
             <X className="h-3 w-3 shrink-0" />

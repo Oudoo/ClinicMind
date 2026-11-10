@@ -64,13 +64,13 @@ export function ReportTargets({ rows, canEdit, redacted, periodLabel }: { rows: 
                     </div>
                     <div className="mt-0.5 text-xs text-muted-foreground">{r.goodWhen === "up" ? "Higher is better" : "Lower is better"}</div>
                   </TD>
-                  <TD className="hidden whitespace-nowrap text-right font-mono tabular-nums md:table-cell">{hidden ? "owner only" : fmtUnit(r.unit, r.baseline)}</TD>
-                  <TD className="whitespace-nowrap text-right font-mono tabular-nums">{hidden ? "owner only" : fmtUnit(r.unit, r.target)}</TD>
+                  <TD className="hidden whitespace-nowrap text-right tabular-nums md:table-cell">{hidden ? "owner only" : fmtUnit(r.unit, r.baseline)}</TD>
+                  <TD className="whitespace-nowrap text-right tabular-nums">{hidden ? "owner only" : fmtUnit(r.unit, r.target)}</TD>
                   <TD className="whitespace-nowrap text-right">
-                    <div className="font-mono tabular-nums">{hidden ? "—" : fmtUnit(r.unit, r.current)}</div>
+                    <div className="tabular-nums">{hidden ? "—" : fmtUnit(r.unit, r.current)}</div>
                     {r.onTrack === null ? null : r.onTrack ? <Badge tone="success">on track</Badge> : <Badge tone="warning">off track</Badge>}
                   </TD>
-                  <TD className="hidden whitespace-nowrap font-mono text-xs lg:table-cell">{r.dueAt ?? "—"}</TD>
+                  <TD className="tabular-nums hidden whitespace-nowrap text-xs lg:table-cell">{r.dueAt ?? "—"}</TD>
                   {canEdit ? (
                     <TD>
                       <Button type="button" size="icon" variant="ghost" onClick={() => setEditing(r)} aria-label={`Edit the target for ${r.metric}`}>

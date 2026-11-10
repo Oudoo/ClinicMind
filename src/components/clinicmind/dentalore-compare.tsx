@@ -48,11 +48,11 @@ export function DentaloreCompare({ figures }: { figures: CompareFigure[] }) {
                   <td className="py-2 pe-3">
                     <label htmlFor={`${id}-${f.key}`}>{f.label}</label>
                   </td>
-                  <td className="py-2 pe-3 text-end font-mono tabular-nums">{egp(f.value)}</td>
+                  <td className="py-2 pe-3 text-end tabular-nums">{egp(f.value)}</td>
                   <td className="py-2 pe-3">
                     <Input id={`${id}-${f.key}`} inputMode="numeric" value={theirs[f.key] ?? ""} onChange={(e) => setTheirs((t) => ({ ...t, [f.key]: e.target.value }))} placeholder="—" className="ms-auto h-9 w-28 text-end font-mono" />
                   </td>
-                  <td className={cn("py-2 text-end font-mono tabular-nums", diff !== null && diff !== 0 && "text-danger", diff === 0 && "text-success")}>
+                  <td className={cn("py-2 text-end tabular-nums", diff !== null && diff !== 0 && "text-danger", diff === 0 && "text-success")}>
                     {diff === null ? "" : diff === 0 ? "same" : diff > 0 ? `+${egp(diff)}` : egp(diff)}
                   </td>
                 </tr>

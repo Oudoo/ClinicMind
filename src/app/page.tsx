@@ -76,7 +76,7 @@ export default function LandingPage() {
       </main>
 
       <footer className="mx-auto max-w-6xl px-6 py-10 text-center">
-        <p className="font-mono text-xs text-muted-foreground">{BRAND.productName}</p>
+        <p className="tabular-nums text-xs text-muted-foreground">{BRAND.productName}</p>
       </footer>
     </div>
   );

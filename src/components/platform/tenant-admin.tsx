@@ -120,7 +120,7 @@ export function BrandingForm({
         )}
         <div className="min-w-0">
           <p className="truncate font-display text-sm font-semibold">{productName || fallbackProductName}</p>
-          <p className="font-mono text-[10px] text-muted-foreground">preview · accent {swatch}</p>
+          <p className="tabular-nums text-xs text-muted-foreground">preview · accent {swatch}</p>
         </div>
       </div>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
@@ -136,7 +136,7 @@ export function BrandingForm({
               onChange={(e) => setAccent(e.target.value.toUpperCase())}
               className="h-10 w-12 shrink-0 cursor-pointer rounded-lg border border-input bg-background p-1"
             />
-            <Input id="br-accent" value={accent} onChange={(e) => setAccent(e.target.value)} placeholder="#4F46E5" className="font-mono" />
+            <Input id="br-accent" value={accent} onChange={(e) => setAccent(e.target.value)} placeholder="#4F46E5" className="tabular-nums" />
           </div>
         </Field>
         <Field label="Logo URL" htmlFor="br-logo" hint={issues.logoUrl ?? "https · square works best"}>

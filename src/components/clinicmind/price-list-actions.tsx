@@ -353,7 +353,7 @@ function EditPriceItemDialog({ itemId, options, onClose }: { itemId: string; opt
                 {item.history.map((h) => (
                   <li key={h.id} className="flex items-start justify-between gap-2 py-2">
                     <span className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1">
-                      <span className="font-mono tabular-nums">{formatNumber(h.amount)} EGP</span>
+                      <span className="tabular-nums">{formatNumber(h.amount)} EGP</span>
                       <span className="text-muted-foreground">
                         from {day(h.effectiveFrom)} · {branchName(h.clinicId)}
                         {h.createdBy ? ` · ${h.createdBy}` : ""}

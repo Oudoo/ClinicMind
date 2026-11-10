@@ -33,14 +33,14 @@ export function Pagination({
   const to = Math.min(total, page * pageSize);
   return (
     <div className={cn("flex items-center justify-between gap-4 px-5 py-3 text-xs text-muted-foreground", className)}>
-      <span className="font-mono tabular-nums">
+      <span className="tabular-nums">
         {from}–{to} of {total}
       </span>
       <div className="flex items-center gap-1">
         <PageLink href={href(page - 1)} disabled={page <= 1} label="Previous page">
           <ChevronLeft className="h-4 w-4" />
         </PageLink>
-        <span className="px-2 font-mono tabular-nums">
+        <span className="px-2 tabular-nums">
           {page} / {pages}
         </span>
         <PageLink href={href(page + 1)} disabled={page >= pages} label="Next page">

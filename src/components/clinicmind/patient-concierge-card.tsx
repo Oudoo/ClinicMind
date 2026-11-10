@@ -68,12 +68,12 @@ export async function PatientConciergeCard({
         <div>
           <dt className="data-label">Protocol</dt>
           <dd className="truncate">
-            {e.protocol.name} <span className="font-mono text-xs text-muted-foreground">v{e.protocol.version}</span>
+            {e.protocol.name} <span className="tabular-nums text-xs text-muted-foreground">v{e.protocol.version}</span>
           </dd>
         </div>
         <div>
           <dt className="data-label">{running ? "Day" : "Steps"}</dt>
-          <dd className="font-mono tabular-nums">{running ? `${Math.min(p.day, e.protocol.lengthDays)} of ${e.protocol.lengthDays}` : `${p.done} of ${p.total}`}</dd>
+          <dd className="tabular-nums">{running ? `${Math.min(p.day, e.protocol.lengthDays)} of ${e.protocol.lengthDays}` : `${p.done} of ${p.total}`}</dd>
         </div>
         <div className="col-span-2">
           <dt className="data-label">Next step</dt>

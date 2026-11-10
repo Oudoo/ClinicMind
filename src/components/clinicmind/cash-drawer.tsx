@@ -157,7 +157,7 @@ export function CloseShiftButton({ shiftId, cashier, methods, own }: { shiftId: 
                     <p className="text-sm">
                       <span className="font-medium">{m.label}</span>
                       <span className="block text-xs text-muted-foreground">
-                        Expected <span className="font-mono tabular-nums">{formatNumber(m.expected)}</span> EGP{m.method === "CASH" ? " (with the float)" : ""}
+                        Expected <span className="tabular-nums">{formatNumber(m.expected)}</span> EGP{m.method === "CASH" ? " (with the float)" : ""}
                       </span>
                     </p>
                     <Field label="Counted (EGP)" htmlFor={`${id}-${m.method}`} hint={issues[m.method] ? <span className="text-danger">{issues[m.method]}</span> : undefined}>

@@ -361,7 +361,7 @@ function QuestionCard({
   return (
     <fieldset id={id} className={cn("bento space-y-3 p-4 sm:p-5", error && "border-danger")} aria-labelledby={labelId}>
       <p id={labelId} className="text-base font-medium">
-        <span className="me-1.5 font-mono text-sm text-muted-foreground">{index}.</span>
+        <span className="tabular-nums me-1.5 text-sm text-muted-foreground">{index}.</span>
         {label}
       </p>
       {q.type === "scale" ? <ScaleInput id={id} q={q} copy={copy} value={typeof value === "number" ? value : undefined} onChange={onChange} labelId={labelId} /> : null}
@@ -467,7 +467,7 @@ function ScaleInput({
             : "[&::-moz-range-thumb]:bg-muted-foreground/40 [&::-webkit-slider-thumb]:bg-muted-foreground/40",
         )}
       />
-      <div className="flex justify-between font-mono text-xs text-muted-foreground" aria-hidden="true">
+      <div className="tabular-nums flex justify-between text-xs text-muted-foreground" aria-hidden="true">
         {Array.from({ length: max - min + 1 }, (_, i) => min + i).map((n) => (
           <button key={n} type="button" tabIndex={-1} onClick={() => onChange(n)} className={cn("w-6 rounded py-1 text-center", value === n && "bg-accent-muted font-semibold text-accent")}>
             {n}

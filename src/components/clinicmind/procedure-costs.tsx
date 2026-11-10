@@ -49,13 +49,13 @@ export function ProcedureCosts({
         <>
           <p className="flex flex-wrap items-baseline justify-between gap-2">
             <span className="data-label">Costs</span>
-            <span className="font-mono tabular-nums">{formatNumber(total)} EGP</span>
+            <span className="tabular-nums">{formatNumber(total)} EGP</span>
           </p>
           <ul className="space-y-0.5">
             {materials ? (
               <li className="flex justify-between gap-2 text-muted-foreground">
                 <span>Materials, from the price list</span>
-                <span className="font-mono tabular-nums">{formatNumber(materials)}</span>
+                <span className="tabular-nums">{formatNumber(materials)}</span>
               </li>
             ) : null}
             {costs.map((c) => (
@@ -64,7 +64,7 @@ export function ProcedureCosts({
                   {KIND_LABELS[c.kind]}: {c.description} · {formatDateInTz(new Date(c.incurredAt), timezone, { day: "numeric", month: "short" })}
                 </span>
                 <span className="flex shrink-0 items-center gap-1">
-                  <span className="font-mono tabular-nums">{formatNumber(c.amount)}</span>
+                  <span className="tabular-nums">{formatNumber(c.amount)}</span>
                   {canVoid && !c.voidedAt ? (
                     <button type="button" className="rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground" aria-label={`Void ${c.description}`} onClick={() => setVoiding(c)}>
                       <X className="h-3 w-3" aria-hidden="true" />

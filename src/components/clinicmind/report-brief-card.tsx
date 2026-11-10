@@ -62,12 +62,12 @@ function BriefRow({ line, index }: { line: BriefLine; index: number }) {
   const goodWhen = line.metric === "M13" ? "up" : METRIC_BY_ID[line.metric].goodWhen;
   return (
     <li className="flex gap-3 rounded-md border border-border p-3">
-      <span className="font-mono text-xs text-muted-foreground">{index + 1}</span>
+      <span className="tabular-nums text-xs text-muted-foreground">{index + 1}</span>
       <div className="min-w-0 flex-1 space-y-1">
         <div className="flex flex-wrap items-center gap-2">
           <MetricBadge id={line.metric} />
           <span className="text-sm font-medium">{line.label}</span>
-          <span className="font-mono text-sm tabular-nums">{fmtMetric(line.unit, line.current)}</span>
+          <span className="text-sm tabular-nums">{fmtMetric(line.unit, line.current)}</span>
           {line.current !== null && line.previous !== null ? (
             <DeltaChip
               current={line.current}
