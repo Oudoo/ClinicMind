@@ -40,8 +40,11 @@ prisma/migrations/dev.db*
 # docker volumes
 /.docker-data
 
-# Claude Code session data (agent worktrees, local settings)
-.claude/
+# Claude Code session data (agent worktrees, local settings). The project's skills are kept:
+# .claude/skills/impeccable is the design skill (see DESIGN.md), without its downloaded engine.
+.claude/*
+!.claude/skills/
+.claude/skills/*/scripts/bin/
 
 # playwright
 /playwright-report

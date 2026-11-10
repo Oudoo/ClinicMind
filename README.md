@@ -328,6 +328,7 @@ scripts/              db-app-role · platform-bootstrap · reindex · assistant-
 deploy/               Caddyfile · env.production.example · hostinger/ (the workflows' request files)
 demo/                 the click-through prototype (static files)
 docs/                 architecture · platform · integration · runbook · Hostinger
+PRODUCT.md, DESIGN.md who the product is for · how its screens are built
 public/embed.js       website embed loader
 ```
 
@@ -340,3 +341,16 @@ public/embed.js       website embed loader
 - [`docs/INTEGRATION.md`](docs/INTEGRATION.md) — embedding ClinicMind in a website or portal, token minting
 - [`docs/RUNBOOK.md`](docs/RUNBOOK.md) — deploy, upgrade, backup and restore, rotation, monitoring
 - [`docs/HOSTINGER.md`](docs/HOSTINGER.md) — the demo on Hostinger's Node.js hosting
+- [`PRODUCT.md`](PRODUCT.md) — who the product is for and the principles its screens follow
+- [`DESIGN.md`](DESIGN.md) — the interface: tokens, layout, components, what to do and not to do
+
+### Working on the interface
+
+Read `DESIGN.md` before changing a screen. The navigation, the overview and the appointments
+follow it; other screens are brought to it as they are worked on.
+
+The repository carries the [Impeccable](https://github.com/pbakaus/impeccable) design skill for
+Claude Code in `.claude/skills/impeccable` (Apache 2.0): `/impeccable` in a session there, for
+example `/impeccable critique src/app/dashboard/patients`. It reads the two files above. Its
+checker is a small program downloaded on first use (not kept in the repository), and nothing runs
+on its own: no hook is installed.

@@ -20,10 +20,10 @@ rm -rf "$APP" "$ZIP"
 mkdir -p "$APP"
 
 echo "▶ Source"
-# Left out: tests, the click-through prototype, docs, CI and Docker files, and the other
+# Left out: tests, the click-through prototype, docs, the design skill, CI and Docker files, and the other
 # scripts; tsconfig type-checks every .ts file there is, so test files would need the test tools.
 git ls-files -co --exclude-standard -z | grep -zv -E \
-  '^(\.github|demo|docs|deploy|e2e|src/test)/|(^|/)__tests__/|\.(test|spec)\.tsx?$|^(Dockerfile|docker-compose.*\.yml|\.dockerignore|\.env\.example|\.gitignore|AGENTS\.md|README\.md|eslint\.config\.mjs|playwright\.config\.ts|vitest\.config\.mts)$|^scripts/' \
+  '^(\.claude|\.github|demo|docs|deploy|e2e|src/test)/|(^|/)__tests__/|\.(test|spec)\.tsx?$|^(Dockerfile|docker-compose.*\.yml|\.dockerignore|\.env\.example|\.gitignore|AGENTS\.md|DESIGN\.md|PRODUCT\.md|README\.md|eslint\.config\.mjs|playwright\.config\.ts|vitest\.config\.mts)$|^scripts/' \
   | tar -c --null -T - -f - | tar -x -C "$APP"
 mkdir -p "$APP/scripts"
 cp scripts/hostinger-build.mjs scripts/db-app-role.ts "$APP/scripts/"
