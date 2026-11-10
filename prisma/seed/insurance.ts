@@ -18,8 +18,9 @@ import { contractDiscountOf, contractOn, contractYear, patientShareOf, ruleFor, 
  * After the invoices: each payer's claims go in a batch on the 5th of the
  * next month (the newest claim's month still waits to be sent); the insurer pays its batches in about five weeks (once a line
  * above the contract's price is refused back to the patient, once a line not
- * covered is written off), the company in three, and the network has not
- * paid since the summer. Approvals asked of the payers: one waiting, one
+ * covered is written off), the company in three, and the network is behind:
+ * its newest batch past its days to pay, and every batch since, is unanswered.
+ * Approvals asked of the payers: one waiting, one
  * approved, one refused.
  */
 
@@ -237,15 +238,26 @@ export async function seedClaims(ctx: SeedContext): Promise<void> {
     }
   }
 
-  // The payers' answers, in the order the money came: the insurer in five weeks, the company in three, the network not since the summer.
+  // The payers' answers, in the order the money came: the insurer in five weeks, the company in three. The network is
+  // behind: it has not answered its newest batch that is already past its days to pay, nor any batch since. Counted
+  // from the batches rather than from a fixed number of days back, so whatever day the demo is seeded on, something
+  // is owed past a payer's days to pay (the network's claims are a few months apart).
   const sent = await db.claimBatch.findMany({ where: { tenantId }, orderBy: { sentAt: "asc" }, select: { id: true, number: true, payerId: true, sentAt: true } });
+  const networkDays = PAYERS.find((p) => p.key === "saqqara")?.paymentDays ?? 60;
+  const networkSilentFrom =
+    sent
+      .filter((b) => keyOf.get(b.payerId) === "saqqara")
+      .map((b) => dateKeyInTz(b.sentAt, TZ))
+      .filter((sentOn) => addDaysKey(sentOn, networkDays) < today)
+      .sort()
+      .at(-1) ?? addDaysKey(today, -120);
   const due = sent
     .map((b) => {
       const key = keyOf.get(b.payerId);
       const sentOn = dateKeyInTz(b.sentAt, TZ);
       return { ...b, key, sentOn, paidOn: addDaysKey(sentOn, key === "papyrus" ? 20 : key === "saqqara" ? 52 : 35) };
     })
-    .filter((b) => b.paidOn <= today && !(b.key === "saqqara" && b.sentOn >= addDaysKey(today, -120)))
+    .filter((b) => b.paidOn <= today && !(b.key === "saqqara" && b.sentOn >= networkSilentFrom))
     .sort((a, b) => a.paidOn.localeCompare(b.paidOn));
   const answered = new Map<string, number>();
   let answers = 0;
