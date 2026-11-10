@@ -57,7 +57,8 @@ export function DialogContent({
 }
 
 export function DialogFooter({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
-  return <div className={cn("mt-6 flex items-center justify-end gap-2", className)} {...props} />;
+  // On a phone the actions stack at full width, the main one on top; from a tablet up they sit at the end of a line.
+  return <div className={cn("mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-end", className)} {...props} />;
 }
 
 /** One-shot confirmation. Resolves when the user confirms or dismisses. */

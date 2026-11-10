@@ -86,10 +86,10 @@ components:
 
 # Design System: ClinicMind
 
-> Written from the code as it stands after the first interface pass (navigation, overview,
-> appointments; November 2026), without an interview. `PRODUCT.md` says who the product is for;
-> this file says how its screens are built. The tokens live in `src/app/globals.css` and
-> `tailwind.config.ts`, the shared parts in `src/components/ui/`.
+> Written from the code as it stands after the interface pass over every screen (November 2026),
+> without an interview. `PRODUCT.md` says who the product is for; this file says how its screens
+> are built. The tokens live in `src/app/globals.css` and `tailwind.config.ts`, the shared parts
+> in `src/components/ui/`.
 
 ## Overview
 
@@ -97,9 +97,9 @@ A working tool, read at a desk with a patient waiting. Screens are quiet and den
 ground, white surfaces for content that belongs together, one accent, and colour kept for state.
 Every screen opens on what the person should do now, then on what happened.
 
-The first pass set these patterns on three screens. The rest of the product still shows the
-older look in places (cards inside cards, status written in capitals from the database value);
-bring a screen to these rules when you work on it.
+The navigation, the overview and the appointments are the reference screens: when a rule here
+is unclear, read how they do it. The public home page is the one persuasive surface and has its
+own section below.
 
 ## Colors
 
@@ -147,7 +147,9 @@ Labels are sentence case. No capitals for emphasis, no letter-spacing on labels,
   worked, supporting figures, charts last. `space-y-4` inside a block, `space-y-8` between blocks.
 - **Lists are rows.** One surface, rows divided by rules, 12px of vertical padding, the action at
   the end of the row. A row stacks on a phone with the status beside the time.
-- **Figures** sit together in one `StatStrip`, divided by space, not in a card each.
+- **Figures** sit together in one surface (`Bento` with `Metric` or `Kpi`, or `StatStrip`), set
+  apart by space, not in a card each. A worklist page opens on its list; figures support it.
+- **Filters** apply as soon as they are chosen (`FilterForm`); a text search applies on Enter.
 - **Small screens.** Nothing scrolls sideways at 390px. Touch targets in the menu are 44px.
 
 ## Elevation & Depth
@@ -168,11 +170,17 @@ a card or row.
   inside another card: divide with rules or space instead.
 - **SectionTitle**: the page title at the top of a page, a section heading inside a card. Its
   action drops below the text on a narrow screen.
-- **StatStrip**: several figures in one surface, each with a label, the change against the
-  period before (`DeltaChip`) and one line of context. Which figures a role sees is decided by
-  the page (`statsFor` on the overview).
+- **Bento** with **Metric** or **Kpi**: several figures in one surface, each with a label, the
+  figure, the change against the period before (`DeltaChip`, on `Kpi`) and one line of context.
+  A figure is coloured only when it is a state, and its hint says why. **StatStrip** is the same
+  idea from a list of data (the overview, where the figures depend on the role).
 - **Badge**: a short state beside the thing it describes, 20px high, sentence case. Give it an
-  icon or `dot` when it is a status.
+  icon or `dot` when it is a status. Tone by meaning: `success` done, paid, settled; `warning`
+  waiting, owed, due; `danger` late, overdue, refused; `accent` under way; `default` neutral.
+  A plain fact (a count, a category) is text, not a badge.
+- **Words for stored values**: nothing from the database is shown as stored (`PART_PAID`,
+  `whatsapp_cloud`). A module's label map says it; otherwise `humanize()` and `roleLabel()` in
+  `src/lib/utils.ts`.
 - **Appointment status** (`AppointmentStatusBadge`): every status has its own word, mark and
   tone, listed in `STATUS_STYLE`. Use `plain` in a narrow place (a day's column of the week).
 - **Next step**: where bookings are listed for someone who may change them, the usual next move
@@ -181,8 +189,23 @@ a card or row.
 - **Buttons**: one primary button to a page. Row and toolbar actions are outlined; quiet links
   are ghost buttons.
 - **Select**: carries a chevron (`.select-caret`). A filter applies when it is chosen; it has no
-  "Apply" button.
-- **Empty state**: a dashed box with what is missing and what to do about it.
+  "Apply" button (`FilterForm`).
+- **Empty state**: what is missing and what to do about it. A dashed box on the page; inside a
+  card, `inCard` drops the box.
+- **Dialog**: a title that says what will happen, one main action. On a phone the actions stack
+  at full width with the main one on top. Confirming something that cannot be taken back (a
+  cancellation, a no-show, a void) is the one place for a solid red button.
+
+## The home page
+
+`src/app/page.tsx` is the only page that persuades: it is for someone deciding whether this is
+for their clinic, and for staff on their way to signing in. It keeps the product's own look and
+uses it as the argument: one statement of the offer, then a working day hour by hour, where each
+moment is a real piece of a screen (the day's list, a draft note, a cited answer, an invoice, a
+recall, the day close) with the demo clinic's sample data. The pieces are pictures: inert, and
+described by a label. The first one moves a visit through its steps; visitors who ask for less
+motion see it at rest. No customer names, figures or testimonials exist, so the page has none:
+do not add any. Sign in is the only action.
 
 ## Do's and Don'ts
 

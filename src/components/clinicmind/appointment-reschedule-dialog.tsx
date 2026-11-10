@@ -24,6 +24,15 @@ import {
   type TimeRuleInfo,
 } from "./appointment-shared";
 
+/** "Tue 10 Nov" from a `YYYY-MM-DD` key, built from its digits (no time zone involved). */
+function dayInWords(key: string): string {
+  const date = new Date(`${key}T12:00:00Z`);
+  if (Number.isNaN(date.getTime())) return key;
+  const weekday = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][date.getUTCDay()];
+  const month = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][date.getUTCMonth()];
+  return `${weekday} ${date.getUTCDate()} ${month}`;
+}
+
 /**
  * Move an appointment: new start/end on the clinic clock, doctor and room,
  * with the target day's free slots for the chosen doctor. A 409 lists the
@@ -263,7 +272,7 @@ export function RescheduleAppointmentDialog({
           </div>
 
           <section aria-label="Free slots" className="rounded-lg border border-border p-3">
-            <p className="mb-3 text-sm font-medium">Free slots on {dayKey}</p>
+            <p className="mb-3 text-sm font-medium">Free slots on {dayInWords(dayKey)}</p>
             <SlotPicker
               doctorId={doctorId}
               room={room.trim() || undefined}

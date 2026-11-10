@@ -113,13 +113,13 @@ export function LoginForm({ next, tenantHint }: { next: string | null; tenantHin
         </Field>
       ) : null}
 
-      <Button type="submit" className="w-full" disabled={pending}>
+      <Button type="submit" size="lg" className="w-full" disabled={pending}>
         <LogIn className="h-4 w-4" />
         {pending ? "Signing in…" : "Sign in"}
       </Button>
 
-      <p className="text-center text-xs text-muted-foreground">
-        <Link href="/forgot-password" className="hover:text-accent">
+      <p className="text-center text-sm text-muted-foreground">
+        <Link href="/forgot-password" className="underline-offset-4 hover:text-foreground hover:underline">
           Forgot your password?
         </Link>
       </p>

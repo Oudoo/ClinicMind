@@ -44,8 +44,8 @@ export function ForgotPasswordForm() {
           If an account exists for <span className="font-medium">{email}</span>, a link to choose a
           new password has been sent. It expires in one hour.
         </Alert>
-        <p className="text-center text-xs text-muted-foreground">
-          <Link href="/login" className="hover:text-accent">
+        <p className="text-center text-sm text-muted-foreground">
+          <Link href="/login" className="underline-offset-4 hover:text-foreground hover:underline">
             Back to sign in
           </Link>
         </p>
@@ -69,11 +69,11 @@ export function ForgotPasswordForm() {
           className={inputClass}
         />
       </Field>
-      <Button type="submit" className="w-full" disabled={pending}>
+      <Button type="submit" size="lg" className="w-full" disabled={pending}>
         {pending ? "Sending…" : "Send reset link"}
       </Button>
-      <p className="text-center text-xs text-muted-foreground">
-        <Link href="/login" className="hover:text-accent">
+      <p className="text-center text-sm text-muted-foreground">
+        <Link href="/login" className="underline-offset-4 hover:text-foreground hover:underline">
           Back to sign in
         </Link>
       </p>
