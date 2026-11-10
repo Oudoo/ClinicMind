@@ -2,12 +2,12 @@
 
 import { useId, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
-import { Download, Filter, Search, X } from "lucide-react";
+import { Download, Search, SlidersHorizontal, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/field";
 import { Input, Select } from "@/components/ui/input";
-import { Badge } from "@/components/ui/primitives";
-import { cn } from "@/lib/utils";
+import { Card } from "@/components/ui/primitives";
+import { formatNumber } from "@/lib/utils";
 import {
   AGE_BANDS,
   ARCHIVED_OPTIONS,
@@ -22,6 +22,7 @@ import {
   VISIT_WINDOWS,
   hasPatientFilters,
   matchesQuickView,
+  parsePatientListQuery,
   patientFilterChips,
   patientListHref,
   patientQueryParams,
@@ -36,11 +37,14 @@ export interface DoctorOption {
   fullName: string;
 }
 
+/** The controls of the list sit on the page, a step shorter than a form field. */
+const CONTROL = "h-9 bg-card";
+
 /**
- * The patient list's filter bar. Every control writes the URL (router.replace)
- * and the server page re-renders the list; nothing is filtered client-side.
- * Below 768 px the controls collapse behind a "Filters" button, and the active
- * filters stay visible as chips with an X.
+ * The controls of the patient list: the search first, then the view, the sort order, the
+ * filters (folded away until asked for) and the export. Every control writes the URL
+ * (router.replace) at once and the server page re-renders the list; nothing is filtered
+ * client-side. The filters in force stay in view as chips with an X.
  */
 export function PatientFilters({
   query,
@@ -76,150 +80,157 @@ export function PatientFilters({
 
   const chips = patientFilterChips(query, { doctorName: (d) => doctors.find((x) => x.id === d)?.fullName });
   const filtered = hasPatientFilters(query);
+  // The search has its own box; the count on the button is of the filters behind it.
+  const inPanel = chips.filter((c) => c.key !== "q").length;
   const exportHref = `/api/patients/export?${patientQueryParams({ ...query, page: undefined }).toString()}`;
   const tagOptions = query.tag && !tags.some((t) => t.tag === query.tag) ? [{ tag: query.tag, count: 0 }, ...tags] : tags;
 
-  return (
-    <div className="space-y-3 border-b border-border p-4">
-      {/* Quick views */}
-      <div className="flex flex-wrap items-center gap-1.5" aria-label="Quick views">
-        <span className="data-label mr-1">Quick views</span>
-        {QUICK_VIEWS.map((view) => {
-          const active = matchesQuickView(query, view.query);
-          return (
-            <button
-              key={view.key}
-              type="button"
-              onClick={() => navigate(active ? { sort: query.sort } : { ...view.query, sort: query.sort })}
-              aria-pressed={active}
-              className={cn(
-                "inline-flex h-8 items-center rounded-full border px-3 text-xs font-medium transition-colors",
-                active
-                  ? "border-accent bg-accent-muted text-accent"
-                  : "border-border bg-card text-muted-foreground hover:bg-muted hover:text-foreground",
-              )}
-            >
-              {view.label}
-            </button>
-          );
-        })}
-        {canSaveViews ? <PatientSavedViews query={query} views={views} onApply={navigate} /> : null}
-      </div>
+  // The view in force: a quick view, one of the user's saved views, every patient, or none of them.
+  const saved = views.map((view) => ({ view, query: parsePatientListQuery(view.params) }));
+  const quick = QUICK_VIEWS.find((v) => matchesQuickView(query, v.query));
+  const mine = saved.find((s) => matchesQuickView(query, s.query) && (query.sort ?? DEFAULT_SORT) === (s.query.sort ?? DEFAULT_SORT));
+  const current = mine ? `saved:${mine.view.id}` : quick ? `quick:${quick.key}` : filtered ? "custom" : "";
 
-      {/* Search + toggles */}
-      <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+  function chooseView(value: string) {
+    if (value.startsWith("quick:")) {
+      const view = QUICK_VIEWS.find((v) => `quick:${v.key}` === value);
+      if (view) navigate({ ...view.query, sort: query.sort });
+    } else if (value.startsWith("saved:")) {
+      const view = saved.find((s) => `saved:${s.view.id}` === value);
+      if (view) navigate(view.query);
+    } else if (value === "") {
+      navigate({ sort: query.sort });
+    }
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-col gap-2 xl:flex-row xl:items-center">
         <SearchBox key={query.q ?? ""} initial={query.q ?? ""} onSearch={(q) => set("q", q)} />
-        <div className="flex flex-wrap items-end gap-2">
-          <Field label="Sort" htmlFor={`${id}-sort`}>
-            <Select
-              id={`${id}-sort`}
-              value={query.sort ?? DEFAULT_SORT}
-              onChange={(e) => navigate({ ...query, page: undefined, sort: e.target.value as PatientListQuery["sort"] })}
-              className="w-56"
-            >
-              {SORT_OPTIONS.map((o) => (
-                <option key={o.key} value={o.key}>
-                  {o.label}
+        <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center">
+          <div className="col-span-2 flex min-w-0 gap-2 sm:col-span-1">
+            <Select aria-label="View" value={current} onChange={(e) => chooseView(e.target.value)} className={`${CONTROL} min-w-0 sm:w-48`}>
+              <option value="">All patients</option>
+              {current === "custom" ? (
+                <option value="custom" disabled>
+                  Filtered list
+                </option>
+              ) : null}
+              {QUICK_VIEWS.map((view) => (
+                <option key={view.key} value={`quick:${view.key}`}>
+                  {view.label}
                 </option>
               ))}
+              {saved.length ? (
+                <optgroup label="Saved views">
+                  {saved.map(({ view }) => (
+                    <option key={view.id} value={`saved:${view.id}`}>
+                      {view.name}
+                    </option>
+                  ))}
+                </optgroup>
+              ) : null}
             </Select>
-          </Field>
-          <Button
-            type="button"
-            variant="outline"
-            size="lg"
-            className="md:hidden"
-            onClick={() => setOpen((o) => !o)}
-            aria-expanded={open}
-            aria-controls={`${id}-panel`}
+            {canSaveViews ? <PatientSavedViews query={query} views={views} /> : null}
+          </div>
+          <Select
+            aria-label="Sort"
+            value={query.sort ?? DEFAULT_SORT}
+            onChange={(e) => navigate({ ...query, page: undefined, sort: e.target.value as PatientListQuery["sort"] })}
+            className={`${CONTROL} col-span-2 sm:w-48`}
           >
-            <Filter className="h-4 w-4" />
+            {SORT_OPTIONS.map((o) => (
+              <option key={o.key} value={o.key}>
+                {o.label}
+              </option>
+            ))}
+          </Select>
+          <Button type="button" variant="outline" onClick={() => setOpen((o) => !o)} aria-expanded={open} aria-controls={`${id}-panel`}>
+            <SlidersHorizontal className="h-4 w-4" />
             Filters
-            {chips.length ? <Badge tone="accent">{chips.length}</Badge> : null}
+            {inPanel ? <span className="tabular-nums text-muted-foreground">{inPanel}</span> : null}
           </Button>
-          {canExport ? <Button asChild variant="outline" size="lg">
-            <a href={exportHref} download title="Export the filtered list as CSV (UTF-8, opens in Excel)">
-              <Download className="h-4 w-4" />
-              Export CSV
-            </a>
-          </Button> : null}
+          {canExport ? (
+            <Button asChild variant="outline">
+              <a href={exportHref} download title="Export the list as shown to a CSV file (UTF-8, opens in Excel)">
+                <Download className="h-4 w-4" />
+                Export CSV
+              </a>
+            </Button>
+          ) : null}
         </div>
       </div>
 
-      {/* Filter controls: always on desktop, behind the toggle on phones */}
-      <div id={`${id}-panel`} className={cn("grid-cols-2 gap-3 md:grid md:grid-cols-3 lg:grid-cols-5", open ? "grid" : "hidden")}>
-        <FilterSelect id={`${id}-gender`} label="Gender" value={query.gender ?? ""} onChange={(v) => set("gender", v as PatientListQuery["gender"])} options={GENDER_OPTIONS} any="Any gender" />
-        <FilterSelect id={`${id}-age`} label="Age band" value={query.age ?? ""} onChange={(v) => set("age", v as PatientListQuery["age"])} options={AGE_BANDS} any="Any age" />
-        <FilterSelect
-          id={`${id}-tag`}
-          label="Tag"
-          value={query.tag ?? ""}
-          onChange={(v) => set("tag", v)}
-          options={tagOptions.map((t) => ({ key: t.tag, label: t.count ? `${t.tag} (${t.count})` : t.tag }))}
-          any="Any tag"
-        />
-        <FilterSelect
-          id={`${id}-doctor`}
-          label="Doctor"
-          value={query.doctor ?? ""}
-          onChange={(v) => set("doctor", v)}
-          options={doctors.map((d) => ({ key: d.id, label: d.fullName }))}
-          any="Any doctor"
-        />
-        <FilterSelect id={`${id}-upcoming`} label="Upcoming appointment" value={query.upcoming ?? ""} onChange={(v) => set("upcoming", v as PatientListQuery["upcoming"])} options={UPCOMING_OPTIONS} any="Any" />
-        <FilterSelect id={`${id}-visit`} label="Last visit" value={query.visit ?? ""} onChange={(v) => set("visit", v as PatientListQuery["visit"])} options={VISIT_WINDOWS} any="Any time" />
-        <FilterSelect id={`${id}-reg`} label="Registered" value={query.reg ?? ""} onChange={(v) => set("reg", v as PatientListQuery["reg"])} options={REGISTERED_WINDOWS} any="Any time" />
-        {query.reg === "custom" ? (
-          <>
-            <Field label="From" htmlFor={`${id}-from`}>
-              <Input id={`${id}-from`} type="date" value={query.from ?? ""} onChange={(e) => set("from", e.target.value)} />
-            </Field>
-            <Field label="To" htmlFor={`${id}-to`}>
-              <Input id={`${id}-to`} type="date" value={query.to ?? ""} onChange={(e) => set("to", e.target.value)} />
-            </Field>
-          </>
-        ) : null}
-        <FilterSelect id={`${id}-lang`} label="Language" value={query.lang ?? ""} onChange={(v) => set("lang", v as PatientListQuery["lang"])} options={LANGUAGE_OPTIONS} any="Any language" />
-        <FilterSelect id={`${id}-source`} label="Source" value={query.source ?? ""} onChange={(v) => set("source", v as PatientListQuery["source"])} options={SOURCE_OPTIONS} any="Any source" />
-        <FilterSelect
-          id={`${id}-archived`}
-          label="Archived"
-          value={query.archived ?? ""}
-          onChange={(v) => set("archived", v as PatientListQuery["archived"])}
-          options={ARCHIVED_OPTIONS.filter((o) => o.key !== "")}
-          any="Active only"
-        />
-      </div>
+      {/* Every filter, folded away until asked for: each one applies as soon as it is chosen. */}
+      {open ? (
+        <Card id={`${id}-panel`} className="grid grid-cols-2 gap-3 p-4 md:grid-cols-3 lg:grid-cols-5">
+          <FilterSelect id={`${id}-gender`} label="Gender" value={query.gender ?? ""} onChange={(v) => set("gender", v as PatientListQuery["gender"])} options={GENDER_OPTIONS} any="Any gender" />
+          <FilterSelect id={`${id}-age`} label="Age" value={query.age ?? ""} onChange={(v) => set("age", v as PatientListQuery["age"])} options={AGE_BANDS} any="Any age" />
+          <FilterSelect
+            id={`${id}-tag`}
+            label="Tag"
+            value={query.tag ?? ""}
+            onChange={(v) => set("tag", v)}
+            options={tagOptions.map((t) => ({ key: t.tag, label: t.count ? `${t.tag} (${t.count})` : t.tag }))}
+            any="Any tag"
+          />
+          <FilterSelect
+            id={`${id}-doctor`}
+            label="Doctor"
+            value={query.doctor ?? ""}
+            onChange={(v) => set("doctor", v)}
+            options={doctors.map((d) => ({ key: d.id, label: d.fullName }))}
+            any="Any doctor"
+          />
+          <FilterSelect id={`${id}-upcoming`} label="Upcoming appointment" value={query.upcoming ?? ""} onChange={(v) => set("upcoming", v as PatientListQuery["upcoming"])} options={UPCOMING_OPTIONS} any="Any" />
+          <FilterSelect id={`${id}-visit`} label="Last visit" value={query.visit ?? ""} onChange={(v) => set("visit", v as PatientListQuery["visit"])} options={VISIT_WINDOWS} any="Any time" />
+          <FilterSelect id={`${id}-reg`} label="Registered" value={query.reg ?? ""} onChange={(v) => set("reg", v as PatientListQuery["reg"])} options={REGISTERED_WINDOWS} any="Any time" />
+          {query.reg === "custom" ? (
+            <>
+              <Field label="From" htmlFor={`${id}-from`}>
+                <Input id={`${id}-from`} type="date" value={query.from ?? ""} onChange={(e) => set("from", e.target.value)} className="h-9" />
+              </Field>
+              <Field label="To" htmlFor={`${id}-to`}>
+                <Input id={`${id}-to`} type="date" value={query.to ?? ""} onChange={(e) => set("to", e.target.value)} className="h-9" />
+              </Field>
+            </>
+          ) : null}
+          <FilterSelect id={`${id}-lang`} label="Language" value={query.lang ?? ""} onChange={(v) => set("lang", v as PatientListQuery["lang"])} options={LANGUAGE_OPTIONS} any="Any language" />
+          <FilterSelect id={`${id}-source`} label="Source" value={query.source ?? ""} onChange={(v) => set("source", v as PatientListQuery["source"])} options={SOURCE_OPTIONS} any="Any source" />
+          <FilterSelect
+            id={`${id}-archived`}
+            label="Archived"
+            value={query.archived ?? ""}
+            onChange={(v) => set("archived", v as PatientListQuery["archived"])}
+            options={ARCHIVED_OPTIONS.filter((o) => o.key !== "")}
+            any="Active only"
+          />
+        </Card>
+      ) : null}
 
-      {/* Active filters */}
-      <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-        <span className="tabular-nums">
-          {total} {total === 1 ? "match" : "matches"}
-        </span>
-        {chips.map((chip) => (
-          <button
-            key={chip.key}
-            type="button"
-            onClick={() => navigate(withoutFilter(query, chip.key as PatientFilterKey))}
-            aria-label={`Clear filter ${chip.label}`}
-            className="inline-flex h-7 max-w-full items-center gap-1 rounded-md bg-accent-muted px-2 text-xs font-medium text-accent hover:bg-accent/20"
-          >
-            <span className="truncate">{chip.label}</span>
-            <X className="h-3 w-3 shrink-0" />
-          </button>
-        ))}
-        {filtered ? (
-          <button
-            type="button"
-            onClick={() => navigate({ sort: query.sort })}
-            className="underline-offset-2 hover:text-foreground hover:underline"
-          >
+      {/* What the list is narrowed to, each one a button that lifts it. */}
+      {filtered ? (
+        <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+          <span className="tabular-nums">
+            {formatNumber(total)} {total === 1 ? "patient" : "patients"}
+          </span>
+          {chips.map((chip) => (
+            <button
+              key={chip.key}
+              type="button"
+              onClick={() => navigate(withoutFilter(query, chip.key as PatientFilterKey))}
+              aria-label={`Clear filter ${chip.label}`}
+              className="inline-flex h-7 max-w-full items-center gap-1 rounded-md bg-accent-muted px-2 text-xs font-medium text-accent hover:bg-accent/20"
+            >
+              <span className="truncate">{chip.label}</span>
+              <X className="h-3 w-3 shrink-0" aria-hidden="true" />
+            </button>
+          ))}
+          <button type="button" onClick={() => navigate({ sort: query.sort })} className="rounded-sm text-xs font-medium underline-offset-2 hover:text-foreground hover:underline">
             Clear all
           </button>
-        ) : (
-          <span>No filters — showing every active patient.</span>
-        )}
-      </div>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -232,22 +243,24 @@ function SearchBox({ initial, onSearch }: { initial: string; onSearch: (q: strin
     onSearch(text.trim());
   }
   return (
-    <form onSubmit={submit} className="flex flex-col gap-2 sm:flex-row sm:items-end" role="search">
-      <div className="sm:w-80">
-        <Field label="Search" htmlFor={id} hint="Name, phone, national ID or e-mail">
-          <Input
-            id={id}
-            type="search"
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            placeholder="e.g. Sara, 0101 234 5678, 2900101…"
-            maxLength={100}
-            autoComplete="off"
-          />
-        </Field>
+    <form onSubmit={submit} className="flex min-w-0 flex-1 gap-2" role="search">
+      <label htmlFor={id} className="sr-only">
+        Search
+      </label>
+      <div className="relative min-w-0 flex-1">
+        <Search className="pointer-events-none absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+        <Input
+          id={id}
+          type="search"
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          placeholder="Name, phone, national ID or e-mail"
+          maxLength={100}
+          autoComplete="off"
+          className={`${CONTROL} ps-9`}
+        />
       </div>
-      <Button type="submit" variant="outline" size="lg" className="sm:mb-[1.4rem]">
-        <Search className="h-4 w-4" />
+      <Button type="submit" variant="outline">
         Search
       </Button>
     </form>
@@ -271,7 +284,7 @@ function FilterSelect({
 }) {
   return (
     <Field label={label} htmlFor={id}>
-      <Select id={id} value={value} onChange={(e) => onChange(e.target.value)}>
+      <Select id={id} value={value} onChange={(e) => onChange(e.target.value)} className="h-9">
         <option value="">{any}</option>
         {options.map((o) => (
           <option key={o.key} value={o.key}>
