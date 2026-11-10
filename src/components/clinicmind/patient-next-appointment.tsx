@@ -42,6 +42,7 @@ export async function PatientNextAppointment({
       patientId={patientId}
       patientName={patient.fullName}
       canWrite={canWrite && can(role, "appointments:write")}
+      canConsult={can(role, "consultations:read")}
       canManage={can(role, "users:manage")}
       userId={userId}
     />

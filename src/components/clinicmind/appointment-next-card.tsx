@@ -69,6 +69,8 @@ export interface NextAppointmentCardProps {
   patientId?: string;
   patientName?: string;
   canWrite: boolean;
+  /** May open the consultation screen: starting a visit then goes there. The desk starts the visit and stays where it is. */
+  canConsult: boolean;
   /** May remove other people's dictated notes. */
   canManage: boolean;
   userId: string | null;
@@ -85,7 +87,7 @@ export interface NextAppointmentCardProps {
  * Below it, the rest of today's queue with a "late" flag for anyone past
  * their start without a check-in.
  */
-export function NextAppointmentCard({ initial, timezone, variant, patientId, patientName, canWrite, canManage, userId }: NextAppointmentCardProps) {
+export function NextAppointmentCard({ initial, timezone, variant, patientId, patientName, canWrite, canConsult, canManage, userId }: NextAppointmentCardProps) {
   const router = useRouter();
   const { toast } = useToast();
   const [data, setData] = useState<NextAppointmentDTO>(initial);
@@ -345,7 +347,7 @@ export function NextAppointmentCard({ initial, timezone, variant, patientId, pat
                 size="lg"
                 className="w-full"
                 disabled={Boolean(pending)}
-                onClick={() => (step.status === "IN_PROGRESS" ? startConsultation(a) : void transition(a, step.status))}
+                onClick={() => (step.status === "IN_PROGRESS" && canConsult ? startConsultation(a) : void transition(a, step.status))}
               >
                 {busy ? <Loader2 className="animate-spin" /> : <StepIcon />}
                 {step.label}
@@ -355,7 +357,7 @@ export function NextAppointmentCard({ initial, timezone, variant, patientId, pat
                 {stepLater.message}
               </p>
             ) : null}
-            {a.status === "IN_PROGRESS" ? (
+            {a.status === "IN_PROGRESS" && canConsult ? (
               <Button asChild variant="outline">
                 <Link href={`/dashboard/consultations?appointmentId=${encodeURIComponent(a.id)}`}>
                   <Play />

@@ -21,6 +21,7 @@ export async function NextAppointmentHero({ tenantId, userId, role }: { tenantId
       initial={initial}
       timezone={initial.timezone}
       canWrite={can(role, "appointments:write")}
+      canConsult={can(role, "consultations:read")}
       canManage={can(role, "users:manage")}
       userId={userId}
     />
