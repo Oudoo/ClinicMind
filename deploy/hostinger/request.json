@@ -1,5 +1,6 @@
 {
-  "action": "status",
+  "action": "deploy",
   "domain": "cm.growcdx.com",
-  "requestedAt": "2026-10-29T15:40Z"
+  "app": ".hostinger/app",
+  "requestedAt": "2026-11-10T09:00Z"
 }
