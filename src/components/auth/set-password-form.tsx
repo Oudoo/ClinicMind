@@ -82,7 +82,7 @@ export function SetPasswordForm({ token, kind }: { token: string; kind: "INVITE"
           className={inputClass}
         />
       </Field>
-      <Button type="submit" className="w-full" disabled={pending}>
+      <Button type="submit" size="lg" className="w-full" disabled={pending}>
         {pending ? "Saving…" : kind === "INVITE" ? "Set password and sign in" : "Change password"}
       </Button>
     </form>

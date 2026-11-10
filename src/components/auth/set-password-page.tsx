@@ -34,7 +34,7 @@ export async function SetPasswordPage({ token, kind }: { token: string; kind: Au
           <Link href="/forgot-password" className="text-accent hover:underline">
             Request a new link
           </Link>
-          <Link href="/login" className="text-muted-foreground hover:text-accent">
+          <Link href="/login" className="text-muted-foreground underline-offset-4 hover:text-foreground hover:underline">
             Back to sign in
           </Link>
         </div>
