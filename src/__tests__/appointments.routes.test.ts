@@ -226,6 +226,29 @@ describe.skipIf(!dbTestsEnabled)("appointments", () => {
       expect(adjacent.json.appointment.status).toBe("SCHEDULED");
     });
 
+    it("treats every spelling of a room as the same room", async () => {
+      await scheduled(7, 9, { room: "Room 7" });
+      for (const room of ["room 7", "  ROOM   7 ", "Room7", "room-7", "Room ٧"]) {
+        const clash = await book({ patientId: patientA2, doctorId: doctorA2.id, room, ...slot(7, 9) });
+        expect(clash.res.status, room).toBe(409);
+        expect(clash.json.conflicts[0]).toMatchObject({ room: "Room 7" });
+      }
+
+      // A free time books under the spelling the clinic already uses.
+      const later = await book({ patientId: patientA2, doctorId: doctorA2.id, room: "room 7", ...slot(7, 11) });
+      expect(later.res.status).toBe(201);
+      expect(later.json.appointment.room).toBe("Room 7");
+    });
+
+    it("refuses a move into a taken room spelt differently", async () => {
+      await scheduled(8, 9, { room: "Room 8" });
+      const other = await book({ patientId: patientA2, doctorId: doctorA2.id, room: "Room 4", ...slot(8, 11) });
+      expect(other.res.status).toBe(201);
+      const moved = await patch(other.json.appointment.id, { ...slot(8, 9), room: "room 8" });
+      expect(moved.res.status).toBe(409);
+      expect(moved.json.conflicts[0]).toMatchObject({ room: "Room 8" });
+    });
+
     it("does not treat cancelled, no-show or waitlisted bookings as conflicts", async () => {
       const blocker = await scheduled(4, 9);
       await transition(blocker, { status: "CANCELLED", reason: "Patient request" });
