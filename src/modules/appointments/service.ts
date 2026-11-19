@@ -21,6 +21,7 @@ import { TenantScopeError, requireTenantClinic, requireTenantPatient, requireTen
 import { zDateTime, zOptionalText, zText } from "@/lib/validation";
 import { requestConfirmation, type ConfirmationRequest } from "./confirmation";
 import { toAppointmentDTO, type FreeSlotsDTO, type NextAppointmentDTO, type SlotCellDTO } from "./dto";
+import { resolveRoom, roomKey } from "./rooms";
 import { buildSlotGrid, freeCellsAfter, initialsOf, normaliseHours, type SlotCell, type TakenRange } from "./slots";
 import { clinicDayLabel, hoursViolation, isInThePast, transitionTimeBlock, type TransitionTimeCode } from "./rules";
 import {
@@ -57,6 +58,10 @@ import {
  *      lock) is caught and answered as the same 409 with the bookings in the way;
  *   3. a patient cannot hold two live appointments that overlap either
  *      (409 `patient_conflict`) unless the caller says so explicitly.
+ *
+ * A room is free text. The lock and the check go by its key, not its spelling
+ * ("room 1" is "Room 1"), and a booking is stored under the spelling the clinic
+ * already uses, so the database constraint sees one room too: see ./rooms.
  */
 
 type Client = Prisma.TransactionClient;
@@ -639,6 +644,7 @@ export async function findConflicts(
   client: Client = db,
 ): Promise<AppointmentConflict[]> {
   if (!input.doctorId && !input.room) return [];
+  const rooms = input.room ? (await resolveRoom(tenantId, input.room, client)).spellings : [];
   const rows = await client.appointment.findMany({
     where: {
       tenantId,
@@ -649,7 +655,7 @@ export async function findConflicts(
       endsAt: { gt: input.startsAt },
       OR: [
         ...(input.doctorId ? [{ doctorId: input.doctorId }] : []),
-        ...(input.room ? [{ room: input.room }] : []),
+        ...(rooms.length ? [{ room: { in: rooms } }] : []),
       ],
     },
     orderBy: { startsAt: "asc" },
@@ -701,7 +707,7 @@ async function lockSlots(
 ): Promise<void> {
   const names = [
     keys.doctorId ? `doctor:${keys.doctorId}` : null,
-    keys.room ? `room:${keys.room}` : null,
+    keys.room ? `room:${roomKey(keys.room)}` : null,
     keys.patientId ? `patient:${keys.patientId}` : null,
   ]
     .filter((k): k is string => Boolean(k))
@@ -822,6 +828,7 @@ export async function createAppointment(tenantId: string, rawInput: unknown, act
   if (input.clinicId) await requireTenantClinic(tenantId, input.clinicId);
   // Not in the past, not outside the opening hours (the owner may override, audited).
   const overrides = checkBookingTime(input, input, actor, await bookingClock(tenantId));
+  if (input.room) input.room = (await resolveRoom(tenantId, input.room)).room;
 
   const slot: SlotRef = { doctorId: input.doctorId ?? null, room: input.room ?? null, startsAt: input.startsAt, endsAt: input.endsAt };
   let outcome: { appointment: Awaited<ReturnType<typeof bookRow>>; conflicts: AppointmentConflict[] };
@@ -978,7 +985,7 @@ async function applyReschedule(
   const startsAt = input.startsAt ?? before.startsAt;
   const endsAt = input.endsAt ?? before.endsAt;
   const doctorId = input.doctorId === undefined ? before.doctorId : input.doctorId;
-  const room = input.room === undefined ? before.room : input.room;
+  const room = input.room === undefined ? before.room : input.room && (await resolveRoom(tenantId, input.room, tx)).room;
   const startChanged = startsAt.getTime() !== before.startsAt.getTime();
   const timeChanged = startChanged || endsAt.getTime() !== before.endsAt.getTime();
   const slotChanged = timeChanged || doctorId !== before.doctorId || room !== before.room;
@@ -1294,6 +1301,7 @@ export async function getNextAppointment(tenantId: string, opts: NextAppointment
 
 /** The live bookings of the doctor and/or the room that touch the day. */
 async function takenOn(tenantId: string, dayStart: Date, dayEnd: Date, q: FreeSlotsFilter): Promise<TakenRange[]> {
+  const rooms = q.room ? (await resolveRoom(tenantId, q.room)).spellings : [];
   const rows = await db.appointment.findMany({
     where: {
       tenantId,
@@ -1302,7 +1310,7 @@ async function takenOn(tenantId: string, dayStart: Date, dayEnd: Date, q: FreeSl
       status: { notIn: [...NON_BLOCKING_STATUSES] },
       startsAt: { lte: dayEnd },
       endsAt: { gt: dayStart },
-      OR: [...(q.doctorId ? [{ doctorId: q.doctorId }] : []), ...(q.room ? [{ room: q.room }] : [])],
+      OR: [...(q.doctorId ? [{ doctorId: q.doctorId }] : []), ...(rooms.length ? [{ room: { in: rooms } }] : [])],
     },
     orderBy: { startsAt: "asc" },
     take: 200,
