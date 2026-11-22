@@ -14,7 +14,7 @@ import type { Procedure } from "@prisma/client";
 import { systemDb as db, withoutScope } from "@/lib/db";
 import { resetRateLimits } from "@/lib/auth/rate-limit";
 import { ensureDefaultTreatments } from "@/modules/treatments/service";
-import { enrolOnSignedProcedure } from "@/modules/concierge/service";
+import { dedupeFollowUps, enrolOnSignedProcedure } from "@/modules/concierge/service";
 import { markMissedTasks, runConciergeDispatchForTenant, dispatchDueTasks } from "@/modules/concierge/dispatch";
 import { notifyOverdueEscalations } from "@/modules/concierge/escalations";
 import { checkInTokenHash } from "@/modules/concierge/tokens";
@@ -239,6 +239,69 @@ describe.skipIf(!dbTestsEnabled)("concierge", () => {
       const pb = await patient("Patient Of B", "ar", b);
       const foreign = await signed(pb.id, "acne", new Date(), b);
       await expect(enrolOnSignedProcedure(a, foreign.id)).rejects.toMatchObject({ status: 404 });
+    });
+
+    // Two visits days apart for the same treatment used to start two follow-ups: every check-in went out twice.
+    it("keeps one follow-up per treatment: a later session replaces the earlier one's, its pending steps skipped", async () => {
+      const p = await patient("Two Sessions");
+      const first = (await enrolOnSignedProcedure(a, (await signed(p.id, "prp-hair", cairoAt(-6, 11))).id))!;
+      await dispatchDueTasks(a, cairoAt(-4, 11, 5)); // the day-2 check-in goes out: a live link
+      const sent = (await tasksOf(first.enrolmentId)).filter((t) => t.status === "SENT" && t.kind !== "INSTRUCTION");
+      expect(sent.length).toBeGreaterThan(0);
+
+      const second = (await enrolOnSignedProcedure(a, (await signed(p.id, "prp-hair", cairoAt(-3, 11))).id, { id: doctor.id, email: "doctor@test" }))!;
+      expect(second.enrolmentId).not.toBe(first.enrolmentId);
+      const old = await db.conciergeEnrolment.findUniqueOrThrow({ where: { id: first.enrolmentId } });
+      expect(old.status).toBe("STOPPED");
+      expect(old.stopReason).toMatch(/^Replaced by the follow-up of the .+ session on .+: one follow-up per treatment/);
+      const oldTasks = await tasksOf(first.enrolmentId);
+      expect(oldTasks.filter((t) => t.status === "PENDING")).toEqual([]);
+      // The check-in it had sent no longer opens.
+      for (const t of sent) expect(oldTasks.find((o) => o.id === t.id)).toMatchObject({ status: "SKIPPED", tokenHash: null });
+      expect(await db.conciergeEnrolment.count({ where: { patientId: p.id, status: { in: ["ACTIVE", "PAUSED"] } } })).toBe(1);
+      expect(await db.timelineEvent.count({ where: { tenantId: a, refId: first.enrolmentId, title: "Concierge follow-up replaced" } })).toBe(1);
+      const stopped = await db.auditLog.findFirstOrThrow({ where: { tenantId: a, action: "concierge.enrolment.stop", entityId: first.enrolmentId } });
+      expect(stopped).toMatchObject({ actorId: doctor.id, after: expect.objectContaining({ reason: "replaced", replacedBy: second.enrolmentId }) });
+
+      // An earlier session signed late starts nothing: the latest session's follow-up stands.
+      expect(await enrolOnSignedProcedure(a, (await signed(p.id, "prp-hair", cairoAt(-5, 11))).id)).toBeNull();
+      expect((await db.conciergeEnrolment.findUniqueOrThrow({ where: { id: second.enrolmentId } })).status).toBe("ACTIVE");
+
+      // Another treatment has a follow-up of its own alongside.
+      expect(await enrolOnSignedProcedure(a, (await signed(p.id, "acne", cairoAt(-4, 12))).id)).not.toBeNull();
+      expect(await db.conciergeEnrolment.count({ where: { patientId: p.id, status: "ACTIVE" } })).toBe(2);
+    });
+
+    it("replaces a paused follow-up too, and two sign-offs at once still leave one running", async () => {
+      const p = await patient("Same Moment");
+      const first = (await enrolOnSignedProcedure(a, (await signed(p.id, "pigmentation", cairoAt(-8, 11))).id))!;
+      await db.conciergeEnrolment.update({ where: { id: first.enrolmentId }, data: { status: "PAUSED", pausedAt: new Date() } });
+      const [x, y] = await Promise.all([signed(p.id, "pigmentation", cairoAt(-3, 11)), signed(p.id, "pigmentation", cairoAt(-3, 12))]);
+      await Promise.all([enrolOnSignedProcedure(a, x.id), enrolOnSignedProcedure(a, y.id)]);
+      const running = await db.conciergeEnrolment.findMany({ where: { patientId: p.id, status: { in: ["ACTIVE", "PAUSED"] } } });
+      expect(running.map((r) => r.procedureId)).toEqual([y.id]);
+      expect((await db.conciergeEnrolment.findUniqueOrThrow({ where: { id: first.enrolmentId } })).status).toBe("STOPPED");
+    });
+
+    it("finds follow-ups doubled before the rule, reports them in a dry run and stops the earlier ones on apply", async () => {
+      const p = await patient("Doubled Before");
+      const first = (await enrolOnSignedProcedure(a, (await signed(p.id, "laser-hair-removal", cairoAt(-9, 11))).id))!;
+      // As the old code did: a second follow-up for the next session, alongside the first.
+      const later = await signed(p.id, "laser-hair-removal", cairoAt(-7, 11));
+      const dup = await db.conciergeEnrolment.create({
+        data: { tenantId: a, patientId: p.id, procedureId: later.id, protocolId: first.protocolId, startedAt: later.performedAt, tasks: { create: [{ tenantId: a, stepIndex: 1, kind: "CHECK_IN", title: "Day 1", dueAt: cairoAt(1, 11) }] } },
+      });
+
+      const report = await dedupeFollowUps(a);
+      expect(report.filter((r) => r.patientId === p.id)).toEqual([expect.objectContaining({ kept: dup.id, replaced: [first.enrolmentId] })]);
+      expect((await db.conciergeEnrolment.findUniqueOrThrow({ where: { id: first.enrolmentId } })).status).toBe("ACTIVE"); // a dry run changes nothing
+
+      await dedupeFollowUps(a, { apply: true, actor: { email: "script:test" } });
+      expect(await db.conciergeEnrolment.findUniqueOrThrow({ where: { id: first.enrolmentId } })).toMatchObject({ status: "STOPPED", stopReason: expect.stringMatching(/^Replaced by/) });
+      expect(await db.conciergeTask.count({ where: { enrolmentId: first.enrolmentId, status: "PENDING" } })).toBe(0);
+      expect((await db.conciergeEnrolment.findUniqueOrThrow({ where: { id: dup.id } })).status).toBe("ACTIVE");
+      expect(await db.auditLog.count({ where: { tenantId: a, action: "concierge.enrolment.stop", entityId: first.enrolmentId, actorEmail: "script:test" } })).toBe(1);
+      expect((await dedupeFollowUps(a)).filter((r) => r.patientId === p.id)).toEqual([]);
     });
   });
 

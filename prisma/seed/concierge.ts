@@ -176,8 +176,12 @@ export async function seedConcierge(ctx: SeedContext): Promise<void> {
   const open: { taskId: string; enrolmentId: string; patientId: string }[] = [];
 
   let skipped = 0;
+  let replacedSessions = 0;
   let pausedOne = false;
   let stoppedOne = false;
+
+  // One follow-up running per patient and treatment, from its latest session (as enrolOnSignedProcedure keeps it).
+  const latest = new Map(procedures.map((p) => [`${p.patient.id}:${p.treatmentId}`, p.id]));
 
   for (const proc of procedures) {
     const protocol = protocols.get(proc.treatmentId);
@@ -191,6 +195,11 @@ export async function seedConcierge(ctx: SeedContext): Promise<void> {
     const enrolmentId = cid("cnce");
     const signedAt = proc.signedAt ?? proc.performedAt;
     const allPast = plan.every((t) => t.dueAt.getTime() < now.getTime() - 2 * DAY);
+    // An earlier session whose follow-up would still be running: the latest session's follow-up has replaced it.
+    if (!allPast && latest.get(`${proc.patient.id}:${proc.treatmentId}`) !== proc.id) {
+      replacedSessions += 1;
+      continue;
+    }
     let status: "ACTIVE" | "PAUSED" | "COMPLETED" | "STOPPED" = allPast ? "COMPLETED" : "ACTIVE";
     // One paused and one stopped follow-up among the running ones, for the controls.
     const startedDaysAgo = (now.getTime() - proc.performedAt.getTime()) / DAY;
@@ -530,6 +539,6 @@ export async function seedConcierge(ctx: SeedContext): Promise<void> {
   const closedCheckIns = tasks.filter((t) => t.kind === "CHECK_IN" && (t.status === "ANSWERED" || t.status === "MISSED"));
   const answeredPct = closedCheckIns.length ? Math.round((closedCheckIns.filter((t) => t.status === "ANSWERED").length / closedCheckIns.length) * 100) : 0;
   console.log(
-    `     concierge: ${enrolments.length} enrolments (${byStatus("ACTIVE")} active, ${byStatus("PAUSED")} paused, ${byStatus("STOPPED")} stopped, ${byStatus("COMPLETED")} completed${skipped ? `, ${skipped} procedures without a protocol` : ""}), ${tasks.length} steps, ${checkIns.length} check-ins (${answeredPct}% of closed check-ins answered), ${open.length} awaiting an answer, ${opened} escalations, ${messages.length} messages.`,
+    `     concierge: ${enrolments.length} enrolments (${byStatus("ACTIVE")} active, ${byStatus("PAUSED")} paused, ${byStatus("STOPPED")} stopped, ${byStatus("COMPLETED")} completed${skipped ? `, ${skipped} procedures without a protocol` : ""}${replacedSessions ? `, ${replacedSessions} earlier sessions replaced by a later one` : ""}), ${tasks.length} steps, ${checkIns.length} check-ins (${answeredPct}% of closed check-ins answered), ${open.length} awaiting an answer, ${opened} escalations, ${messages.length} messages.`,
   );
 }
