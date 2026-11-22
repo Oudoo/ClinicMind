@@ -56,7 +56,7 @@ export function InboxList({
               </span>
               <span className="min-w-0 flex-1">
                 <span className="flex items-baseline justify-between gap-2">
-                  <span className={cn("truncate text-sm", unread ? "font-semibold" : "font-medium")}>{row.displayName}</span>
+                  <span className={cn("truncate text-sm", unread ? "font-medium" : "font-medium")}>{row.displayName}</span>
                   <span className={cn("tabular-nums shrink-0 text-xs", unread ? "text-accent" : "text-muted-foreground")}>
                     {last ? whenLabel(last.createdAt, timezone, now) : whenLabel(row.updatedAt, timezone, now)}
                   </span>

@@ -98,7 +98,7 @@ export function EvidencePanel({ patientId, patientName = null }: { patientId: st
   return (
     <section aria-labelledby={`${id}-title`} className="space-y-3 rounded-lg border border-border p-3 sm:p-4" data-testid="evidence-panel">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h3 id={`${id}-title`} className="flex items-center gap-2 text-sm font-semibold">
+        <h3 id={`${id}-title`} className="flex items-center gap-2 text-sm font-medium">
           <BookOpenCheck className="h-4 w-4 text-accent" aria-hidden="true" />
           Evidence
         </h3>

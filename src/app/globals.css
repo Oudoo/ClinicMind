@@ -11,26 +11,31 @@
  * page ground and on its own 10% tint, so `text-warning` on `bg-warning/10` is legible.
  */
 @layer base {
+  /*
+   * Graphite: neutral surfaces staff can read all day, with the colour left to the content.
+   * The accent is prescription ink, the colour of a signed chart: the primary action, the
+   * visit under way, today in a chart and the signed mark, and little else.
+   */
   :root {
-    --background: 220 20% 97%; /* page ground */
-    --foreground: 218 27% 14%; /* Charcoal Slate #1A202C */
+    --background: 0 0% 98%; /* page ground #fafafa */
+    --foreground: 0 0% 9%; /* #171717 */
 
     --card: 0 0% 100%;
-    --card-foreground: 218 27% 14%;
+    --card-foreground: 0 0% 9%;
 
-    /* The navigation rail: a second neutral, a step cooler and darker than the page ground. */
-    --sidebar: 220 22% 94%;
+    /* The navigation rail: one step below the page ground. */
+    --sidebar: 240 5% 96%;
 
-    --muted: 220 18% 95%;
-    --muted-foreground: 220 10% 38%;
+    --muted: 240 5% 96%;
+    --muted-foreground: 240 4% 36%;
 
-    --border: 220 15% 89%;
-    --input: 220 14% 84%;
+    --border: 240 5% 90%;
+    --input: 240 4% 82%;
 
-    --accent: 243 75% 59%; /* Electric Indigo #4F46E5 */
+    --accent: 218 68% 36%; /* Prescription ink #1D4B9A */
     --accent-foreground: 0 0% 100%;
-    --accent-muted: 243 75% 96%;
-    --ring: 243 75% 59%;
+    --accent-muted: 218 60% 96%;
+    --ring: 218 68% 36%;
 
     --success: 152 63% 28%;
     --warning: 30 92% 33%;
@@ -38,24 +43,25 @@
   }
 
   .dark {
-    --background: 218 27% 11%;
-    --foreground: 210 17% 96%;
+    --background: 240 3% 8%; /* #141415 */
+    --foreground: 0 0% 93%;
 
-    --card: 218 24% 14%;
-    --card-foreground: 210 17% 96%;
+    --card: 240 4% 10%;
+    --card-foreground: 0 0% 93%;
 
-    --sidebar: 218 28% 9%;
+    --sidebar: 240 3% 6%;
 
-    --muted: 218 20% 18%;
-    --muted-foreground: 218 12% 68%;
+    --muted: 240 3% 14%;
+    --muted-foreground: 240 3% 64%;
 
-    --border: 218 18% 22%;
-    --input: 218 18% 28%;
+    --border: 240 3% 17%;
+    --input: 240 3% 23%;
 
-    --accent: 243 75% 64%;
-    --accent-foreground: 0 0% 100%;
-    --accent-muted: 243 40% 22%;
-    --ring: 243 75% 64%;
+    /* Ink lightened to read on graphite; dark text on it keeps the contrast. */
+    --accent: 216 65% 62%;
+    --accent-foreground: 240 6% 8%;
+    --accent-muted: 218 35% 18%;
+    --ring: 216 65% 62%;
 
     --success: 152 50% 56%;
     --warning: 38 92% 60%;
@@ -76,7 +82,44 @@
 
   body {
     @apply bg-background text-foreground antialiased;
-    font-feature-settings: "ss01";
+  }
+
+  /*
+   * Arabic (patient documents and forms): IBM Plex Sans Arabic, the interface face's own
+   * sibling, never letter-spaced, with room for the dots and marks above and below the line.
+   */
+  :lang(ar),
+  [dir="rtl"] {
+    font-family: var(--font-plex-arabic), var(--font-plex), system-ui, sans-serif;
+    letter-spacing: 0;
+    line-height: 1.7;
+  }
+  :lang(ar) h1,
+  :lang(ar) h2,
+  :lang(ar) h3,
+  [dir="rtl"] h1,
+  [dir="rtl"] h2,
+  [dir="rtl"] h3 {
+    line-height: 1.4;
+    letter-spacing: 0;
+  }
+  /* Arabic reads smaller than Latin at one size: body at 15px, captions never under 13px. */
+  :lang(ar) .text-sm {
+    font-size: 0.9375rem;
+  }
+  :lang(ar) .text-xs {
+    font-size: 0.8125rem;
+  }
+
+  /* Motion that only decorates stops for people who ask for less. */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
   }
 
   /* Keyboard focus on anything that does not draw its own ring. */
@@ -93,11 +136,11 @@
 @layer components {
   /* A card: one bordered surface for content that belongs together. Never inside another card. */
   .bento {
-    @apply rounded-lg border border-border bg-card p-5 shadow-[0_1px_2px_rgba(26,32,44,0.04)];
+    @apply rounded-xl border border-border bg-card p-5 shadow-[0_1px_2px_rgba(0,0,0,0.04)];
   }
 
   .bento-tight {
-    @apply rounded-lg border border-border bg-card p-4;
+    @apply rounded-xl border border-border bg-card p-4;
   }
 
   /*
@@ -108,9 +151,9 @@
     @apply text-xs font-medium text-muted-foreground;
   }
 
-  /* A headline figure. */
+  /* A headline figure: size carries it, not weight. */
   .metric-value {
-    @apply font-display text-2xl font-semibold tracking-[-0.02em] tabular-nums;
+    @apply font-display text-[1.75rem] font-medium leading-8 tracking-[-0.01em] tabular-nums;
   }
 
   /*
@@ -118,7 +161,7 @@
    * surface (Bento, `.stat-grid`), set apart by space, not in a card each.
    */
   .stat {
-    @apply flex min-w-0 flex-col gap-1 rounded-lg border border-border bg-card p-5 shadow-[0_1px_2px_rgba(26,32,44,0.04)];
+    @apply flex min-w-0 flex-col gap-1 rounded-xl border border-border bg-card p-5 shadow-[0_1px_2px_rgba(0,0,0,0.04)];
   }
   .stat-grid > .stat {
     @apply rounded-none border-0 bg-transparent p-0 shadow-none;
@@ -129,13 +172,13 @@
    * section heading, two steps smaller, so the page reads title > sections > content.
    */
   .section-title-heading {
-    @apply font-display text-[1.375rem] font-semibold leading-7 tracking-[-0.02em];
+    @apply font-display text-[1.75rem] font-medium leading-9 tracking-[-0.01em];
     text-wrap: balance;
   }
   .bento .section-title-heading,
   .bento-tight .section-title-heading,
   .section-title--section .section-title-heading {
-    @apply text-[0.9375rem] leading-6 tracking-[-0.01em];
+    @apply text-base font-medium leading-6 tracking-normal;
   }
   .section-title-description {
     max-width: 72ch;

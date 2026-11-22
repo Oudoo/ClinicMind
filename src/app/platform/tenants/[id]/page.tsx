@@ -43,7 +43,7 @@ export default async function TenantPage({ params }: { params: Promise<{ id: str
       <Card className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
-            <h1 className="font-display text-2xl font-semibold tracking-tight">{tenant.name}</h1>
+            <h1 className="font-display text-2xl font-medium tracking-tight">{tenant.name}</h1>
             <Badge tone={STATUS_TONE[tenant.status] ?? "default"}>{tenant.status.toLowerCase()}</Badge>
           </div>
           <p className="mt-1 font-mono text-xs text-muted-foreground">

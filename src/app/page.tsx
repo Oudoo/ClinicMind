@@ -18,7 +18,7 @@ export default function LandingPage() {
         <div className="flex items-center gap-2">
           {/* Swap the logo by replacing /public/logo.svg */}
           <img src="/logo.svg" alt="" width={28} height={28} className="h-7 w-7 rounded-md" />
-          <span className="font-display text-base font-semibold tracking-tight">{BRAND.productName}</span>
+          <span className="font-display text-base font-medium">{BRAND.productName}</span>
         </div>
         <Button asChild variant="outline">
           <Link href="/login">Sign in</Link>
@@ -27,7 +27,7 @@ export default function LandingPage() {
 
       <main className="mx-auto max-w-6xl px-5 sm:px-8">
         <section className="pb-14 pt-10 sm:pb-20 sm:pt-16">
-          <h1 className="max-w-[22ch] font-display text-[2.5rem] font-semibold leading-[1.05] tracking-[-0.035em] [text-wrap:balance] sm:text-5xl lg:text-[3.75rem]">
+          <h1 className="max-w-[22ch] font-display text-[2.5rem] font-medium leading-[1.05] tracking-[-0.035em] [text-wrap:balance] sm:text-5xl lg:text-[3.75rem]">
             One record of truth for the clinic, with AI that only speaks from it.
           </h1>
           <p className="mt-6 max-w-[58ch] text-base leading-relaxed text-muted-foreground sm:text-lg">
@@ -46,7 +46,7 @@ export default function LandingPage() {
 
         <section aria-labelledby="day">
           <div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-1 border-b border-border pb-4">
-            <h2 id="day" className="font-display text-2xl font-semibold tracking-[-0.02em]">
+            <h2 id="day" className="font-display text-2xl font-medium tracking-[-0.02em]">
               A day at the clinic
             </h2>
             <p className="text-sm text-muted-foreground">The screens the staff use, with sample data from the demo clinic.</p>
@@ -204,7 +204,7 @@ export default function LandingPage() {
         </section>
 
         <section aria-labelledby="care" className="border-t border-border py-14 sm:py-20">
-          <h2 id="care" className="max-w-[26ch] font-display text-2xl font-semibold tracking-[-0.02em] [text-wrap:balance] sm:text-3xl">
+          <h2 id="care" className="max-w-[26ch] font-display text-2xl font-medium tracking-[-0.02em] [text-wrap:balance] sm:text-3xl">
             Built for what a clinic answers for.
           </h2>
           <dl className="mt-8 grid gap-x-10 gap-y-8 md:grid-cols-3">
@@ -244,11 +244,11 @@ export default function LandingPage() {
 function Moment({ time, title, body, children }: { time: string; title: string; body: string; children: React.ReactNode }) {
   return (
     <li className="grid gap-x-10 gap-y-5 py-10 md:grid-cols-[4.5rem_minmax(0,19rem)_minmax(0,1fr)] lg:gap-x-14">
-      <p className="font-display text-2xl font-semibold tabular-nums tracking-[-0.02em] text-muted-foreground">
+      <p className="font-display text-2xl font-medium tabular-nums tracking-[-0.02em] text-muted-foreground">
         <time dateTime={time}>{time}</time>
       </p>
       <div>
-        <h3 className="font-display text-xl font-semibold leading-snug tracking-[-0.015em] [text-wrap:balance]">{title}</h3>
+        <h3 className="font-display text-xl font-medium leading-snug tracking-[-0.015em] [text-wrap:balance]">{title}</h3>
         <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{body}</p>
       </div>
       <div className="min-w-0 md:col-span-2 lg:col-span-1">{children}</div>
@@ -292,7 +292,7 @@ function FakeButton({ primary = false, children }: { primary?: boolean; children
 function Fact({ term, children }: { term: string; children: React.ReactNode }) {
   return (
     <div className="border-t border-border pt-4">
-      <dt className="font-display text-base font-semibold">{term}</dt>
+      <dt className="font-display text-base font-medium">{term}</dt>
       <dd className="mt-1.5 text-sm leading-relaxed text-muted-foreground">{children}</dd>
     </div>
   );

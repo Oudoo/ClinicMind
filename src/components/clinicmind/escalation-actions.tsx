@@ -31,10 +31,13 @@ export function EscalationActions({
   escalation,
   onChanged,
   compact = false,
+  primary = true,
 }: {
   escalation: EscalationDTO;
   onChanged?: (escalation: EscalationDTO) => void;
   compact?: boolean;
+  /** One solid button to a screen: on a board only the most urgent case's Acknowledge is primary. */
+  primary?: boolean;
 }) {
   const router = useRouter();
   const { toast } = useToast();
@@ -71,7 +74,7 @@ export function EscalationActions({
   return (
     <div className="flex flex-wrap items-center gap-2">
       {escalation.status === "OPEN" ? (
-        <Button size="sm" onClick={() => void acknowledge()} disabled={busy} aria-label={`Acknowledge the escalation for ${escalation.patientName ?? "this patient"}`}>
+        <Button size="sm" variant={primary ? "primary" : "outline"} onClick={() => void acknowledge()} disabled={busy} aria-label={`Acknowledge the escalation for ${escalation.patientName ?? "this patient"}`}>
           <Hand className="h-4 w-4" />
           {busy ? "Acknowledging…" : "Acknowledge"}
         </Button>

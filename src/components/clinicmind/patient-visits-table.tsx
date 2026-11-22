@@ -1,7 +1,8 @@
 import type { ConsultationStatus } from "@prisma/client";
 import { Badge, EmptyState } from "@/components/ui/primitives";
 import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/table";
-import { formatDate, formatTime } from "@/lib/utils";
+import { formatDate, formatTime, humanize } from "@/lib/utils";
+import { SignedMark } from "@/components/clinicmind/signed-mark";
 import type { BadgeTone } from "@/components/clinicmind/patient-shared";
 
 /** One row of the "Visits & consultations" tab: a visit, or a consultation not (yet) signed into one. */
@@ -20,7 +21,7 @@ const STATUS_TONE: Record<ConsultationStatus, BadgeTone> = {
   EXTRACTING: "accent",
   PENDING_REVIEW: "warning",
   SIGNED: "success",
-  DISCARDED: "danger",
+  DISCARDED: "default",
 };
 
 function excerpt(text: string | null, max = 140): string | null {
@@ -60,13 +61,13 @@ export function PatientVisitsTable({ rows }: { rows: VisitRow[] }) {
             </TD>
             <TD className="whitespace-nowrap text-sm">{row.doctor ?? <span className="text-muted-foreground">—</span>}</TD>
             <TD className="min-w-[16rem] max-w-md text-sm text-muted-foreground">
-              {excerpt(row.summary) ?? <span className="italic">No summary</span>}
+              {excerpt(row.summary) ?? <span className="text-muted-foreground">No summary</span>}
             </TD>
             <TD>
-              {row.status ? (
-                <Badge tone={STATUS_TONE[row.status]}>{row.status.replace("_", " ")}</Badge>
+              {row.status === "SIGNED" || !row.status ? (
+                <SignedMark by={row.doctor} />
               ) : (
-                <Badge>visit</Badge>
+                <Badge tone={STATUS_TONE[row.status]}>{humanize(row.status)}</Badge>
               )}
             </TD>
           </TR>

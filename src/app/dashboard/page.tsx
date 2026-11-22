@@ -10,6 +10,7 @@ import { DeltaChip, Columns, HBars } from "@/components/ui/kpi";
 import { formatNumber } from "@/lib/utils";
 import { NextAppointmentHero } from "@/components/clinicmind/next-appointment-hero";
 import { AttentionCard } from "@/components/clinicmind/attention-card";
+import { TodayRail } from "@/components/clinicmind/today-rail";
 
 export const dynamic = "force-dynamic";
 
@@ -30,18 +31,19 @@ type StatKey = "today" | "upcoming" | "noShow" | "drafts" | "signed" | "active" 
 /**
  * Which clinic figures a role reads, in order: the desk its bookings, a clinician the notes
  * to sign, the owner all of them. The day's work (who is next, what is waiting) comes first
- * on the page for everyone; the figures support it.
+ * on the page for everyone; the figures support it. Four lead; an owner's other four follow
+ * as one quiet line instead of a second row of equal tiles.
  */
-function statsFor(role: UserRole): StatKey[] {
+function statsFor(role: UserRole): { lead: StatKey[]; more: StatKey[] } {
   switch (role) {
     case "RECEPTIONIST":
     case "ASSISTANT":
-      return ["today", "upcoming", "noShow", "patients"];
+      return { lead: ["today", "upcoming", "noShow", "patients"], more: [] };
     case "DOCTOR":
     case "NURSE":
-      return ["today", "drafts", "active", "signed"];
+      return { lead: ["today", "drafts", "active", "signed"], more: [] };
     default:
-      return ["today", "upcoming", "noShow", "drafts", "signed", "active", "patients", "ai"];
+      return { lead: ["today", "noShow", "drafts", "signed"], more: ["upcoming", "active", "patients", "ai"] };
   }
 }
 
@@ -127,6 +129,7 @@ export default async function OverviewPage() {
   };
   const role = ctx?.role ?? "ASSISTANT";
   const desk = role === "RECEPTIONIST" || role === "ASSISTANT";
+  const figures = statsFor(role);
 
   return (
     <div className="space-y-8">
@@ -147,16 +150,31 @@ export default async function OverviewPage() {
         />
         {/* The day's work first: who is next, and what is waiting for this person. */}
         {ctx ? (
-          <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-[minmax(0,1fr)_22rem]">
-            <NextAppointmentHero tenantId={ctx.tenantId} userId={ctx.userId} role={ctx.role} />
-            <AttentionCard tenantId={ctx.tenantId} userId={ctx.userId} role={ctx.role} />
-          </div>
+          <>
+            <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-[minmax(0,1fr)_22rem]">
+              <NextAppointmentHero tenantId={ctx.tenantId} userId={ctx.userId} role={ctx.role} />
+              <AttentionCard tenantId={ctx.tenantId} userId={ctx.userId} role={ctx.role} />
+            </div>
+            {/* The whole day under it, at full width so each visit has room for a name. */}
+            <TodayRail tenantId={ctx.tenantId} role={ctx.role} />
+          </>
         ) : null}
       </div>
 
       <section className="space-y-3">
         <SectionTitle level="section" title="Clinic figures" description="The whole clinic, with the change against the period before." />
-        <StatStrip stats={statsFor(role).map((key) => all[key])} data-testid="overview-figures" />
+        <StatStrip stats={figures.lead.map((key) => all[key])} data-testid="overview-figures" />
+        {figures.more.length ? (
+          <dl className="flex flex-wrap gap-x-8 gap-y-2 px-1 text-sm" data-testid="overview-figures-more">
+            {figures.more.map((key) => (
+              <div key={key} className="flex items-baseline gap-2">
+                <dt className="text-muted-foreground">{all[key].label}</dt>
+                <dd className="font-medium tabular-nums">{all[key].value}</dd>
+                {all[key].delta ? <dd>{all[key].delta}</dd> : null}
+              </div>
+            ))}
+          </dl>
+        ) : null}
       </section>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
@@ -166,7 +184,8 @@ export default async function OverviewPage() {
             {thisWeek.length ? (
               <Columns
                 items={thisWeek.map((d, i) => ({ label: weekdayOf(d.day).slice(0, 3), value: d.count, compare: lastWeek[i]?.count }))}
-                note="Solid: this week. Grey: the same weekday last week."
+                highlight={thisWeek.length - 1}
+                note="Dark: this week, today in ink. Light: the same weekday last week."
               />
             ) : (
               <EmptyState title="No appointments yet" hint="The chart fills as bookings are made." />

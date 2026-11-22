@@ -35,7 +35,7 @@ export function CountdownText({ dueAt, now, className }: { dueAt: string; now: n
     <span
       className={cn(
         "inline-flex items-center gap-1 whitespace-nowrap text-xs tabular-nums",
-        r.overdue ? "font-semibold text-danger" : urgent ? "text-warning" : "text-muted-foreground",
+        r.overdue ? "font-medium text-danger" : urgent ? "text-warning" : "text-muted-foreground",
         className,
       )}
       role="timer"

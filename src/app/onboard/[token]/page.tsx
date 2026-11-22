@@ -33,12 +33,12 @@ function ExpiredLink() {
       <div className="bento w-full max-w-md space-y-5 text-center">
         <Clock className="mx-auto h-10 w-10 text-warning" aria-hidden="true" />
         <section dir="rtl" lang="ar" className="space-y-1">
-          <h1 className="font-display text-xl font-semibold tracking-tight">{INTAKE_COPY.ar.expired.title}</h1>
+          <h1 className="font-display text-xl font-medium tracking-tight">{INTAKE_COPY.ar.expired.title}</h1>
           <p className="text-sm text-muted-foreground">{INTAKE_COPY.ar.expired.body}</p>
         </section>
         <hr className="border-border" />
         <section dir="ltr" lang="en" className="space-y-1">
-          <h2 className="font-display text-xl font-semibold tracking-tight">{INTAKE_COPY.en.expired.title}</h2>
+          <h2 className="font-display text-xl font-medium tracking-tight">{INTAKE_COPY.en.expired.title}</h2>
           <p className="text-sm text-muted-foreground">{INTAKE_COPY.en.expired.body}</p>
         </section>
         <p className="text-xs text-muted-foreground">

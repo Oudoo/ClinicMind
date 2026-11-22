@@ -58,7 +58,7 @@ export default async function PatientQuotePage({ params }: { params: Promise<{ t
                   : "no-print rounded-lg border border-border bg-muted/40 p-4"
             }
           >
-            {banner.title ? <h2 className="font-display text-lg font-semibold">{banner.title}</h2> : null}
+            {banner.title ? <h2 className="font-display text-lg font-medium">{banner.title}</h2> : null}
             <p className="text-sm">{banner.body}</p>
           </section>
         ) : null}
@@ -80,12 +80,12 @@ function ExpiredLink() {
       <div className="bento w-full max-w-md space-y-4 text-center">
         <FileX2 className="mx-auto h-10 w-10 text-warning" aria-hidden="true" />
         <section dir="rtl" lang="ar" className="space-y-1">
-          <h1 className="font-display text-xl font-semibold tracking-tight">{QUOTE_COPY.ar.gone.title}</h1>
+          <h1 className="font-display text-xl font-medium tracking-tight">{QUOTE_COPY.ar.gone.title}</h1>
           <p className="text-sm text-muted-foreground">{QUOTE_COPY.ar.gone.body}</p>
         </section>
         <hr className="border-border" />
         <section dir="ltr" lang="en" className="space-y-1">
-          <h2 className="font-display text-xl font-semibold tracking-tight">{QUOTE_COPY.en.gone.title}</h2>
+          <h2 className="font-display text-xl font-medium tracking-tight">{QUOTE_COPY.en.gone.title}</h2>
           <p className="text-sm text-muted-foreground">{QUOTE_COPY.en.gone.body}</p>
         </section>
       </div>

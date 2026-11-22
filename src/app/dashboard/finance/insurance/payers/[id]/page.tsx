@@ -63,7 +63,7 @@ export default async function PayerPage({ params }: { params: Promise<{ id: stri
       </div>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
-          <h2 className="font-display text-lg font-semibold tracking-tight">{payer.name}</h2>
+          <h2 className="font-display text-lg font-medium">{payer.name}</h2>
           <p className="mt-0.5 text-sm text-muted-foreground">
             {[payer.kindLabel, `pays a batch in ${payer.paymentDays} days`, payer.contactName, payer.phone, payer.email].filter(Boolean).join(" · ")}
           </p>
@@ -87,7 +87,7 @@ export default async function PayerPage({ params }: { params: Promise<{ id: stri
       <div className="grid gap-4 lg:grid-cols-2">
         <Card className="space-y-3" data-testid="payer-contract">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <h3 className="font-display text-base font-semibold">The contract today</h3>
+            <h3 className="font-display text-base font-medium">The contract today</h3>
             {canManage ? (
               <div className="flex flex-wrap gap-2">
                 {payer.contract ? <ContractButton payerId={payer.id} today={today} contract={payer.contract} priceItems={priceItems} /> : null}
@@ -114,7 +114,7 @@ export default async function PayerPage({ params }: { params: Promise<{ id: stri
         </Card>
         <Card className="overflow-hidden p-0">
           <div className="p-4 pb-2">
-            <h3 className="font-display text-base font-semibold">Owed by age</h3>
+            <h3 className="font-display text-base font-medium">Owed by age</h3>
           </div>
           {row ? <AgingTable aging={{ rows: [row], totals: { notSent: row.notSent, buckets: row.buckets, total: row.total, overdue: row.overdue, claims: row.claims } }} linkPayers={false} /> : <p className="px-4 pb-4 text-sm text-muted-foreground">It owes nothing.</p>}
         </Card>
@@ -122,7 +122,7 @@ export default async function PayerPage({ params }: { params: Promise<{ id: stri
 
       <Card className="overflow-hidden p-0">
         <div className="p-4 pb-2">
-          <h3 className="font-display text-base font-semibold">Batches</h3>
+          <h3 className="font-display text-base font-medium">Batches</h3>
         </div>
         {batches.length ? (
           <Table aria-label="Batches" data-testid="payer-batches">
@@ -164,7 +164,7 @@ export default async function PayerPage({ params }: { params: Promise<{ id: stri
 
       <Card className="overflow-hidden p-0">
         <div className="p-4 pb-2">
-          <h3 className="font-display text-base font-semibold">Its answers</h3>
+          <h3 className="font-display text-base font-medium">Its answers</h3>
         </div>
         {payments.length ? (
           <Table aria-label="The payer's answers" data-testid="payer-payments">
@@ -204,7 +204,7 @@ export default async function PayerPage({ params }: { params: Promise<{ id: stri
 
       <Card className="overflow-hidden p-0">
         <div className="p-4 pb-2">
-          <h3 className="font-display text-base font-semibold">Members</h3>
+          <h3 className="font-display text-base font-medium">Members</h3>
         </div>
         {members.length ? (
           <Table aria-label="Members" data-testid="payer-members">

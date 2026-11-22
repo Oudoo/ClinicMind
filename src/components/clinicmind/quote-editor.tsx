@@ -383,7 +383,7 @@ export function QuoteEditor({
             <dt>Discounts</dt>
             <dd className="tabular-nums">−{formatNumber(totals.discount)}</dd>
           </div>
-          <div className="flex justify-between gap-4 border-t border-border pt-1 font-semibold">
+          <div className="flex justify-between gap-4 border-t border-border pt-1 font-medium">
             <dt>Total (EGP)</dt>
             <dd className="tabular-nums" data-testid="editor-total">
               {formatNumber(totals.total)}

@@ -58,7 +58,7 @@ export function NewTenantDialog({ rootDomain, scheme }: { rootDomain: string; sc
   const [ownerEmail, setOwnerEmail] = useState("");
   const [ownerFullName, setOwnerFullName] = useState("");
   const [productName, setProductName] = useState("");
-  const [accent, setAccent] = useState("#4F46E5");
+  const [accent, setAccent] = useState("#1D4B9A");
   const [logoUrl, setLogoUrl] = useState("");
   const [timezone, setTimezone] = useState<string>(TIMEZONES[0]);
   const [customDomain, setCustomDomain] = useState("");
@@ -70,7 +70,7 @@ export function NewTenantDialog({ rootDomain, scheme }: { rootDomain: string; sc
 
   function reset() {
     setName(""); setSlug(""); setSlugTouched(false); setOwnerEmail(""); setOwnerFullName("");
-    setProductName(""); setAccent("#4F46E5"); setLogoUrl(""); setTimezone(TIMEZONES[0]);
+    setProductName(""); setAccent("#1D4B9A"); setLogoUrl(""); setTimezone(TIMEZONES[0]);
     setCustomDomain(""); setOrigins(""); setError(null); setIssues({}); setResult(null);
   }
 
@@ -195,7 +195,7 @@ export function NewTenantDialog({ rootDomain, scheme }: { rootDomain: string; sc
                   <input
                     type="color"
                     aria-label="Pick accent colour"
-                    value={/^#[0-9a-fA-F]{6}$/.test(accent) ? accent : "#4F46E5"}
+                    value={/^#[0-9a-fA-F]{6}$/.test(accent) ? accent : "#1D4B9A"}
                     onChange={(e) => setAccent(e.target.value.toUpperCase())}
                     className="h-10 w-12 shrink-0 cursor-pointer rounded-lg border border-input bg-background p-1"
                   />

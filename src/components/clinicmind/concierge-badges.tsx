@@ -43,13 +43,16 @@ export function flagText(f: TriageFlag): string {
 
 export function FlagList({ flags, className }: { flags: TriageFlag[]; className?: string }) {
   if (!flags.length) return null;
+  // The answer in plain text; a dot in red (high risk) or amber says how far out of range it is.
   return (
-    <ul className={className ?? "flex flex-wrap gap-1"}>
+    <ul className={className ?? "flex flex-col gap-0.5"}>
       {flags.map((f, i) => (
-        <li key={`${f.key}-${i}`}>
-          <Badge tone={f.highRisk ? "danger" : "warning"} className="max-w-full whitespace-normal break-words normal-case tracking-normal">
+        <li key={`${f.key}-${i}`} className="flex items-start gap-1.5 text-xs">
+          <span className={`mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full ${f.highRisk ? "bg-danger" : "bg-warning"}`} aria-hidden="true" />
+          <span className="min-w-0 break-words text-muted-foreground">
+            <span className="sr-only">{f.highRisk ? "High risk: " : "Out of range: "}</span>
             {flagText(f)}
-          </Badge>
+          </span>
         </li>
       ))}
     </ul>

@@ -138,7 +138,7 @@ export function ConciergeSettingsForm({
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <Card className="space-y-4">
           <div>
-            <h3 className="font-display text-base font-semibold tracking-tight">Clinic hours</h3>
+            <h3 className="font-display text-base font-medium">Clinic hours</h3>
             <p className="text-sm text-muted-foreground">Inside these hours the in-hours person and target apply; outside them, the out-of-hours ones.</p>
           </div>
           <fieldset className="space-y-2">
@@ -177,7 +177,7 @@ export function ConciergeSettingsForm({
 
         <Card className="space-y-4">
           <div>
-            <h3 className="font-display text-base font-semibold tracking-tight">Who takes a high-risk reply</h3>
+            <h3 className="font-display text-base font-medium">Who takes a high-risk reply</h3>
             <p className="text-sm text-muted-foreground">Owners, doctors and nurses of the clinic. Left on the default, it is the first nurse in hours and the first doctor out of hours.</p>
           </div>
           {slot("inHoursUserId", "In hours", "Assigned during clinic hours", effective.inHours)}
@@ -188,7 +188,7 @@ export function ConciergeSettingsForm({
 
       <Card className="space-y-4">
         <div>
-          <h3 className="font-display text-base font-semibold tracking-tight">Acknowledgement targets</h3>
+          <h3 className="font-display text-base font-medium">Acknowledgement targets</h3>
           <p className="text-sm text-muted-foreground">
             The board counts down to these and the KPI measures them. Out-of-range answers that are not high-risk (watch) get four hours.
           </p>

@@ -1,5 +1,5 @@
 /**
- * Institutional Tech brand bridge.
+ * Brand bridge: graphite surfaces and prescription ink.
  *
  * Canonical brand primitives live in globals.css as CSS variables. This module
  * exposes them to TS and, crucially, lets each tenant white-label the accent and
@@ -9,21 +9,22 @@
 
 export const BRAND = {
   productName: "ClinicMind",
-  tagline: "Integrated Clinical Intelligence, Operating as One.",
+  tagline: "The patient record, the schedule, signed notes, billing and follow-up of a clinic, in one place.",
   primitives: {
     starkWhite: "#FFFFFF",
-    alabaster: "#F8F9FA",
-    charcoalSlate: "#1A202C",
-    electricIndigo: "#4F46E5",
+    alabaster: "#FAFAFA",
+    charcoalSlate: "#171717",
+    ink: "#1D4B9A",
   },
   fonts: {
-    display: "Plus Jakarta Sans",
-    mono: "JetBrains Mono",
+    display: "IBM Plex Sans",
+    arabic: "IBM Plex Sans Arabic",
+    mono: "IBM Plex Mono",
   },
 } as const;
 
 export interface TenantBranding {
-  /** Accent hex; defaults to electric indigo. */
+  /** Accent hex; defaults to prescription ink. */
   accent?: string;
   /** Replacement product name shown in the embedded surface. */
   productName?: string;

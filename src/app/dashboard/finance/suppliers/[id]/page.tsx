@@ -52,7 +52,7 @@ export default async function SupplierPage({ params, searchParams }: { params: P
       </Link>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
-          <h2 className="font-display text-lg font-semibold tracking-tight">{supplier.name}</h2>
+          <h2 className="font-display text-lg font-medium">{supplier.name}</h2>
           <p className="mt-0.5 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
             {supplier.categoryLabel}
             {supplier.archived ? <Badge>No longer used</Badge> : null}

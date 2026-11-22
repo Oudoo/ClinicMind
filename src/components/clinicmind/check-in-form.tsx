@@ -190,7 +190,7 @@ export function CheckInForm({ token, data, productName }: { token: string; data:
       <header className="border-b border-border bg-card">
         <div className="mx-auto flex max-w-xl items-center justify-between gap-3 px-4 py-3">
           <div className="min-w-0">
-            <p className="truncate font-display text-base font-semibold tracking-tight">{data.clinicName}</p>
+            <p className="truncate font-display text-base font-medium">{data.clinicName}</p>
             <p className="truncate text-xs text-muted-foreground">{copy.title}</p>
           </div>
           <button
@@ -213,7 +213,7 @@ export function CheckInForm({ token, data, productName }: { token: string; data:
           <form onSubmit={submit} noValidate className="space-y-4">
             <div>
               <p className="data-label">{step.dayLabel[lang]}</p>
-              <h1 className="mt-0.5 font-display text-2xl font-semibold tracking-tight">{step.heading[lang]}</h1>
+              <h1 className="mt-0.5 font-display text-2xl font-medium tracking-tight">{step.heading[lang]}</h1>
               <p className="mt-2 text-base">{copy.greeting(data.patientFirstName)}</p>
               {step.body[lang] || step.body[lang === "ar" ? "en" : "ar"] ? (
                 <p className="mt-1 whitespace-pre-line text-sm text-muted-foreground">{step.body[lang] || step.body[lang === "ar" ? "en" : "ar"]}</p>
@@ -320,7 +320,7 @@ export function CheckInForm({ token, data, productName }: { token: string; data:
             <button
               type="submit"
               disabled={busy || Boolean(preparing)}
-              className="flex h-14 w-full items-center justify-center gap-2 rounded-lg bg-accent text-base font-semibold text-accent-foreground transition-colors hover:bg-accent/90 disabled:opacity-60"
+              className="flex h-14 w-full items-center justify-center gap-2 rounded-lg bg-accent text-base font-medium text-accent-foreground transition-colors hover:bg-accent/90 disabled:opacity-60"
             >
               {busy ? <Loader2 className="h-5 w-5 animate-spin" aria-hidden="true" /> : <Send className="h-5 w-5 rtl:-scale-x-100" aria-hidden="true" />}
               {busy ? copy.sending : copy.submit}
@@ -378,7 +378,7 @@ function QuestionCard({
               aria-checked={value === v}
               onClick={() => onChange(v as boolean)}
               className={cn(
-                "h-14 rounded-lg border-2 text-lg font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                "h-14 rounded-lg border-2 text-lg font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                 value === v ? "border-accent bg-accent-muted text-accent" : "border-border hover:bg-muted",
               )}
             >
@@ -438,7 +438,7 @@ function ScaleInput({
   return (
     <div className="space-y-2">
       <div className="flex items-baseline justify-between gap-2">
-        <span className={cn("font-display text-4xl font-semibold tabular-nums", answered ? "text-foreground" : "text-muted-foreground/40")} aria-hidden="true">
+        <span className={cn("font-display text-4xl font-medium tabular-nums", answered ? "text-foreground" : "text-muted-foreground/40")} aria-hidden="true">
           {answered ? value : "–"}
           <span className="text-base font-normal text-muted-foreground"> / {max}</span>
         </span>
@@ -469,7 +469,7 @@ function ScaleInput({
       />
       <div className="tabular-nums flex justify-between text-xs text-muted-foreground" aria-hidden="true">
         {Array.from({ length: max - min + 1 }, (_, i) => min + i).map((n) => (
-          <button key={n} type="button" tabIndex={-1} onClick={() => onChange(n)} className={cn("w-6 rounded py-1 text-center", value === n && "bg-accent-muted font-semibold text-accent")}>
+          <button key={n} type="button" tabIndex={-1} onClick={() => onChange(n)} className={cn("w-6 rounded py-1 text-center", value === n && "bg-accent-muted font-medium text-accent")}>
             {n}
           </button>
         ))}
@@ -574,7 +574,7 @@ function Done({ result, copy }: { result: PublicCheckInResult; copy: CheckInCopy
       <div className="space-y-4" role="status">
         <div className="bento space-y-3 border-danger/50 bg-danger/5 text-center">
           <AlertTriangle className="mx-auto h-12 w-12 text-danger" aria-hidden="true" />
-          <h1 className="font-display text-2xl font-semibold tracking-tight">{copy.done.urgentTitle}</h1>
+          <h1 className="font-display text-2xl font-medium tracking-tight">{copy.done.urgentTitle}</h1>
           <p className="text-lg font-medium">{copy.done.urgent(minutes)}</p>
         </div>
         <div className="bento space-y-3 text-center">
@@ -584,7 +584,7 @@ function Done({ result, copy }: { result: PublicCheckInResult; copy: CheckInCopy
               <a
                 href={`tel:${result.clinicPhone.replace(/[^\d+]/g, "")}`}
                 dir="ltr"
-                className="flex h-14 w-full items-center justify-center gap-2 rounded-lg bg-danger text-lg font-semibold text-white hover:bg-danger/90"
+                className="flex h-14 w-full items-center justify-center gap-2 rounded-lg bg-danger text-lg font-medium text-white hover:bg-danger/90"
               >
                 <Phone className="h-5 w-5" aria-hidden="true" />
                 {result.clinicPhone}
@@ -601,7 +601,7 @@ function Done({ result, copy }: { result: PublicCheckInResult; copy: CheckInCopy
   return (
     <div className="bento flex flex-col items-center gap-3 text-center" role="status">
       {result.triage === "WATCH" ? <ClipboardCheck className="h-12 w-12 text-warning" aria-hidden="true" /> : <CheckCircle2 className="h-12 w-12 text-success" aria-hidden="true" />}
-      <h1 className="font-display text-2xl font-semibold tracking-tight">{copy.done.title}</h1>
+      <h1 className="font-display text-2xl font-medium tracking-tight">{copy.done.title}</h1>
       <p className="text-base">{result.triage === "WATCH" ? copy.done.watch : copy.done.ok}</p>
       {result.triage === "WATCH" && result.clinicPhone ? (
         <p className="text-sm text-muted-foreground">
@@ -620,7 +620,7 @@ function Expired({ copy }: { copy: CheckInCopy }) {
   return (
     <div className="bento flex flex-col items-center gap-3 text-center" role="status">
       <Clock className="h-10 w-10 text-warning" aria-hidden="true" />
-      <h1 className="font-display text-xl font-semibold tracking-tight">{copy.expired.title}</h1>
+      <h1 className="font-display text-xl font-medium tracking-tight">{copy.expired.title}</h1>
       <p className="text-sm text-muted-foreground">{copy.expired.body}</p>
     </div>
   );

@@ -177,7 +177,7 @@ export default async function ExpensesPage({ searchParams }: { searchParams: Pro
                   <Link href={monthHref(shiftMonth(month, -1))} className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground" aria-label="The month before">
                     <ChevronLeft className="h-4 w-4" aria-hidden="true" />
                   </Link>
-                  <h3 className="min-w-[9rem] text-center font-display text-base font-semibold">{list.monthLabel}</h3>
+                  <h3 className="min-w-[9rem] text-center font-display text-base font-medium">{list.monthLabel}</h3>
                   {month < kpis.month ? (
                     <Link href={monthHref(shiftMonth(month, 1))} className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground" aria-label="The month after">
                       <ChevronRight className="h-4 w-4" aria-hidden="true" />

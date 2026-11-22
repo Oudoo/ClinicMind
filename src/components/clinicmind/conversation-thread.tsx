@@ -98,7 +98,7 @@ export function ConversationThread({
           </Button>
           <div className="min-w-0 flex-1 space-y-1">
             <div className="flex flex-wrap items-center gap-2">
-              <h3 className="min-w-0 truncate font-display text-base font-semibold tracking-tight">{conversation.displayName}</h3>
+              <h3 className="min-w-0 truncate font-display text-base font-medium">{conversation.displayName}</h3>
               <ChannelBadge channel={conversation.channel} />
               <ConversationStatusBadge status={conversation.status} />
             </div>
@@ -367,7 +367,7 @@ function ObjectionTagger({ conversation, canWrite, timezone, now }: { conversati
               disabled={busy}
               onClick={() => setSelected((xs) => (on ? xs.filter((x) => x !== tag) : [...xs, tag]))}
               className={cn(
-                "inline-flex h-7 items-center gap-1 rounded-full border px-2.5 text-xs transition-colors",
+                "inline-flex h-7 items-center gap-1 rounded-md border px-2.5 text-xs transition-colors",
                 on ? "border-warning/50 bg-warning/10 text-warning" : "border-border text-muted-foreground hover:bg-muted hover:text-foreground",
               )}
             >

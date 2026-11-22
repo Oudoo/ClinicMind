@@ -105,7 +105,7 @@ export function BrandingForm({
     }
   }
 
-  const swatch = HEX.test(accent) ? accent : "#4F46E5";
+  const swatch = HEX.test(accent) ? accent : "#1D4B9A";
 
   return (
     <form onSubmit={onSubmit} className="space-y-3" noValidate>
@@ -114,12 +114,12 @@ export function BrandingForm({
         {logoUrl ? (
           <img src={logoUrl} alt="" className="h-9 w-9 rounded-md object-contain" />
         ) : (
-          <span className="flex h-9 w-9 items-center justify-center rounded-md text-sm font-semibold text-white" style={{ background: swatch }}>
+          <span className="flex h-9 w-9 items-center justify-center rounded-md text-sm font-medium text-white" style={{ background: swatch }}>
             {(productName || fallbackProductName).slice(0, 1).toUpperCase()}
           </span>
         )}
         <div className="min-w-0">
-          <p className="truncate font-display text-sm font-semibold">{productName || fallbackProductName}</p>
+          <p className="truncate font-display text-sm font-medium">{productName || fallbackProductName}</p>
           <p className="tabular-nums text-xs text-muted-foreground">preview · accent {swatch}</p>
         </div>
       </div>
@@ -136,7 +136,7 @@ export function BrandingForm({
               onChange={(e) => setAccent(e.target.value.toUpperCase())}
               className="h-10 w-12 shrink-0 cursor-pointer rounded-lg border border-input bg-background p-1"
             />
-            <Input id="br-accent" value={accent} onChange={(e) => setAccent(e.target.value)} placeholder="#4F46E5" className="tabular-nums" />
+            <Input id="br-accent" value={accent} onChange={(e) => setAccent(e.target.value)} placeholder="#1D4B9A" className="tabular-nums" />
           </div>
         </Field>
         <Field label="Logo URL" htmlFor="br-logo" hint={issues.logoUrl ?? "https · square works best"}>

@@ -125,7 +125,7 @@ export function ConciergeBoard({ initial, canWrite }: { initial: BoardDTO; canWr
 
       <section aria-labelledby="escalations-title" className="space-y-3">
         <div className="flex items-end justify-between gap-3">
-          <h3 id="escalations-title" className="font-display text-base font-semibold tracking-tight">
+          <h3 id="escalations-title" className="font-display text-base font-medium">
             Escalations
           </h3>
           <span className="text-xs text-muted-foreground">Most urgent target first · refreshes every 30 s</span>
@@ -133,7 +133,15 @@ export function ConciergeBoard({ initial, canWrite }: { initial: BoardDTO; canWr
         {board.escalations.length ? (
           <ul className="space-y-3">
             {board.escalations.map((e) => (
-              <EscalationRow key={e.id} e={e} now={now} time={time} canWrite={canWrite} onChanged={() => void refresh()} />
+              <EscalationRow
+                key={e.id}
+                e={e}
+                now={now}
+                time={time}
+                canWrite={canWrite}
+                lead={e.id === board.escalations.find((x) => x.status === "OPEN")?.id}
+                onChanged={() => void refresh()}
+              />
             ))}
           </ul>
         ) : (
@@ -184,18 +192,23 @@ function EscalationRow({
   now,
   time,
   canWrite,
+  lead,
   onChanged,
 }: {
   e: EscalationDTO;
   now: number;
   time: (iso: string) => string;
   canWrite: boolean;
+  /** The most urgent open case: the one row whose Acknowledge is the solid button. */
+  lead: boolean;
   onChanged: () => void;
 }) {
   const overdue = e.status === "OPEN" && Date.parse(e.dueAt) < now;
+  // Colour is kept for the case that cannot wait: a high-risk reply past its target.
+  const alarm = overdue && e.level === "HIGH_RISK";
   const href = e.enrolmentId ? `/dashboard/concierge/enrolments/${e.enrolmentId}` : e.patientId ? `/dashboard/patients/${e.patientId}` : null;
   return (
-    <li className={cn("bento-tight space-y-2", overdue && "border-danger/50 bg-danger/5", e.level === "HIGH_RISK" && !overdue && e.status === "OPEN" && "border-warning/50")}>
+    <li className={cn("bento-tight space-y-2", alarm && "border-danger/50 bg-danger/5")}>
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="min-w-0 flex-1 space-y-1">
           <div className="flex flex-wrap items-center gap-2">
@@ -207,7 +220,7 @@ function EscalationRow({
             ) : (
               <span className="font-medium">{e.patientName ?? "Patient"}</span>
             )}
-            {e.status === "ACKNOWLEDGED" ? <Badge tone="accent">Acknowledged</Badge> : null}
+            {e.status === "ACKNOWLEDGED" ? <Badge>Acknowledged</Badge> : null}
             {overdue ? (
               <Badge tone="danger">
                 <AlertTriangle className="h-3 w-3" aria-hidden="true" />
@@ -219,13 +232,13 @@ function EscalationRow({
           <FlagList flags={e.flags} />
         </div>
         <div className="flex shrink-0 flex-col items-end gap-1 text-right">
-          {e.status === "OPEN" ? <CountdownText dueAt={e.dueAt} now={now} className="text-sm" /> : null}
+          {e.status === "OPEN" ? <CountdownText dueAt={e.dueAt} now={now} className="text-lg font-medium" /> : null}
           <span className="text-xs text-muted-foreground">target {e.targetMinutes ?? "—"} min · {e.outOfHours ? "out of hours" : "in hours"}</span>
         </div>
       </div>
       <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border pt-2">
         <p className="min-w-0 text-xs text-muted-foreground">
-          <PhoneCall className="mr-1 inline h-3.5 w-3.5 align-[-2px]" aria-hidden="true" />
+          <PhoneCall className="me-1 inline h-3.5 w-3.5 align-[-2px]" aria-hidden="true" />
           {e.assignedToName ? <span className="font-medium text-foreground">{e.assignedToName}</span> : "Unassigned"} · opened {time(e.createdAt)}
           {e.status === "ACKNOWLEDGED" && e.acknowledgedAt ? (
             <>
@@ -238,7 +251,7 @@ function EscalationRow({
             </>
           ) : null}
         </p>
-        {canWrite ? <EscalationActions escalation={e} onChanged={onChanged} compact /> : null}
+        {canWrite ? <EscalationActions escalation={e} onChanged={onChanged} compact primary={lead} /> : null}
       </div>
     </li>
   );
@@ -248,7 +261,7 @@ function TaskColumn({ title, empty, count, children }: { title: string; empty: s
   return (
     <Card className="flex min-w-0 flex-col gap-3 p-4 sm:p-5">
       <div className="flex items-center justify-between gap-2">
-        <h3 className="font-display text-base font-semibold tracking-tight">{title}</h3>
+        <h3 className="font-display text-base font-medium">{title}</h3>
         <Badge>{count}</Badge>
       </div>
       {count ? <ul className="-mx-1 max-h-[28rem] space-y-1 overflow-y-auto px-1">{children}</ul> : <p className="text-sm text-muted-foreground">{empty}</p>}

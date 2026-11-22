@@ -31,7 +31,7 @@ export function ReportBriefCard({ brief, sentAt, timezone }: { brief: WeeklyBrie
     <Card className="min-w-0 space-y-3 p-4 sm:p-6">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
-          <h3 className="font-display text-base font-semibold tracking-tight">Weekly brief</h3>
+          <h3 className="font-display text-base font-medium">Weekly brief</h3>
           <p className="text-sm text-muted-foreground">
             <span className="font-mono text-xs">
               {brief.period.fromKey} → {brief.period.toKey}

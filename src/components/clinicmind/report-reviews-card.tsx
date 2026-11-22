@@ -72,19 +72,19 @@ export function ReportReviewsCard({ trend, canEnter, thisWeek }: { trend: Review
     <section aria-label="Public reviews" className="min-w-0 space-y-3 rounded-lg border border-border p-3 sm:p-4">
       <div className="flex flex-wrap items-center gap-2">
         <MetricBadge id="M11" />
-        <h4 className="text-sm font-semibold">Public reviews, weekly</h4>
+        <h4 className="text-sm font-medium">Public reviews, weekly</h4>
       </div>
       {latest ? (
         <>
           <div className="flex flex-wrap items-end gap-x-6 gap-y-2">
             <div>
               <div className="data-label">Reviews</div>
-              <div className="font-display text-2xl font-semibold tabular-nums">{latest.count.toLocaleString("en-US")}</div>
+              <div className="font-display text-2xl font-medium tabular-nums">{latest.count.toLocaleString("en-US")}</div>
               {added !== null ? <div className="text-xs text-muted-foreground">+{added} over {trend.length} weeks</div> : null}
             </div>
             <div>
               <div className="data-label">Rating</div>
-              <div className="flex items-center gap-1 font-display text-2xl font-semibold tabular-nums">
+              <div className="flex items-center gap-1 font-display text-2xl font-medium tabular-nums">
                 {latest.rating.toFixed(2)}
                 <Star className="h-4 w-4 fill-current text-warning" aria-hidden="true" />
               </div>

@@ -64,7 +64,7 @@ export const BrandingInput = z
       .string()
       .trim()
       .optional()
-      .refine((v) => v === undefined || v === "" || HEX_COLOUR.test(v), "accent must be a hex colour like #4F46E5"),
+      .refine((v) => v === undefined || v === "" || HEX_COLOUR.test(v), "accent must be a hex colour like #1D4B9A"),
     logoUrl: z
       .string()
       .trim()

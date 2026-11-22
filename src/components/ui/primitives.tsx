@@ -17,12 +17,16 @@ export function Card({ className, ...props }: React.HTMLAttributes<HTMLDivElemen
 
 export type Tone = "default" | "accent" | "success" | "warning" | "danger";
 
+/*
+ * A row can carry several states at once, so a badge is a hairline and a coloured word, not a
+ * filled chip: only `danger` (late, overdue, refused) keeps a tint, so it is the one that shows.
+ */
 const BADGE_TONES: Record<Tone, string> = {
-  default: "bg-muted text-muted-foreground",
-  accent: "bg-accent-muted text-accent",
-  success: "bg-success/10 text-success",
-  warning: "bg-warning/10 text-warning",
-  danger: "bg-danger/10 text-danger",
+  default: "text-muted-foreground ring-1 ring-inset ring-border",
+  accent: "text-accent ring-1 ring-inset ring-accent/30",
+  success: "text-success ring-1 ring-inset ring-success/30",
+  warning: "text-warning ring-1 ring-inset ring-warning/35",
+  danger: "bg-danger/10 text-danger ring-1 ring-inset ring-danger/20",
 };
 
 /** A lowercase word passed as the whole label ("live", "late") starts with a capital. */
@@ -157,7 +161,7 @@ export function StatStrip({ stats, className, ...props }: { stats: Stat[] } & Re
         <div key={s.label} className="min-w-0">
           <dt className="data-label truncate">{s.label}</dt>
           <dd className="mt-1 flex flex-wrap items-baseline gap-x-2 gap-y-1">
-            <span className={cn("font-display text-2xl font-semibold tracking-[-0.02em] tabular-nums", s.tone === "warning" && "text-warning")}>{s.value}</span>
+            <span className={cn("metric-value", s.tone === "warning" && "text-warning")}>{s.value}</span>
             {s.delta}
           </dd>
           {s.hint ? <dd className="mt-0.5 text-xs text-muted-foreground">{s.hint}</dd> : null}

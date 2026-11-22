@@ -61,7 +61,7 @@ export function CompleteFollowUpButton({ followUp, size = "sm" }: { followUp: { 
             {error ? <Alert>{error}</Alert> : null}
             <div className="flex flex-wrap gap-1.5" aria-label="Quick outcomes">
               {QUICK_OUTCOMES.map((q) => (
-                <button key={q} type="button" onClick={() => setOutcome(q)} className="inline-flex h-7 items-center rounded-full border border-border px-3 text-xs text-muted-foreground hover:bg-muted hover:text-foreground">
+                <button key={q} type="button" onClick={() => setOutcome(q)} className="inline-flex h-7 items-center rounded-md border border-border px-3 text-xs text-muted-foreground hover:bg-muted hover:text-foreground">
                   {q}
                 </button>
               ))}
@@ -148,7 +148,7 @@ export function AddFollowUpForm({ leadId, staff, defaultOwnerId, timezone }: { l
       {issues.form ? <Alert>{issues.form}</Alert> : null}
       <div className="flex flex-wrap gap-1.5" aria-label="Quick times">
         {presets.map(([label, at]) => (
-          <button key={label} type="button" onClick={() => setWhen(toLocalInput(at(), timezone))} className="inline-flex h-7 items-center rounded-full border border-border px-3 text-xs text-muted-foreground hover:bg-muted hover:text-foreground">
+          <button key={label} type="button" onClick={() => setWhen(toLocalInput(at(), timezone))} className="inline-flex h-7 items-center rounded-md border border-border px-3 text-xs text-muted-foreground hover:bg-muted hover:text-foreground">
             {label}
           </button>
         ))}

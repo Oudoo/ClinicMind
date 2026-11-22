@@ -22,11 +22,11 @@ export function AuthCard({
       <Link href="/" className="mb-6 flex items-center gap-2.5 rounded-md">
         {/* Tenant logo from branding, else the default in /public/logo.svg */}
         <img src={brand?.logoUrl || "/logo.svg"} alt="" width={32} height={32} className="h-8 w-8 rounded-md object-contain" />
-        <span className="font-display text-lg font-semibold tracking-tight">{name}</span>
+        <span className="font-display text-lg font-medium">{name}</span>
       </Link>
       <div className="bento w-full max-w-sm space-y-6 p-6">
         <div>
-          <h1 className="font-display text-[1.375rem] font-semibold leading-7 tracking-[-0.02em] [text-wrap:balance]">{title}</h1>
+          <h1 className="font-display text-[1.375rem] font-medium leading-7 tracking-[-0.02em] [text-wrap:balance]">{title}</h1>
           {description ? <div className="mt-1.5 text-sm text-muted-foreground">{description}</div> : null}
         </div>
         {children}

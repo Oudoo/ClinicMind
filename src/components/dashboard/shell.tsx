@@ -301,7 +301,7 @@ export function DashboardShell({
               aria-expanded={expanded}
               aria-controls={id}
               onClick={() => toggleGroup(group.key, !expanded)}
-              className="flex min-h-11 w-full items-center justify-between gap-2 rounded-md px-2.5 text-xs font-semibold text-muted-foreground transition-colors hover:text-foreground lg:min-h-7"
+              className="flex min-h-11 w-full items-center justify-between gap-2 rounded-md px-2.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground lg:min-h-7"
             >
               <span className="flex items-center gap-1.5">
                 {group.label}
@@ -326,7 +326,7 @@ export function DashboardShell({
       {/* Tenant logo from branding, else the default in /public/logo.svg */}
       <img src={logoUrl || "/logo.svg"} alt="" width={28} height={28} className="h-7 w-7 shrink-0 rounded-md object-contain" />
       <div className="min-w-0 leading-tight">
-        <p className="truncate font-display text-sm font-semibold tracking-tight">{productName}</p>
+        <p className="truncate font-display text-sm font-medium">{productName}</p>
         <p className="truncate text-xs text-muted-foreground" title={tenantName}>
           {tenantName}
         </p>
@@ -369,7 +369,7 @@ export function DashboardShell({
               {/* Without the rail (a small screen) the bar carries the clinic's brand. */}
               <Link href="/dashboard" className="flex min-w-0 items-center gap-2 rounded-md lg:hidden">
                 <img src={logoUrl || "/logo.svg"} alt="" width={24} height={24} className="h-6 w-6 shrink-0 rounded-md object-contain" />
-                <span className="truncate font-display text-sm font-semibold tracking-tight">{productName}</span>
+                <span className="truncate font-display text-sm font-medium">{productName}</span>
               </Link>
               {canSearch ? (
                 <form

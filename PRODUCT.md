@@ -66,8 +66,8 @@ the patient record until a clinician signs it. Every clinic is an isolated, whit
 ## Brand Commitments
 
 - Name: ClinicMind (a clinic may replace it with its own product name).
-- Faces: Plus Jakarta Sans for the interface, JetBrains Mono for codes and reference numbers.
-- Default accent: indigo `#4F46E5`; a clinic's own accent replaces it.
+- Faces: IBM Plex Sans for the interface with IBM Plex Sans Arabic for Arabic, IBM Plex Mono for codes and reference numbers.
+- Default accent: prescription ink `#1D4B9A`; a clinic's own accent replaces it.
 - Voice: plain, factual, in the clinic's own words ("visit", "the desk", "owes 1,100 EGP"); no
   marketing language inside the application.
 

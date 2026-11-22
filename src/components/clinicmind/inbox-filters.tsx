@@ -40,7 +40,7 @@ export function InboxFilters({ state, counts }: { state: InboxState; counts: Inb
               aria-pressed={status === f}
               onClick={() => go({ ...state, status: f })}
               className={cn(
-                "inline-flex h-7 items-center gap-1 rounded-full border px-2.5 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                "inline-flex h-7 items-center gap-1 rounded-md border px-2.5 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                 status === f ? "border-accent bg-accent-muted text-accent" : "border-border bg-card text-muted-foreground hover:bg-muted hover:text-foreground",
               )}
             >

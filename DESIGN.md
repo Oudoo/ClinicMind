@@ -2,51 +2,51 @@
 name: ClinicMind
 description: The interface of a clinic's working day, for staff who read it hundreds of times a day.
 colors:
-  page: "hsl(220 20% 97%)"
-  rail: "hsl(220 22% 94%)"
+  page: "hsl(0 0% 98%)"
+  rail: "hsl(240 5% 96%)"
   surface: "hsl(0 0% 100%)"
-  muted: "hsl(220 18% 95%)"
-  ink: "hsl(218 27% 14%)"
-  ink-muted: "hsl(220 10% 38%)"
-  rule: "hsl(220 15% 89%)"
-  field-border: "hsl(220 14% 84%)"
-  accent: "hsl(243 75% 59%)"
-  accent-tint: "hsl(243 75% 96%)"
+  muted: "hsl(240 5% 96%)"
+  ink: "hsl(0 0% 9%)"
+  ink-muted: "hsl(240 4% 36%)"
+  rule: "hsl(240 5% 90%)"
+  field-border: "hsl(240 4% 82%)"
+  accent: "hsl(218 68% 36%)"
+  accent-tint: "hsl(218 60% 96%)"
   on-accent: "hsl(0 0% 100%)"
   success: "hsl(152 63% 28%)"
   warning: "hsl(30 92% 33%)"
   danger: "hsl(0 72% 45%)"
 typography:
   page-title:
-    fontFamily: "Plus Jakarta Sans, system-ui, sans-serif"
+    fontFamily: "IBM Plex Sans, IBM Plex Sans Arabic, system-ui, sans-serif"
     fontSize: "1.375rem"
     fontWeight: 600
     lineHeight: 1.27
     letterSpacing: "-0.02em"
   section-heading:
-    fontFamily: "Plus Jakarta Sans, system-ui, sans-serif"
+    fontFamily: "IBM Plex Sans, IBM Plex Sans Arabic, system-ui, sans-serif"
     fontSize: "0.9375rem"
     fontWeight: 600
     lineHeight: 1.6
     letterSpacing: "-0.01em"
   figure:
-    fontFamily: "Plus Jakarta Sans, system-ui, sans-serif"
+    fontFamily: "IBM Plex Sans, IBM Plex Sans Arabic, system-ui, sans-serif"
     fontSize: "1.5rem"
     fontWeight: 600
     letterSpacing: "-0.02em"
     fontFeature: "tnum"
   body:
-    fontFamily: "Plus Jakarta Sans, system-ui, sans-serif"
+    fontFamily: "IBM Plex Sans, IBM Plex Sans Arabic, system-ui, sans-serif"
     fontSize: "0.875rem"
     fontWeight: 400
     lineHeight: 1.43
   label:
-    fontFamily: "Plus Jakarta Sans, system-ui, sans-serif"
+    fontFamily: "IBM Plex Sans, IBM Plex Sans Arabic, system-ui, sans-serif"
     fontSize: "0.75rem"
     fontWeight: 500
     lineHeight: 1.33
   code:
-    fontFamily: "JetBrains Mono, ui-monospace, monospace"
+    fontFamily: "IBM Plex Mono, ui-monospace, monospace"
     fontSize: "0.75rem"
     fontWeight: 400
 rounded:
@@ -86,6 +86,14 @@ components:
 
 # Design System: ClinicMind
 
+> **Unslop direction (design/unslop, November 2026).** Calm, exact, quietly warm: the consultation
+> room in daylight. Graphite surfaces, prescription ink as the one accent, IBM Plex with its
+> Arabic sibling. Three places get the richness: today's hour rail on the overview, the
+> escalation countdown on the concierge board and the collected-per-day chart in finance. The
+> signature detail is the ink "Signed" mark (`SignedMark`), used on every signed visit,
+> procedure and day close and nowhere else. Badges are hairlines with a coloured word; only
+> danger keeps a tint. One solid button to a screen, one accent per chart.
+
 > Written from the code as it stands after the interface pass over every screen (November 2026),
 > without an interview. `PRODUCT.md` says who the product is for; this file says how its screens
 > are built. The tokens live in `src/app/globals.css` and `tailwind.config.ts`, the shared parts
@@ -109,9 +117,9 @@ All colours are CSS variables, so the dark theme and a clinic's own accent need 
   cooler; content sits on `surface`. `muted` fills quiet chips and hovered rows.
 - **Text.** `ink` for content, `ink-muted` for labels and secondary lines. Both read at 4.5:1 or
   better on every ground above.
-- **Accent.** One colour, indigo by default: the primary button, the current item, links, and
+- **Accent.** One colour, prescription ink (`#1D4B9A`) by default: the primary button, the current item, links, and
   the visit under way. A clinic may replace it (`src/lib/brand.ts`), so never rely on it being
-  indigo, and never use it for meaning that `success`, `warning` or `danger` carry.
+  ink, and never use it for meaning that `success`, `warning` or `danger` carry.
 - **State.** `success` done or settled, `warning` someone is waiting or money is owed, `danger`
   late, overdue or a no-show. Each is dark enough to be text on white and on its own 10% tint.
   A state is never told by colour alone: it has a word, and a mark of its own.
@@ -120,8 +128,9 @@ All colours are CSS variables, so the dark theme and a clinic's own accent need 
 
 ## Typography
 
-One face for the interface, Plus Jakarta Sans, with tabular figures wherever numbers line up
-(times, counts, money). JetBrains Mono is for codes and reference numbers only: an invoice
+One family for the interface, IBM Plex Sans, with its Arabic sibling IBM Plex Sans Arabic for
+patient documents and Arabic names, and tabular figures wherever numbers line up (times, counts,
+money). IBM Plex Mono is for codes, reference numbers and chart axes only: an invoice
 number, a national ID, a procedure code. It is never a label style.
 
 | Role | Size | Use |

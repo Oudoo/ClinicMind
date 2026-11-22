@@ -192,7 +192,7 @@ function Calendar({
               <ChevronRight className="h-4 w-4" />
             </Link>
           </Button>
-          <h3 className="ml-1 text-sm font-semibold">{rangeLabel}</h3>
+          <h3 className="ml-1 text-sm font-medium">{rangeLabel}</h3>
         </nav>
 
         <div className="flex flex-wrap items-center gap-2">
@@ -242,7 +242,7 @@ function Calendar({
                   <Link
                     href={href({ view: "day", date: day.key })}
                     aria-current={isToday ? "date" : undefined}
-                    className={cn("truncate text-sm font-medium hover:underline", isToday ? "font-semibold text-accent" : "text-foreground")}
+                    className={cn("truncate text-sm font-medium hover:underline", isToday ? "font-medium text-accent" : "text-foreground")}
                   >
                     {day.label}
                   </Link>

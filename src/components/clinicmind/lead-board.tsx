@@ -44,7 +44,7 @@ export function LeadBoard({
             )}
           >
             <div className="flex items-center justify-between gap-2 border-b border-border px-3 py-2">
-              <h3 className="truncate text-sm font-semibold">{STAGE_LABELS[column.stage]}</h3>
+              <h3 className="truncate text-sm font-medium">{STAGE_LABELS[column.stage]}</h3>
               <Badge tone={column.stage === "WON" ? "success" : column.stage === "LOST" ? "danger" : "default"}>{column.total}</Badge>
             </div>
             {column.leads.length ? (

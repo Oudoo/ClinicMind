@@ -59,7 +59,7 @@ export default async function LabOrderPage({ params }: { params: Promise<{ id: s
       </Link>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
-          <h2 className="font-display text-lg font-semibold tracking-tight">{order.tests}</h2>
+          <h2 className="font-display text-lg font-medium">{order.tests}</h2>
           <p className="mt-0.5 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
             <Link href={`/dashboard/patients/${order.patient.id}`} className="font-medium text-foreground underline-offset-2 hover:underline">
               {order.patient.fullName}
@@ -110,7 +110,7 @@ export default async function LabOrderPage({ params }: { params: Promise<{ id: s
           </dl>
         </Card>
         <Card className="space-y-2" aria-label="The lab's bill">
-          <h3 className="font-display text-base font-semibold">The lab&apos;s bill</h3>
+          <h3 className="font-display text-base font-medium">The lab&apos;s bill</h3>
           {order.bill ? (
             <>
               <p className="flex items-baseline justify-between gap-2">
@@ -139,7 +139,7 @@ export default async function LabOrderPage({ params }: { params: Promise<{ id: s
 
       <Card className="space-y-3" aria-label="The result">
         <div className="flex flex-wrap items-center gap-2">
-          <h3 className="font-display text-base font-semibold">The result</h3>
+          <h3 className="font-display text-base font-medium">The result</h3>
           {order.abnormal ? <Badge tone="warning">A doctor must act on it</Badge> : null}
         </div>
         {order.status !== "RECEIVED" ? (

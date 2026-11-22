@@ -151,7 +151,7 @@ export function StatementDocument({ ledger, clinic, language, printedAt }: { led
     >
       <header className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <p className="font-display text-lg font-semibold">
+          <p className="font-display text-lg font-medium">
             <bdi>{clinic.tenantName}</bdi>
           </p>
           {clinic.name ? (
@@ -171,7 +171,7 @@ export function StatementDocument({ ledger, clinic, language, printedAt }: { led
           ) : null}
         </div>
         <div className="sm:text-end">
-          <h1 className="font-display text-2xl font-semibold tracking-tight">{family ? t.familyTitle : t.title}</h1>
+          <h1 className="font-display text-2xl font-medium tracking-tight">{family ? t.familyTitle : t.title}</h1>
           <p>
             <span className="text-muted-foreground">{t.period}: </span>
             {period}
@@ -277,7 +277,7 @@ export function StatementDocument({ ledger, clinic, language, printedAt }: { led
           </tbody>
           <tfoot>
             <SummaryRow label={t.totals} debit={ledger.totals.debit} credit={ledger.totals.credit} showPatient={showPatient} className="border-t border-border text-muted-foreground" />
-            <SummaryRow label={t.atEnd} balance={ledger.closing} showPatient={showPatient} className="font-semibold" testId="statement-closing" />
+            <SummaryRow label={t.atEnd} balance={ledger.closing} showPatient={showPatient} className="font-medium" testId="statement-closing" />
           </tfoot>
         </table>
       </div>
