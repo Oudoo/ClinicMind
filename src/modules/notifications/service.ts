@@ -43,6 +43,13 @@ export interface NotifyInput {
   excludeUserId?: string | null;
   /** Send e-mail regardless of preference (escalation targets). */
   forceEmail?: boolean;
+  /**
+   * This notification is the newest word on its record (`entity` + `entityId`):
+   * each recipient's earlier unread ones of the same kind for that record are
+   * marked read, so a case that is told again stays one unread line, not one
+   * per reminder. Ignored without an entity id.
+   */
+  supersede?: boolean;
 }
 
 export interface NotifyResult {
@@ -133,9 +140,18 @@ export async function notify(tenantId: string, input: NotifyInput): Promise<Noti
 
   const level = input.level ?? "INFO";
   const rows = recipients.filter((r) => inAppEnabled(prefs.get(r.id) ?? null, input.kind));
+  const supersede = input.supersede && input.entityId && rows.length
+    ? [
+        db.notification.updateMany({
+          where: { tenantId, userId: { in: rows.map((r) => r.id) }, kind: input.kind, entity: input.entity ?? null, entityId: input.entityId, readAt: null },
+          data: { readAt: new Date() },
+        }),
+      ]
+    : [];
   const created = rows.length
-    ? await db.$transaction(
-        rows.map((r) =>
+    ? await db.$transaction([
+        ...supersede,
+        ...rows.map((r) =>
           db.notification.create({
             data: {
               tenantId,
@@ -151,7 +167,7 @@ export async function notify(tenantId: string, input: NotifyInput): Promise<Noti
             select: { id: true, userId: true },
           }),
         ),
-      )
+      ]).then((results) => results.slice(supersede.length) as { id: string; userId: string }[])
     : [];
 
   let emailed = 0;
@@ -216,6 +232,24 @@ export async function listNotifications(tenantId: string, userId: string, opts: 
 
 export async function unreadCount(tenantId: string, userId: string): Promise<number> {
   return db.notification.count({ where: { tenantId, userId, readAt: null } });
+}
+
+/**
+ * Someone dealt with the record (an escalation acknowledged or resolved): its
+ * unread notifications of this kind are marked read for everyone, so the bell
+ * stops calling for a case that already has a person on it. They stay listed
+ * under "All". Returns how many changed.
+ */
+export async function settleNotifications(
+  tenantId: string,
+  record: { kind: NotificationKind; entity: string; entityId: string },
+  now = new Date(),
+): Promise<number> {
+  const { count } = await db.notification.updateMany({
+    where: { tenantId, kind: record.kind, entity: record.entity, entityId: record.entityId, readAt: null },
+    data: { readAt: now },
+  });
+  return count;
 }
 
 /** `POST /api/notifications/read` body: `{ ids: [...] }` or `{ all: true }`. */

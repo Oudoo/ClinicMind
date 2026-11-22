@@ -742,10 +742,12 @@ interface SlotRef {
 /**
  * Turn whatever stopped a booking transaction into the API's conflict errors:
  * a database exclusion violation becomes a 409 `conflict` with the bookings in
- * the way (re-read outside the aborted transaction), and every refusal tells
- * the actor through a BOOKING_CONFLICT notification. Anything else passes.
+ * the way (re-read outside the aborted transaction). Anything else passes.
+ * The person who tried sees the refusal on screen, so it creates no
+ * notification: one per refused attempt only filled the bell (the audit trail
+ * still has every booking that was made).
  */
-async function conflictFromError(tenantId: string, actor: Actor, err: unknown, slot: SlotRef): Promise<unknown> {
+async function conflictFromError(tenantId: string, err: unknown, slot: SlotRef): Promise<unknown> {
   let refusal: AppointmentConflictError | PatientConflictError;
   if (isExclusionViolation(err)) {
     const conflicts = await findConflicts(tenantId, slot).catch(() => [] as AppointmentConflict[]);
@@ -754,22 +756,6 @@ async function conflictFromError(tenantId: string, actor: Actor, err: unknown, s
     refusal = err;
   } else {
     return err;
-  }
-  if (actor.id) {
-    const actorId = actor.id;
-    const other = refusal.conflicts[0];
-    notifyLater(tenantId, (tz) => ({
-      kind: "BOOKING_CONFLICT",
-      level: "WARNING",
-      title: refusal instanceof PatientConflictError ? "Patient already booked at that time" : "Double booking refused",
-      body: `${formatDateInTz(slot.startsAt, tz, { weekday: "short", day: "2-digit", month: "short" })} ${formatTimeInTz(slot.startsAt, tz)}–${formatTimeInTz(slot.endsAt, tz)}${
-        other ? ` overlaps ${other.patient.fullName}${other.doctor ? ` with ${other.doctor.fullName}` : ""}${other.room ? ` in ${other.room}` : ""}` : ""
-      }`,
-      href: dayHref(slot.startsAt, tz),
-      entity: "Appointment",
-      entityId: other?.id ?? null,
-      userIds: [actorId],
-    }));
   }
   return refusal;
 }
@@ -854,7 +840,7 @@ export async function createAppointment(tenantId: string, rawInput: unknown, act
       return { appointment, conflicts };
     });
   } catch (err) {
-    throw await conflictFromError(tenantId, actor, err, slot);
+    throw await conflictFromError(tenantId, err, slot);
   }
   const { conflicts } = outcome;
   const appointment = await attachDoctor(tenantId, outcome.appointment);
@@ -926,7 +912,7 @@ export async function rescheduleAppointment(
   try {
     outcome = await db.$transaction((tx) => applyReschedule(tx, tenantId, id, input, seen, { actor, clock }));
   } catch (err) {
-    throw await conflictFromError(tenantId, actor, err, seen.slot ?? { startsAt: input.startsAt ?? new Date(), endsAt: input.endsAt ?? new Date(), excludeId: id });
+    throw await conflictFromError(tenantId, err, seen.slot ?? { startsAt: input.startsAt ?? new Date(), endsAt: input.endsAt ?? new Date(), excludeId: id });
   }
   const { before, after, conflicts, slotChanged, timeChanged, overrides } = outcome;
 
@@ -1134,7 +1120,7 @@ export async function transitionAppointment(
       return { before: shape(before), after: shape(after) };
     });
   } catch (err) {
-    throw await conflictFromError(tenantId, actor, err, seen.slot ?? { startsAt: new Date(), endsAt: new Date(), excludeId: id });
+    throw await conflictFromError(tenantId, err, seen.slot ?? { startsAt: new Date(), endsAt: new Date(), excludeId: id });
   }
   const { before } = outcome;
   const after = await attachDoctor(tenantId, outcome.after);

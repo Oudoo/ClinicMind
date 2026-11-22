@@ -17,6 +17,7 @@
     "prisma:studio": "prisma studio",
     "db:seed": "tsx prisma/seed.ts",
     "ai:reindex": "tsx scripts/reindex.ts",
+    "notifications:tidy": "tsx scripts/notifications-tidy.ts",
     "platform:bootstrap": "tsx scripts/platform-bootstrap.ts",
     "assistant:eval": "tsx scripts/assistant-eval.ts",
     "test": "vitest run",

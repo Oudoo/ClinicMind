@@ -9,7 +9,7 @@ import { Checkbox, Select } from "@/components/ui/input";
 import { useToast } from "@/components/ui/toast";
 import { apiFetch } from "@/lib/http";
 import { cn } from "@/lib/utils";
-import { EMAIL_DEFAULT_ON, KIND_HINTS, KIND_LABELS, NOTIFICATION_KINDS } from "@/modules/notifications/kinds";
+import { EMAIL_DEFAULT_ON, KIND_HINTS, KIND_LABELS, NOTIFICATION_KINDS, RETIRED_KINDS } from "@/modules/notifications/kinds";
 import { emitNotificationsChanged, emitPreferencesChanged } from "./notification-shared";
 
 /**
@@ -178,7 +178,7 @@ export function NotificationPreferencesForm({
           <span className="data-label text-center">E-mail</span>
         </div>
         <ul className="divide-y divide-border">
-          {NOTIFICATION_KINDS.map((kind) => {
+          {NOTIFICATION_KINDS.filter((k) => !RETIRED_KINDS.includes(k)).map((kind) => {
             const appOn = effective(inApp, kind, true);
             const mailDefault = EMAIL_DEFAULT_ON.includes(kind);
             const mailOn = effective(mail, kind, mailDefault);

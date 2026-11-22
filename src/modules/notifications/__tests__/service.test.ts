@@ -26,6 +26,7 @@ import {
   listNotifications,
   markRead,
   notify,
+  settleNotifications,
   TEST_NOTIFICATION_TITLE,
   unreadCount,
   updatePreferences,
@@ -33,6 +34,7 @@ import {
 import { REVIEW_REMINDER_AUDIT_ACTION, runCleanup, runDailyDigest, runReviewPendingReminders } from "@/modules/notifications/jobs";
 import { attentionIsPersonal, attentionKeysFor } from "@/modules/notifications/attention";
 import { relativeTime, safeNotificationHref } from "@/modules/notifications/kinds";
+import { tidyNotifications } from "@/modules/notifications/tidy";
 
 // These tests call the services directly, outside any route.
 runAsSystem();
@@ -224,6 +226,28 @@ describe.skipIf(!dbTestsEnabled)("notifications · service and jobs", () => {
     });
   });
 
+  describe("one unread line per case", () => {
+    it("supersede marks the person's earlier unread alert for the same record read, and nothing else", async () => {
+      const record = { kind: "ESCALATION" as const, entity: "Escalation", entityId: "esc-supersede" };
+      await notify(a, { ...record, title: "first", userIds: [doctor1.id, doctor2.id] });
+      await notify(a, { ...record, entityId: "esc-other", title: "other case", userIds: [doctor1.id] });
+      await notify(a, { kind: "ALERT_RULE", entity: "Escalation", entityId: "esc-supersede", title: "other kind", userIds: [doctor1.id] });
+      const second = await notify(a, { ...record, title: "second", userIds: [doctor1.id], supersede: true });
+      expect(second.created).toBe(1);
+      const rows = await db.notification.findMany({ where: { tenantId: a, entityId: { in: ["esc-supersede", "esc-other"] } } });
+      const state = Object.fromEntries(rows.map((r) => [`${r.title}:${r.userId === doctor1.id ? "d1" : "d2"}`, r.readAt ? "read" : "unread"]));
+      expect(state).toEqual({ "first:d1": "read", "first:d2": "unread", "other case:d1": "unread", "other kind:d1": "unread", "second:d1": "unread" });
+    });
+
+    it("settleNotifications marks a record's alerts read for everyone", async () => {
+      const record = { kind: "ESCALATION" as const, entity: "Escalation", entityId: "esc-settle" };
+      await notify(a, { ...record, title: "settle me", userIds: [doctor1.id, doctor2.id, nurse.id] });
+      expect(await settleNotifications(a, record)).toBe(3);
+      expect(await db.notification.count({ where: { tenantId: a, entityId: "esc-settle", readAt: null } })).toBe(0);
+      expect(await settleNotifications(b, record)).toBe(0);
+    });
+  });
+
   describe("reading and marking", () => {
     it("markRead only touches the caller's own rows; unreadCount is per user", async () => {
       await notify(a, { kind: "ALERT_RULE", title: "read-scope", userIds: [doctor1.id, doctor2.id] });
@@ -379,5 +403,48 @@ describe.skipIf(!dbTestsEnabled)("notifications · service and jobs", () => {
       expect(await db.notification.findUnique({ where: { id: oldUnread.id } })).not.toBeNull();
       expect(await db.notification.findUnique({ where: { id: recentRead.id } })).not.toBeNull();
     });
+  });
+});
+
+describe.skipIf(!dbTestsEnabled)("notifications · clearing the old alert backlog", () => {
+  let t = "";
+  let u1: U;
+  let u2: U;
+  beforeAll(async () => {
+    t = (await createTenant()).id;
+    u1 = await createUser({ tenantId: t, role: "NURSE" });
+    u2 = await createUser({ tenantId: t, role: "CLINIC_OWNER" });
+  });
+  afterAll(async () => {
+    if (t) await deleteTenants([t]);
+  });
+
+  it("marks read the alerts of handled cases, older reminders and refused bookings; dry run first, then idempotent", async () => {
+    const esc = (status: "OPEN" | "ACKNOWLEDGED" | "RESOLVED") =>
+      db.escalation.create({ data: { tenantId: t, kind: "CONCIERGE", level: "HIGH_RISK", status, summary: `tidy ${status}`, dueAt: new Date() } });
+    const [open, taken, done] = [await esc("OPEN"), await esc("ACKNOWLEDGED"), await esc("RESOLVED")];
+    const alert = (entityId: string, userId: string, minutesAgo: number, title = "alert") =>
+      db.notification.create({
+        data: { tenantId: t, userId, kind: "ESCALATION", level: "CRITICAL", title, entity: "Escalation", entityId, createdAt: new Date(Date.now() - minutesAgo * 60_000) },
+      });
+    // The open case: three reminders for u1 (the newest stays), one for u2.
+    await alert(open.id, u1.id, 90, "old");
+    await alert(open.id, u1.id, 60, "older");
+    const keep1 = await alert(open.id, u1.id, 30, "newest");
+    const keep2 = await alert(open.id, u2.id, 30, "u2 only");
+    await alert(taken.id, u1.id, 10);
+    await alert(done.id, u2.id, 10);
+    await db.notification.create({ data: { tenantId: t, userId: u1.id, kind: "BOOKING_CONFLICT", level: "WARNING", title: "Double booking refused" } });
+    await db.notification.create({ data: { tenantId: t, userId: u1.id, kind: "LEAD_NEW", title: "untouched" } });
+
+    const dry = await tidyNotifications(t);
+    expect(dry).toEqual({ settled: 2, collapsed: 2, refusals: 1 });
+    expect(await db.notification.count({ where: { tenantId: t, readAt: null } })).toBe(8);
+
+    expect(await tidyNotifications(t, { apply: true })).toEqual(dry);
+    const unread = await db.notification.findMany({ where: { tenantId: t, readAt: null }, select: { id: true, title: true } });
+    expect(unread.map((n) => n.id).sort()).toEqual([keep1.id, keep2.id, (await db.notification.findFirstOrThrow({ where: { tenantId: t, title: "untouched" } })).id].sort());
+    expect(await db.notification.count({ where: { tenantId: t } })).toBe(8);
+    expect(await tidyNotifications(t, { apply: true })).toEqual({ settled: 0, collapsed: 0, refusals: 0 });
   });
 });
