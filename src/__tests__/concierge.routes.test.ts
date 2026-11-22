@@ -504,21 +504,56 @@ describe.skipIf(!dbTestsEnabled)("concierge", () => {
       expect(await db.auditLog.count({ where: { tenantId: a, entityId: escalation.id, action: { in: ["concierge.escalation.acknowledge", "concierge.escalation.resolve"] } } })).toBe(2);
     });
 
-    it("re-notifies an unacknowledged escalation as soon as it is overdue, then every 30 minutes", async () => {
+    it("re-notifies an unacknowledged high-risk escalation as soon as it is overdue, then every 30 minutes, one unread line per person", async () => {
       const { enrolmentId, token } = await sentDay1("Overdue Patient");
       await publicCall("POST", token, { answers: { pain: 1, swelling: false, bleeding: true, fever: false } });
       const escalation = await db.escalation.findFirstOrThrow({ where: { tenantId: a, enrolmentId, level: "HIGH_RISK" } });
+      const reminderWhere = { tenantId: a, entityId: escalation.id, title: { startsWith: "Still unacknowledged" } };
       await notifyOverdueEscalations(a, new Date(escalation.dueAt.getTime() - MIN));
-      expect(await db.notification.count({ where: { tenantId: a, entityId: escalation.id, title: { startsWith: "Still unacknowledged" } } })).toBe(0);
+      expect(await db.notification.count({ where: reminderWhere })).toBe(0);
       const overdue = new Date(escalation.dueAt.getTime() + 2 * MIN);
       expect(await notifyOverdueEscalations(a, overdue)).toBeGreaterThanOrEqual(1);
-      const reminders = await db.notification.findMany({ where: { tenantId: a, entityId: escalation.id, title: { startsWith: "Still unacknowledged" } } });
+      const reminders = await db.notification.findMany({ where: reminderWhere });
       expect(reminders.map((n) => n.userId).sort()).toEqual([nurse.id, owner.id].sort());
+      expect(reminders.every((n) => n.level === "CRITICAL")).toBe(true);
       await notifyOverdueEscalations(a, new Date(overdue.getTime() + 10 * MIN));
-      expect(await db.notification.count({ where: { tenantId: a, entityId: escalation.id, title: { startsWith: "Still unacknowledged" } } })).toBe(2);
+      expect(await db.notification.count({ where: reminderWhere })).toBe(2);
       await notifyOverdueEscalations(a, new Date(overdue.getTime() + 31 * MIN));
-      expect(await db.notification.count({ where: { tenantId: a, entityId: escalation.id, title: { startsWith: "Still unacknowledged" } } })).toBe(4);
+      expect(await db.notification.count({ where: reminderWhere })).toBe(4);
       expect((await db.escalation.findUniqueOrThrow({ where: { id: escalation.id } })).details).toMatchObject({ reminders: 2 });
+      // Each reminder replaces the person's earlier unread alert for the case (the first one included).
+      const unread = await db.notification.findMany({ where: { tenantId: a, entityId: escalation.id, readAt: null } });
+      expect(unread.map((n) => n.userId).sort()).toEqual([nurse.id, owner.id].sort());
+      expect(unread.every((n) => n.title.startsWith("Still unacknowledged (33 min overdue)"))).toBe(true);
+      expect(await db.notification.count({ where: { tenantId: a, entityId: escalation.id } })).toBe(6);
+
+      // Someone takes it: its alerts stop calling for everyone, and no reminder follows.
+      expect((await call(acknowledgeRoute, `/x`, { method: "POST", cookie: doctorCookie }, escalation.id)).res.status).toBe(200);
+      expect(await db.notification.count({ where: { tenantId: a, entityId: escalation.id, readAt: null } })).toBe(0);
+      await notifyOverdueEscalations(a, new Date(overdue.getTime() + 2 * 60 * MIN));
+      expect(await db.notification.count({ where: reminderWhere })).toBe(4);
+    });
+
+    it("reminds a watch escalation (an out-of-range answer or a missed check-in) once, as a warning, without the owner's role", async () => {
+      const { enrolmentId, token } = await sentDay1("Watch Overdue Patient");
+      const answered = await publicCall("POST", token, { answers: { pain: 6, swelling: false, bleeding: false, fever: false } });
+      expect(answered.json.triage).toBe("WATCH");
+      const escalation = await db.escalation.findFirstOrThrow({ where: { tenantId: a, enrolmentId, level: "WATCH" } });
+      const reminderWhere = { tenantId: a, entityId: escalation.id, title: { startsWith: "Still unacknowledged" } };
+      const backup = (escalation.details as { backupUserId?: string }).backupUserId;
+      const overdue = new Date(escalation.dueAt.getTime() + 2 * MIN);
+      await notifyOverdueEscalations(a, overdue);
+      const reminders = await db.notification.findMany({ where: reminderWhere });
+      expect(reminders.map((n) => n.userId).sort()).toEqual([escalation.assignedToId, backup].filter(Boolean).sort());
+      expect(reminders.every((n) => n.level === "WARNING")).toBe(true);
+      expect(reminders[0]!.body).toContain("only reminder");
+      for (const later of [31, 120, 24 * 60]) await notifyOverdueEscalations(a, new Date(overdue.getTime() + later * MIN));
+      expect(await db.notification.count({ where: reminderWhere })).toBe(reminders.length);
+      expect((await db.escalation.findUniqueOrThrow({ where: { id: escalation.id } })).details).toMatchObject({ reminders: 1 });
+      // Resolving clears the case's alerts too.
+      const resolved = await call(resolveRoute, `/x`, { method: "POST", cookie: nurseCookie, body: { resolution: "Called: pain easing" } }, escalation.id);
+      expect(resolved.res.status).toBe(200);
+      expect(await db.notification.count({ where: { tenantId: a, entityId: escalation.id, readAt: null } })).toBe(0);
     });
   });
 

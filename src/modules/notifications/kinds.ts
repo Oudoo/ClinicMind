@@ -86,6 +86,13 @@ export const KIND_HINTS: Record<NotificationKind, string> = {
   SYSTEM: "Account, digest and test notifications.",
 };
 
+/**
+ * Kinds nothing sends any more: kept so old rows still read and filter, left
+ * out of the preferences matrix. BOOKING_CONFLICT told the person who had just
+ * seen the refusal on screen, once per attempt.
+ */
+export const RETIRED_KINDS: readonly NotificationKind[] = ["BOOKING_CONFLICT"];
+
 /** Kinds that go to e-mail unless the recipient switched them off. */
 export const EMAIL_DEFAULT_ON: readonly NotificationKind[] = ["ESCALATION", "ALERT_RULE", "SAFETY_OVERRIDE"];
 

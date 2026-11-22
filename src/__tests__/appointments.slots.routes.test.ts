@@ -302,18 +302,14 @@ describe.skipIf(!dbTestsEnabled)("free slots, double-booking protection, next ap
   });
 
   describe("double-booking protection", () => {
-    it("refuses the doctor's taken slot with 409 and the booking in the way, and tells the actor", async () => {
+    it("refuses the doctor's taken slot with 409 and the booking in the way, with no alert for the refusal", async () => {
       const { res, json } = await book({ patientId: P.laila, doctorId: d1.id, startsAt: iso(SUN, "10:15"), endsAt: iso(SUN, "10:45") });
       expect(res.status).toBe(409);
       expect(json.error).toBe("conflict");
       expect(json.conflicts.map((x: { id: string }) => x.id)).toEqual([booked.mona1000]);
-      await vi.waitFor(
-        async () => {
-          const n = await db.notification.findFirst({ where: { tenantId: a, userId: desk.id, kind: "BOOKING_CONFLICT" } });
-          expect(n).toMatchObject({ level: "WARNING", title: "Double booking refused" });
-        },
-        { timeout: 3000, interval: 50 },
-      );
+      // The person who tried sees the refusal on screen; nothing lands in the bell.
+      await new Promise((r) => setTimeout(r, 300));
+      expect(await db.notification.count({ where: { tenantId: a, kind: "BOOKING_CONFLICT" } })).toBe(0);
     });
 
     it("refuses a patient's overlapping live booking with another doctor (409 patient_conflict) unless allowed", async () => {

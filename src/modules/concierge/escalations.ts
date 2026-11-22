@@ -1,9 +1,9 @@
-import type { Escalation, Prisma, TriageLevel } from "@prisma/client";
+import { Prisma, type Escalation, type TriageLevel } from "@prisma/client";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { audit } from "@/lib/audit";
 import { zText } from "@/lib/validation";
-import { notify } from "@/modules/notifications/service";
+import { notify, settleNotifications } from "@/modules/notifications/service";
 import { getTenantTimezone } from "@/modules/appointments/service";
 import type { EscalationDTO } from "./dto";
 import { ConciergeError, ConciergeNotFoundError } from "./errors";
@@ -17,10 +17,17 @@ import type { TriageFlag } from "./triage";
  * opens one, and the board acknowledges and resolves them. The assignee comes
  * from the roster (in hours / out of hours on the clinic clock) and the target
  * from the settings: 15 minutes in hours, 30 out of hours for HIGH_RISK, four
- * hours for WATCH. Past the target, the assignee, the backup and the owner are
- * told again (first as soon as it is overdue, then every 30 minutes).
+ * hours for WATCH. Past the target, a HIGH_RISK one is told again to the
+ * assignee, the backup and the owner, as soon as it is overdue and then every
+ * 30 minutes until someone acknowledges it; a WATCH one (an out-of-range answer,
+ * a missed check-in) reminds the assignee and the backup once, as a warning.
+ * Each reminder replaces the person's earlier unread alert for the same case,
+ * and acknowledging or resolving the case clears its alerts for everyone.
  */
 export const RE_NOTIFY_EVERY_MS = 30 * 60_000;
+
+/** How many overdue reminders an escalation gets: high risk until acknowledged, watch once. */
+export const MAX_REMINDERS: Record<"WATCH" | "HIGH_RISK", number> = { WATCH: 1, HIGH_RISK: Number.POSITIVE_INFINITY };
 
 export interface OpenEscalationInput {
   level: Extract<TriageLevel, "WATCH" | "HIGH_RISK">;
@@ -232,6 +239,7 @@ export async function acknowledgeEscalation(tenantId: string, id: string, actor:
     before: { status: before.status },
     after: { status: after.status, acknowledgedAt: now, withinTarget },
   });
+  await settleEscalationAlerts(tenantId, id, now);
   const [dto] = await toEscalationDTOs(tenantId, [after]);
   return dto!;
 }
@@ -281,29 +289,53 @@ export async function resolveEscalation(tenantId: string, id: string, rawInput: 
     before: { status: before.status },
     after: { status: after.status, resolution: input.resolution },
   });
+  await settleEscalationAlerts(tenantId, id, now);
   const [dto] = await toEscalationDTOs(tenantId, [after]);
   return dto!;
 }
 
+/** A person has the case: its alerts stop calling (never fails the acknowledgement). */
+async function settleEscalationAlerts(tenantId: string, id: string, now: Date): Promise<void> {
+  try {
+    await settleNotifications(tenantId, { kind: "ESCALATION", entity: "Escalation", entityId: id }, now);
+  } catch (err) {
+    console.error("[concierge] clearing the escalation's alerts failed", err);
+  }
+}
+
 // ── Overdue acknowledgements ─────────────────────────────────────────────────
 
+const remindersOf = (details: Record<string, unknown> | null | undefined): number =>
+  typeof details?.reminders === "number" ? details.reminders : 0;
+
+/** Whether an OPEN, overdue escalation is owed a reminder `now`. */
+export function reminderDue(e: Pick<Escalation, "level" | "details">, now: Date): boolean {
+  const details = detailsOf(e.details);
+  if (remindersOf(details) >= MAX_REMINDERS[e.level === "HIGH_RISK" ? "HIGH_RISK" : "WATCH"]) return false;
+  const last = details?.lastReminderAt;
+  const lastAt = typeof last === "string" ? Date.parse(last) : Number.NaN;
+  return Number.isNaN(lastAt) || now.getTime() - lastAt >= RE_NOTIFY_EVERY_MS;
+}
+
 /**
- * OPEN escalations past their target: tell the assignee again, plus the
- * backup and the owner. The first reminder goes as soon as the target passes,
- * then at most one every 30 minutes (`details.lastReminderAt`). Returns how
- * many escalations were re-notified.
+ * OPEN escalations past their target. High risk: the assignee, the backup and
+ * the owner are told again as soon as the target passes, then at most every 30
+ * minutes (`details.lastReminderAt`) until someone acknowledges it, as a
+ * critical alert. Watch: the assignee and the backup are reminded once, as a
+ * warning. Returns how many escalations were re-notified.
  */
 export async function notifyOverdueEscalations(tenantId: string, now = new Date()): Promise<number> {
-  const rows = await db.escalation.findMany({
-    where: { tenantId, kind: "CONCIERGE", status: "OPEN", dueAt: { lt: now } },
-    orderBy: { dueAt: "asc" },
-    take: 100,
-  });
-  const due = rows.filter((e) => {
-    const last = detailsOf(e.details)?.lastReminderAt;
-    const lastAt = typeof last === "string" ? Date.parse(last) : Number.NaN;
-    return Number.isNaN(lastAt) || now.getTime() - lastAt >= RE_NOTIFY_EVERY_MS;
-  });
+  const overdue = { tenantId, kind: "CONCIERGE" as const, status: "OPEN" as const, dueAt: { lt: now } };
+  // Two reads, so watch items already reminded never crowd high-risk ones out of the batch.
+  const [high, watch] = await Promise.all([
+    db.escalation.findMany({ where: { ...overdue, level: "HIGH_RISK" }, orderBy: { dueAt: "asc" }, take: 100 }),
+    db.escalation.findMany({
+      where: { ...overdue, level: "WATCH", details: { path: ["lastReminderAt"], equals: Prisma.AnyNull } },
+      orderBy: { dueAt: "asc" },
+      take: 100,
+    }),
+  ]);
+  const due = [...high, ...watch].filter((e) => reminderDue(e, now));
   if (!due.length) return 0;
   const names = await nameMapsFor(tenantId, due);
   let notified = 0;
@@ -318,18 +350,23 @@ export async function notifyOverdueEscalations(tenantId: string, now = new Date(
     const backup = typeof details.backupUserId === "string" ? details.backupUserId : null;
     const overdueMinutes = minutesLate(e.dueAt, now);
     const patient = e.patientId ? (names.patients.get(e.patientId) ?? "a patient") : "a patient";
+    const highRisk = e.level === "HIGH_RISK";
     try {
       await notify(tenantId, {
         kind: "ESCALATION",
-        level: "CRITICAL",
+        level: highRisk ? "CRITICAL" : "WARNING",
         title: `Still unacknowledged (${overdueMinutes} min overdue) · ${patient}: ${e.summary}`,
-        body: `Nobody has acknowledged this ${e.level === "HIGH_RISK" ? "high-risk" : "watch"} escalation. Open the concierge board and take it.`,
+        body: highRisk
+          ? "Nobody has acknowledged this high-risk escalation. Open the concierge board and take it."
+          : "Nobody has acknowledged this watch escalation. Open the concierge board and take it; this is the only reminder.",
         href: e.enrolmentId ? `/dashboard/concierge/enrolments/${e.enrolmentId}` : "/dashboard/concierge",
         entity: "Escalation",
         entityId: e.id,
         userIds: [e.assignedToId, backup].filter((id): id is string => Boolean(id)),
-        roles: ["CLINIC_OWNER"],
-        forceEmail: true,
+        // The owner is pulled in for high risk only; a watch item stays with the roster.
+        roles: highRisk ? ["CLINIC_OWNER"] : [],
+        forceEmail: highRisk,
+        supersede: true,
       });
       notified += 1;
     } catch (err) {
