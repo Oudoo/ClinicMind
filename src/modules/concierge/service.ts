@@ -2,7 +2,7 @@ import { Prisma, type CheckIn, type ConciergeEnrolment, type ConciergeTask, type
 import { z } from "zod";
 import { db, notDeleted } from "@/lib/db";
 import { audit } from "@/lib/audit";
-import { addDays, endOfDayInTz, startOfDayInTz, zonedParts, zonedTimeToUtc } from "@/lib/time";
+import { addDays, endOfDayInTz, formatDateInTz, startOfDayInTz, zonedParts, zonedTimeToUtc } from "@/lib/time";
 import { zOptionalText, zText } from "@/lib/validation";
 import { getTenantTimezone } from "@/modules/appointments/service";
 import { listTreatments, requireTenantTreatment } from "@/modules/treatments/service";
@@ -148,6 +148,11 @@ async function activeProtocolFor(tenantId: string, treatmentId: string) {
  * and never throws for a missing protocol; a thrown error means the sign-off
  * should still succeed, so callers catch and log. Calling it twice for the
  * same procedure returns the existing enrolment.
+ *
+ * One follow-up per patient and treatment, from its latest session: signing a
+ * later session stops the earlier follow-up still running (its pending steps
+ * skipped, "replaced") and starts the new one; signing an earlier session
+ * after a later one's follow-up started returns null and starts none.
  */
 export async function enrolOnSignedProcedure(
   tenantId: string,
@@ -185,9 +190,20 @@ export async function enrolOnSignedProcedure(
   const protocolId = protocol.id;
   const protocolLabel = `${protocol.name} v${protocol.version}`;
 
-  let enrolmentId: string;
+  let enrolmentId: string | null;
+  let replaced: { id: string; status: string; skipped: number }[] = [];
   try {
     enrolmentId = await db.$transaction(async (tx) => {
+      // One follow-up per patient and treatment, from its latest session: a later (or same-time) session's follow-up
+      // already running means this one starts none; earlier ones give way to it. Otherwise a patient seen twice in
+      // a few days for the same treatment got every check-in twice.
+      const running = (await runningFollowUps(tx, tenantId, procedure.patientId, procedure.treatmentId)).filter((r) => r.procedureId !== procedure.id);
+      if (running.some((r) => r.startedAt.getTime() >= procedure.performedAt.getTime())) return null;
+      const reason = supersededReason(procedure.treatment.name, procedure.performedAt, timezone);
+      for (const r of running) {
+        const { skipped } = await stopInTx(tx, tenantId, r.id, reason, now, "Concierge follow-up replaced");
+        replaced.push({ id: r.id, status: r.status, skipped });
+      }
       const enrolment = await tx.conciergeEnrolment.create({
         data: {
           tenantId,
@@ -226,6 +242,7 @@ export async function enrolOnSignedProcedure(
       return enrolment.id;
     });
   } catch (err) {
+    replaced = [];
     // Two sign-offs racing on the same procedure: the unique procedureId keeps one enrolment.
     if (isUniqueViolation(err)) {
       const existing = await db.conciergeEnrolment.findFirst({
@@ -237,6 +254,12 @@ export async function enrolOnSignedProcedure(
     throw err;
   }
 
+  // A later session of the same treatment already has its follow-up running: this one starts none.
+  if (!enrolmentId) return null;
+  for (const r of replaced) {
+    await enrolmentAudit(tenantId, "concierge.enrolment.stop", r.id, actor, { status: r.status }, { status: "STOPPED", reason: "replaced", replacedBy: enrolmentId, skippedSteps: r.skipped });
+  }
+
   await audit({
     tenantId,
     actorId: actor.id,
@@ -245,7 +268,7 @@ export async function enrolOnSignedProcedure(
     action: "concierge.enrol",
     entity: "ConciergeEnrolment",
     entityId: enrolmentId,
-    after: { procedureId: procedure.id, patientId: procedure.patientId, protocolId, protocol: protocolLabel, tasks: plan.length, language },
+    after: { procedureId: procedure.id, patientId: procedure.patientId, protocolId, protocol: protocolLabel, tasks: plan.length, language, replaced: replaced.map((r) => r.id) },
   });
   return { enrolmentId, protocolId, tasks: plan.length };
 }
@@ -467,20 +490,96 @@ export async function stopEnrolment(tenantId: string, id: string, rawInput: unkn
   if (before.status === "STOPPED" || before.status === "COMPLETED") {
     throw new ConciergeError("invalid_state", `an enrolment that is ${before.status} cannot be stopped`);
   }
-  const { row: after, skipped } = await db.$transaction(async (tx) => {
-    const row = await tx.conciergeEnrolment.update({ where: { id }, data: { status: "STOPPED", stoppedAt: now, stopReason: input.reason } });
-    const pending = await tx.conciergeTask.updateMany({ where: { enrolmentId: id, status: "PENDING" }, data: { status: "SKIPPED" } });
-    const open = await tx.conciergeTask.updateMany({
-      where: { enrolmentId: id, status: "SENT", kind: { not: "INSTRUCTION" } },
-      data: { status: "SKIPPED", tokenHash: null },
-    });
-    await tx.timelineEvent.create({
-      data: { tenantId, patientId: row.patientId, kind: "CHECK_IN", title: "Concierge follow-up stopped", body: input.reason, refId: row.id, occurredAt: now },
-    });
-    return { row, skipped: pending.count + open.count };
-  });
+  const { row: after, skipped } = await db.$transaction((tx) => stopInTx(tx, tenantId, id, input.reason, now));
   await enrolmentAudit(tenantId, "concierge.enrolment.stop", id, actor, { status: before.status }, { status: "STOPPED", reason: input.reason, skippedSteps: skipped });
   return after;
+}
+
+/**
+ * Stop an enrolment inside a transaction: pending steps are skipped, and so are check-ins still waiting for an
+ * answer (their links stop working). Answers given, missed steps and escalations stay. Returns the steps skipped.
+ */
+export async function stopInTx(tx: Client, tenantId: string, id: string, reason: string, now: Date, title = "Concierge follow-up stopped") {
+  const row = await tx.conciergeEnrolment.update({ where: { id }, data: { status: "STOPPED", stoppedAt: now, stopReason: reason } });
+  const pending = await tx.conciergeTask.updateMany({ where: { enrolmentId: id, status: "PENDING" }, data: { status: "SKIPPED" } });
+  const open = await tx.conciergeTask.updateMany({
+    where: { enrolmentId: id, status: "SENT", kind: { not: "INSTRUCTION" } },
+    data: { status: "SKIPPED", tokenHash: null },
+  });
+  await tx.timelineEvent.create({
+    data: { tenantId, patientId: row.patientId, kind: "CHECK_IN", title, body: reason, refId: row.id, occurredAt: now },
+  });
+  return { row, skipped: pending.count + open.count };
+}
+
+/** The reason an earlier follow-up of the same treatment gives way to the latest session's. */
+export const supersededReason = (treatment: string, performedAt: Date, timeZone: string) =>
+  `Replaced by the follow-up of the ${treatment} session on ${formatDateInTz(performedAt, timeZone)}: one follow-up per treatment, from its latest session.`;
+
+/**
+ * Serialise enrolments of one patient in one treatment, so two sign-offs at once cannot both start a follow-up.
+ * Then the follow-ups of that treatment still running (active or paused), oldest first.
+ */
+export async function runningFollowUps(tx: Client, tenantId: string, patientId: string, treatmentId: string) {
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`${tenantId}:enrol:${patientId}:${treatmentId}`}))`;
+  return tx.conciergeEnrolment.findMany({
+    where: { tenantId, patientId, status: { in: ["ACTIVE", "PAUSED"] }, protocol: { treatmentId } },
+    select: { id: true, status: true, startedAt: true, procedureId: true },
+    orderBy: [{ startedAt: "asc" }, { createdAt: "asc" }],
+  });
+}
+
+export interface DuplicateFollowUps {
+  patientId: string;
+  patientName: string;
+  treatment: string;
+  /** The follow-up that stays: the latest session's. */
+  kept: string;
+  /** The earlier ones, stopped as replaced (or, in a dry run, that would be). */
+  replaced: string[];
+}
+
+/**
+ * Follow-ups started before one-per-treatment held: a patient with two or more running (active or paused) for the
+ * same treatment. Without `apply` it only reports them; with it, it keeps the latest session's and stops the
+ * others as replaced (pending steps skipped, open links closed), as a new sign-off now does. Safe to re-run.
+ */
+export async function dedupeFollowUps(tenantId: string, opts: { apply?: boolean; actor?: Actor; now?: Date } = {}): Promise<DuplicateFollowUps[]> {
+  const now = opts.now ?? new Date();
+  const timezone = await getTenantTimezone(tenantId);
+  const rows = await db.conciergeEnrolment.findMany({
+    where: { tenantId, status: { in: ["ACTIVE", "PAUSED"] } },
+    select: { patientId: true, patient: { select: { fullName: true } }, protocol: { select: { treatmentId: true, treatment: { select: { name: true } } } } },
+  });
+  const pairs = new Map<string, { patientId: string; patientName: string; treatmentId: string; treatment: string; count: number }>();
+  for (const r of rows) {
+    const key = `${r.patientId}:${r.protocol.treatmentId}`;
+    const pair = pairs.get(key) ?? { patientId: r.patientId, patientName: r.patient.fullName, treatmentId: r.protocol.treatmentId, treatment: r.protocol.treatment.name, count: 0 };
+    pair.count += 1;
+    pairs.set(key, pair);
+  }
+  const found: DuplicateFollowUps[] = [];
+  for (const pair of [...pairs.values()].filter((x) => x.count > 1)) {
+    const result = await db.$transaction(async (tx) => {
+      const running = await runningFollowUps(tx, tenantId, pair.patientId, pair.treatmentId);
+      const kept = running[running.length - 1];
+      if (!kept || running.length < 2) return null;
+      const earlier = running.slice(0, -1);
+      const stops: { id: string; status: string; skipped: number }[] = [];
+      if (opts.apply) {
+        const procedure = await tx.procedure.findUniqueOrThrow({ where: { id: kept.procedureId }, select: { performedAt: true } });
+        const reason = supersededReason(pair.treatment, procedure.performedAt, timezone);
+        for (const r of earlier) stops.push({ id: r.id, status: r.status, ...(await stopInTx(tx, tenantId, r.id, reason, now, "Concierge follow-up replaced")) });
+      }
+      return { kept: kept.id, replaced: earlier.map((r) => r.id), stops };
+    });
+    if (!result) continue;
+    for (const st of result.stops) {
+      await enrolmentAudit(tenantId, "concierge.enrolment.stop", st.id, opts.actor ?? {}, { status: st.status }, { status: "STOPPED", reason: "replaced", replacedBy: result.kept, skippedSteps: st.skipped });
+    }
+    found.push({ patientId: pair.patientId, patientName: pair.patientName, treatment: pair.treatment, kept: result.kept, replaced: result.replaced });
+  }
+  return found;
 }
 
 export async function requireTask(tenantId: string, taskId: string) {
