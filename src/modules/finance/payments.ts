@@ -10,7 +10,7 @@ import { KIND_LABELS, LARGE_PAYMENT_THRESHOLD, MAX_AMOUNT, METHOD_LABELS, PAYMEN
 import { FinanceError, PaymentNotFoundError } from "./errors";
 import { requireTenantAppointment, type Actor } from "./procedures";
 import { takeNumber, visitClinic } from "./documents";
-import { assertDayOpen, cashFor, zPaidAt } from "./cash";
+import { assertDayOpen, cashFor, isOwner as owner, notifyLateEntry, zPaidAt } from "./cash";
 import { allocateCredit, CREDITING_KINDS, patientCredit, payableBy, refreshInvoiceStatus, releasePayment, settledOn } from "./allocations";
 import { requirePlanFor, settlePlan } from "./instalments";
 
@@ -138,7 +138,8 @@ export async function recordPayment(tenantId: string, rawInput: unknown, actor: 
       throw new FinanceError(409, "invalid_state", "the invoice has nothing to pay", { status: invoice.status, action: "paid", message: `Invoice ${invoice.number ?? ""} has nothing left to pay.` });
     }
     // Taken today: into the cashier's open shift, at its branch; entered late for an earlier day: into no shift.
-    const { shiftId, clinicId } = await cashFor(tx, tenantId, actor.id, paidAt, () => visitClinic(tx, tenantId, input));
+    // Entered late it says why, and the desk goes only so far back (no role given: an internal call, not limited).
+    const { shiftId, clinicId, lateDay } = await cashFor(tx, tenantId, actor.id, paidAt, () => visitClinic(tx, tenantId, input), { reason: input.note, owner: owner(actor) });
     const receipt = clinicId ? await takeNumber(tx, tenantId, clinicId, input.kind === "REFUND" ? "REFUND" : "RECEIPT") : null;
     const payment = await tx.payment.create({
       data: {
@@ -185,9 +186,9 @@ export async function recordPayment(tenantId: string, rawInput: unknown, actor: 
       }
     }
     if ((CREDITING_KINDS as readonly string[]).includes(payment.kind)) allocated += await allocateCredit(tx, tenantId, payment.patientId, actor.id ?? null);
-    return { payment, allocated };
+    return { payment, allocated, lateDay };
   });
-  const { payment } = created;
+  const { payment, lateDay } = created;
 
   await audit({
     tenantId,
@@ -209,8 +210,12 @@ export async function recordPayment(tenantId: string, rawInput: unknown, actor: 
       reference: payment.reference,
       receiptNumber: payment.receiptNumber,
       allocated: created.allocated,
+      enteredLate: lateDay,
     },
   });
+
+  // Money entered late passed no drawer: the owner hears of every one the desk enters, with its reason.
+  if (lateDay && !owner(actor)) notifyLateEntry(tenantId, payment, lateDay, actor);
 
   if (payment.amount >= LARGE_PAYMENT_THRESHOLD && payment.kind !== "REFUND") {
     notify(tenantId, {

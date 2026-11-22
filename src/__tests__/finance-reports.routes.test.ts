@@ -94,7 +94,7 @@ describe.skipIf(!dbTestsEnabled)("finance report routes", () => {
   };
   const sign = async (id: string, cookie: string) => expect((await post(signRoute, `/api/procedures/${id}/sign`, id, undefined, cookie)).res.status).toBe(200);
   const pay = async (body: Record<string, unknown>, cookie = receptionCookie) => {
-    const made = await paymentRoute(request("/api/payments", { method: "POST", cookie, body: { method: "CASH", kind: "PAYMENT", ...body } })).then(json);
+    const made = await paymentRoute(request("/api/payments", { method: "POST", cookie, body: { method: "CASH", kind: "PAYMENT", ...body, ...(body.paidAt && !body.note ? { note: "Taken earlier, entered late" } : {}) } })).then(json);
     expect(made.res.status).toBe(201);
     return made.json.payment.id as string;
   };

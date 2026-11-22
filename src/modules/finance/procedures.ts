@@ -15,7 +15,7 @@ import { fromDateKey, startOfDayInTz } from "@/lib/time";
 import { getTenantTimezone } from "@/modules/appointments/service";
 import { postCharge, procedureLabel, reverseProcedureCharges, stagePhrase, stageShare, stagesFor, summarizeCharges } from "./charges";
 import { takeNumber, visitClinic } from "./documents";
-import { cashFor, zPaidAt } from "./cash";
+import { cashFor, isOwner, notifyLateEntry, zPaidAt } from "./cash";
 
 /**
  * Procedures: a treatment planned for or performed on a patient, with its
@@ -55,6 +55,8 @@ export const DepositInput = z.object({
   method: z.enum(PAYMENT_METHODS).default("CASH"),
   paidAt: zPaidAt.optional(),
   reference: zOptionalText(120),
+  /** Required when it is dated an earlier day (entered late): why. */
+  note: zOptionalText(1000),
 });
 
 export const ProcedureInput = z
@@ -320,7 +322,7 @@ export async function createProcedure(tenantId: string, rawInput: unknown, actor
   const input = { ...parsed, ...priced };
   const treatment = await requireTenantTreatment(tenantId, input.treatmentId);
 
-  const { procedure, deposit } = await db.$transaction(async (tx) => {
+  const { procedure, deposit, lateDeposit } = await db.$transaction(async (tx) => {
     const procedure = await tx.procedure.create({
       data: {
         tenantId,
@@ -344,11 +346,15 @@ export async function createProcedure(tenantId: string, rawInput: unknown, actor
       },
       include: procedureInclude,
     });
-    let deposit: { id: string; amount: number } | null = null;
+    let deposit: { id: string; kind: string; amount: number; method: string; patientId: string; note: string | null; patient: { fullName: string } } | null = null;
+    let lateDeposit: string | null = null;
     if (input.deposit) {
       const paidAt = input.deposit.paidAt ?? new Date();
       // Into the cashier's open shift, like any money taken today (see cash.ts).
-      const { shiftId, clinicId } = await cashFor(tx, tenantId, actor.id, paidAt, () => visitClinic(tx, tenantId, { appointmentId: input.appointmentId, procedureId: procedure.id }));
+      const { shiftId, clinicId, lateDay } = await cashFor(tx, tenantId, actor.id, paidAt, () => visitClinic(tx, tenantId, { appointmentId: input.appointmentId, procedureId: procedure.id }), {
+        reason: input.deposit.note,
+        owner: isOwner(actor),
+      });
       const receipt = clinicId ? await takeNumber(tx, tenantId, clinicId, "RECEIPT") : null;
       const payment = await tx.payment.create({
         data: {
@@ -365,10 +371,12 @@ export async function createProcedure(tenantId: string, rawInput: unknown, actor
           amount: input.deposit.amount,
           paidAt,
           reference: input.deposit.reference ?? null,
+          note: input.deposit.note ?? null,
           createdById: actor.id ?? null,
         },
-        select: { id: true, amount: true },
+        select: { id: true, kind: true, amount: true, method: true, patientId: true, note: true, patient: { select: { fullName: true } } },
       });
+      lateDeposit = lateDay;
       await tx.timelineEvent.create({
         data: {
           tenantId,
@@ -382,7 +390,7 @@ export async function createProcedure(tenantId: string, rawInput: unknown, actor
       });
       deposit = payment;
     }
-    return { procedure, deposit };
+    return { procedure, deposit, lateDeposit };
   });
 
   await audit({
@@ -404,8 +412,9 @@ export async function createProcedure(tenantId: string, rawInput: unknown, actor
       action: "payment.record",
       entity: "Payment",
       entityId: deposit.id,
-      after: { procedureId: procedure.id, kind: "DEPOSIT", amount: deposit.amount },
+      after: { procedureId: procedure.id, kind: "DEPOSIT", amount: deposit.amount, enteredLate: lateDeposit },
     });
+    if (lateDeposit && !isOwner(actor)) notifyLateEntry(tenantId, deposit, lateDeposit, actor);
   }
   const fresh = await db.procedure.findFirstOrThrow({ where: { id: procedure.id, tenantId }, include: procedureInclude });
   const [view] = await attachPeople(tenantId, [fresh]);

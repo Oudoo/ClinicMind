@@ -1,12 +1,14 @@
-import { Prisma, type PaymentMethod } from "@prisma/client";
+import { Prisma, type PaymentMethod, type UserRole } from "@prisma/client";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { audit } from "@/lib/audit";
+import { can } from "@/lib/auth/rbac";
+import { notify } from "@/modules/notifications/service";
 import { TenantScopeError } from "@/lib/tenant-scope";
 import { addDays, dateKeyInTz, fromDateKey, isValidTimeZone } from "@/lib/time";
 import { zDateTime, zOptionalText } from "@/lib/validation";
 import { DEFAULT_TIMEZONE } from "@/modules/appointments/service";
-import { MAX_AMOUNT, METHOD_LABELS, PAYMENT_METHODS, type PaymentMethodValue } from "./constants";
+import { KIND_LABELS, LATE_ENTRY_DAYS, MAX_AMOUNT, METHOD_LABELS, PAYMENT_METHODS, type PaymentMethodValue } from "./constants";
 import { defaultClinicId } from "./documents";
 import { FinanceError } from "./errors";
 
@@ -22,7 +24,9 @@ import { FinanceError } from "./errors";
  *
  * Money dated today is taken only in an open shift. Money recorded for an
  * earlier day (entered late) belongs to no shift: the day shows it apart,
- * and it can no longer be entered once that day is signed off.
+ * and it can no longer be entered once that day is signed off. Because it
+ * passes no drawer, it says why it is entered late, the desk enters it at
+ * most LATE_ENTRY_DAYS back (further, the owner only), and the owner is told.
  */
 
 type Tx = Prisma.TransactionClient;
@@ -125,8 +129,19 @@ export function openShiftOf(client: Tx | typeof db, tenantId: string, userId: st
  * Entered late for an earlier day, or recorded by no one at the desk (an
  * import): into no shift, at its visit's branch, else the cashier's, else the
  * first. Either way, never on a day signed off.
+ *
+ * Entered late by someone (not an import): it needs `late.reason`, and from
+ * the desk (`late.owner` false) it goes at most LATE_ENTRY_DAYS back.
+ * `lateDay` is the earlier day it was entered for (null when taken today).
  */
-export async function cashFor(tx: Tx, tenantId: string, actorId: string | null | undefined, paidAt: Date, visitBranch: () => Promise<string | null>): Promise<{ shiftId: string | null; clinicId: string | null }> {
+export async function cashFor(
+  tx: Tx,
+  tenantId: string,
+  actorId: string | null | undefined,
+  paidAt: Date,
+  visitBranch: () => Promise<string | null>,
+  late: LateEntry = {},
+): Promise<{ shiftId: string | null; clinicId: string | null; lateDay: string | null }> {
   const shift = actorId ? await openShiftOf(tx, tenantId, actorId) : null;
   const visit = await visitBranch();
   const clinicId = shift?.clinicId ?? visit ?? (await defaultClinicId(tx, tenantId));
@@ -136,11 +151,13 @@ export async function cashFor(tx: Tx, tenantId: string, actorId: string | null |
     const closed = branch ? await closedDayAt(tx, tenantId, branch, paidAt) : null;
     if (closed) throw dayClosedError(closed, "no money is recorded on it.");
   };
-  if (!actorId || dateKeyInTz(paidAt, tz) < today) {
+  const day = dateKeyInTz(paidAt, tz);
+  if (!actorId || day < today) {
     // In no drawer: booked where it was taken.
     const booked = visit ?? clinicId;
     await assertOpen(booked);
-    return { shiftId: null, clinicId: booked };
+    if (actorId) assertLateEntry(day, today, late);
+    return { shiftId: null, clinicId: booked, lateDay: actorId ? day : null };
   }
   await assertOpen(clinicId);
   if (!shift) {
@@ -151,7 +168,61 @@ export async function cashFor(tx: Tx, tenantId: string, actorId: string | null |
   if (opened < today) {
     throw new FinanceError(409, "stale_shift", "the cashier's open shift is from an earlier day", { day: opened, message: `Your shift from ${opened} is still open: close it (Cash drawer), then open today's.` });
   }
-  return { shiftId: shift.id, clinicId: shift.clinicId };
+  return { shiftId: shift.id, clinicId: shift.clinicId, lateDay: null };
+}
+
+/** Who is entering money late, and why. */
+export interface LateEntry {
+  /** Why it is entered late (the payment's note). */
+  reason?: string | null;
+  /** The clinic owner: not limited in how far back. */
+  owner?: boolean;
+}
+
+/** Whole days from one `YYYY-MM-DD` key to a later one. */
+export function daysBetweenKeys(from: string, to: string): number {
+  const utc = (k: string) => Date.UTC(Number(k.slice(0, 4)), Number(k.slice(5, 7)) - 1, Number(k.slice(8, 10)));
+  return Math.round((utc(to) - utc(from)) / 86_400_000);
+}
+
+/** Money entered late says why, and from the desk goes at most LATE_ENTRY_DAYS back (see the header). */
+export function assertLateEntry(day: string, today: string, late: LateEntry): void {
+  const back = daysBetweenKeys(day, today);
+  if (back > LATE_ENTRY_DAYS && !late.owner) {
+    throw new FinanceError(403, "late_entry_too_old", `money dated more than ${LATE_ENTRY_DAYS} days back is entered by the owner`, {
+      day,
+      limit: LATE_ENTRY_DAYS,
+      message: `${day} is more than ${LATE_ENTRY_DAYS} days ago: money from that far back is entered by the clinic owner.`,
+    });
+  }
+  if (!late.reason?.trim()) {
+    const message = `Say why it is entered late: it is dated ${day}, an earlier day, so it goes into no cash drawer.`;
+    throw new FinanceError(422, "late_entry_reason", "money entered late needs a reason", { day, message, issues: { formErrors: [], fieldErrors: { note: [message] } } });
+  }
+}
+
+/** The clinic owner, or an internal call that gives no role: not limited in how far back money is entered late. */
+export const isOwner = (actor: { role?: UserRole | null }) => !actor.role || can(actor.role, "tenant:manage");
+
+/** Tell the owner of money the desk entered late, for an earlier day: it went into no cash drawer. */
+export function notifyLateEntry(
+  tenantId: string,
+  payment: { id: string; kind: string; amount: number; method: string; patientId: string; note: string | null; patient: { fullName: string } },
+  day: string,
+  actor: { id?: string | null },
+): void {
+  const kind = KIND_LABELS[payment.kind as keyof typeof KIND_LABELS] ?? payment.kind;
+  const method = (METHOD_LABELS[payment.method as PaymentMethodValue] ?? payment.method).toLowerCase();
+  notify(tenantId, {
+    kind: "PAYMENT_RECORDED",
+    title: `Entered late for ${day}: ${kind}, ${payment.amount.toLocaleString("en-US")} EGP (${method}) from ${payment.patient.fullName}`,
+    body: payment.note ? `Why: ${payment.note}` : null,
+    href: `/dashboard/patients/${payment.patientId}`,
+    entity: "Payment",
+    entityId: payment.id,
+    roles: ["CLINIC_OWNER"],
+    excludeUserId: actor.id ?? null,
+  }).catch((err: unknown) => console.error("[finance] late-entry notification failed", err));
 }
 
 /** Refuse to change money on a day signed off (voiding a payment). */

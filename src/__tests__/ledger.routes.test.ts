@@ -81,7 +81,7 @@ describe.skipIf(!dbTestsEnabled)("patient ledger and family account routes", () 
   const patient = async (name: string) => (await db.patient.create({ data: { tenantId: a, fullName: name, phone: `+2010088${String(++n).padStart(5, "0")}` } })).id;
   const charge = async (patientId: string, amount: number, when: Date, extra: Record<string, unknown> = {}) =>
     (await db.charge.create({ data: { tenantId: a, patientId, amount, description: `Treatment ${++n}`, chargedAt: when, clinicId: branch, ...extra } })).id;
-  const pay = (body: Record<string, unknown>, cookie = receptionCookie) => paymentRoute(request("/api/payments", { method: "POST", cookie, body })).then(json);
+  const pay = (body: Record<string, unknown>, cookie = receptionCookie) => paymentRoute(request("/api/payments", { method: "POST", cookie, body: { ...body, ...(body.paidAt && !body.note ? { note: "Taken earlier, entered late" } : {}) } })).then(json);
   const ledger = (id: string, qs = "", cookie = receptionCookie) => ledgerRoute(request(`/api/patients/${id}/ledger${qs}`, { cookie }), params(id)).then(json);
   const setHead = (id: string, body: Record<string, unknown>, cookie = receptionCookie) => householdRoute(request(`/api/patients/${id}/household`, { method: "PUT", cookie, body }), params(id)).then(json);
   const household = (id: string, cookie = receptionCookie) => householdGetRoute(request(`/api/patients/${id}/household`, { cookie }), params(id)).then(json);
