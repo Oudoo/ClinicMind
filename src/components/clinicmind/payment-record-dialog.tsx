@@ -133,6 +133,11 @@ export function RecordPaymentDialog({
   const chosen = choices?.find((c) => c.id === procedureId) ?? null;
   const chosenInvoice = openInvoices.find((i) => i.id === invoiceId) ?? null;
 
+  // Dated an earlier day: entered late, into no cash drawer, so it says why (the server holds the desk to 7 days back).
+  const late = date !== "" && date < dateKeyInTz(new Date(), timezone);
+  const noteLabel = kind === "REFUND" ? "Reason" : late ? "Why it is entered late" : "Note";
+  const noteHint = kind === "REFUND" ? "Required: why the money goes back" : late ? `Required: it is dated ${date}, so it goes into no cash drawer` : "Optional";
+
   async function submit(e: FormEvent) {
     e.preventDefault();
     if (busy) return;
@@ -144,6 +149,7 @@ export function RecordPaymentDialog({
     if (!paidAt) next.paidAt = "Enter a valid date and time.";
     else if (paidAt.getTime() > Date.now() + 5 * 60_000) next.paidAt = "A payment cannot be in the future.";
     if (kind === "REFUND" && !note.trim()) next.note = "Say why the money goes back.";
+    else if (late && !note.trim()) next.note = "Say why it is entered late: it goes into no cash drawer.";
     setIssues(next);
     if (Object.keys(next).length || !patient || !paidAt) return;
     setBusy(true);
@@ -332,7 +338,7 @@ export function RecordPaymentDialog({
               <Input id={`${id}-reference`} value={reference} onChange={(e) => setReference(e.target.value)} maxLength={120} />
             </DictationField>
           </Field>
-          <Field label={kind === "REFUND" ? "Reason" : "Note"} htmlFor={`${id}-note`} hint={issue("note") ?? (kind === "REFUND" ? "Required: why the money goes back" : "Optional")}>
+          <Field label={noteLabel} htmlFor={`${id}-note`} hint={issue("note") ?? noteHint}>
             <DictationField onDictated={setNote} disabled={busy} patientId={patient?.id ?? null}>
               <Textarea id={`${id}-note`} value={note} onChange={(e) => setNote(e.target.value)} maxLength={1000} className="min-h-[4.5rem]" />
             </DictationField>

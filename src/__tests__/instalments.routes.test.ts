@@ -119,7 +119,7 @@ describe.skipIf(!dbTestsEnabled)("instalment plan routes", () => {
   const list = (query: string, cookie = receptionCookie) => listRoute(request(`/api/instalments?${query}`, { cookie })).then(json);
   const cancel = (id: string, body: unknown, cookie = receptionCookie) => cancelRoute(request(`/api/instalments/${id}/cancel`, { method: "POST", cookie, body }), params(id)).then(json);
   const remind = (id: string, cookie = receptionCookie) => remindRoute(request(`/api/instalments/${id}/remind`, { method: "POST", cookie }), params(id)).then(json);
-  const pay = (body: Record<string, unknown>, cookie = receptionCookie) => paymentRoute(request("/api/payments", { method: "POST", cookie, body: { kind: "PAYMENT", method: "CASH", ...body } })).then(json);
+  const pay = (body: Record<string, unknown>, cookie = receptionCookie) => paymentRoute(request("/api/payments", { method: "POST", cookie, body: { kind: "PAYMENT", method: "CASH", ...body, ...(body.paidAt && !body.note ? { note: "Taken earlier, entered late" } : {}) } })).then(json);
   const voidPayment = (id: string, reason: string) => voidRoute(request(`/api/payments/${id}/void`, { method: "POST", cookie: ownerCookie, body: { reason } }), params(id)).then(json);
   const patient = async (name: string, extra: Record<string, unknown> = {}, tenantId = a) =>
     (await db.patient.create({ data: { tenantId, fullName: name, phone: `+2010077${String(++n).padStart(5, "0")}`, language: "en", ...extra } })).id;

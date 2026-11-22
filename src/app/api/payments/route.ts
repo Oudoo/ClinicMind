@@ -31,7 +31,9 @@ export async function GET(req: Request) {
  * with the reason in `note`). Body: `{ patientId, kind, method?, amount,
  * paidAt?, procedureId?, appointmentId?, reference?, note? }`. 201 `{ payment }`
  * with its receipt number; money in goes towards the patient's open invoices.
- * Amounts of 10,000 EGP or more notify the clinic owner.
+ * Amounts of 10,000 EGP or more notify the clinic owner. Dated an earlier
+ * day (entered late, into no drawer) it needs a reason in `note`, and from the
+ * desk goes at most 7 days back; the owner is told of each one.
  */
 export async function POST(req: Request) {
   try {
@@ -44,7 +46,7 @@ export async function POST(req: Request) {
     if (body && typeof body === "object" && (body as { kind?: unknown }).kind === "REFUND" && !can(ctx.role, "tenant:manage")) {
       throw new RbacError("Only the clinic owner refunds money");
     }
-    const payment = await recordPayment(ctx.tenantId, body, { id: ctx.userId, email: ctx.email, ip: clientIp(req) });
+    const payment = await recordPayment(ctx.tenantId, body, { id: ctx.userId, email: ctx.email, ip: clientIp(req), role: ctx.role });
     return ok({ payment }, { status: 201 });
   } catch (err) {
     return financeErrorResponse(err) ?? handleApiError(err);

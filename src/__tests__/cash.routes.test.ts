@@ -15,6 +15,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 // Tests seed and inspect across clinics: the system connection, outside row-level security.
 import { systemDb as db } from "@/lib/db";
 import { addDays, dateKeyInTz, fromDateKey } from "@/lib/time";
+import { LATE_ENTRY_DAYS } from "@/modules/finance/constants";
 import { ensureDefaultTreatments } from "@/modules/treatments/service";
 import { GET as myShiftRoute, POST as openShiftRoute } from "@/app/api/cash/shift/route";
 import { POST as closeShiftRoute } from "@/app/api/cash/shifts/[id]/close/route";
@@ -80,7 +81,7 @@ describe.skipIf(!dbTestsEnabled)("cash drawer routes", () => {
   const close = (id: string, body: Record<string, unknown>, cookie = receptionCookie) => closeShiftRoute(request(`/api/cash/shifts/${id}/close`, { method: "POST", cookie, body }), params(id)).then(json);
   const day = (query: Record<string, string> = {}, cookie = ownerCookie) => dayRoute(request(`/api/cash/day?${new URLSearchParams(query).toString()}`, { cookie })).then(json);
   const signOff = (body: Record<string, unknown>, cookie = ownerCookie) => signOffRoute(request("/api/cash/day", { method: "POST", cookie, body })).then(json);
-  const pay = (body: Record<string, unknown>, cookie = receptionCookie) => paymentRoute(request("/api/payments", { method: "POST", cookie, body: { patientId: patient, kind: "PAYMENT", method: "CASH", ...body } })).then(json);
+  const pay = (body: Record<string, unknown>, cookie = receptionCookie) => paymentRoute(request("/api/payments", { method: "POST", cookie, body: { patientId: patient, kind: "PAYMENT", method: "CASH", ...body, ...(body.paidAt && !body.note ? { note: "Taken earlier, entered late" } : {}) } })).then(json);
   const voidIt = (id: string, cookie = ownerCookie) => voidRoute(request(`/api/payments/${id}/void`, { method: "POST", cookie, body: { reason: "Entered twice" } }), params(id)).then(json);
   const line = (shift: Shift, method: string) => shift.methods.find((m) => m.method === method);
 
@@ -359,6 +360,54 @@ describe.skipIf(!dbTestsEnabled)("cash drawer routes", () => {
       expect((await open({ openingFloat: 0, clinicId: branch }, ownerBCookie)).res.status).toBe(404);
       expect((await mine(ownerBCookie)).json.shift).toBeNull();
       expect(await db.dayClose.count({ where: { tenantId: a, day: dayKey(5) } })).toBe(0);
+    });
+  });
+
+  describe("money entered late", () => {
+    // Straight to the route, without the helper's reason, to see what is refused.
+    const raw = (body: Record<string, unknown>, cookie = receptionCookie) =>
+      paymentRoute(request("/api/payments", { method: "POST", cookie, body: { patientId: patient, kind: "PAYMENT", method: "CASH", amount: 40, ...body } })).then(json);
+
+    it("needs a reason, and the desk goes at most LATE_ENTRY_DAYS back; the owner further", async () => {
+      // No reason: refused on the note field, by the desk and by the owner alike.
+      const silent = await raw({ paidAt: onDay(6).toISOString() });
+      expect(silent.res.status).toBe(422);
+      expect(silent.json).toMatchObject({ error: "late_entry_reason", day: dayKey(6) });
+      expect(silent.json.issues.fieldErrors.note[0]).toMatch(/entered late/);
+      expect((await raw({ paidAt: onDay(6).toISOString(), note: "   " }, ownerCookie)).res.status).toBe(422);
+      // A deposit taken with a procedure is held to the same.
+      const deposit = await createProcedureRoute(
+        request("/api/procedures", { method: "POST", cookie: receptionCookie, body: { patientId: patient, treatmentId: acne, doctorId, performedAt: new Date().toISOString(), price: 900, deposit: { amount: 100, paidAt: onDay(6).toISOString() } } }),
+      ).then(json);
+      expect(deposit.res.status).toBe(422);
+      expect(deposit.json.error).toBe("late_entry_reason");
+
+      // Too far back for the desk, whatever the reason; the owner may.
+      const old = await raw({ paidAt: onDay(LATE_ENTRY_DAYS + 1).toISOString(), note: "Found in the drawer" });
+      expect(old.res.status).toBe(403);
+      expect(old.json).toMatchObject({ error: "late_entry_too_old", day: dayKey(LATE_ENTRY_DAYS + 1), limit: LATE_ENTRY_DAYS });
+      expect((await raw({ paidAt: onDay(LATE_ENTRY_DAYS + 1).toISOString(), note: "From the old ledger" }, ownerCookie)).res.status).toBe(201);
+      // A year back: the owner only.
+      expect((await raw({ paidAt: onDay(365).toISOString(), note: "Found in the drawer" })).res.status).toBe(403);
+    });
+
+    it("from the desk with its reason: in no drawer, in the audit trail, and the owner is told", async () => {
+      const made = await raw({ paidAt: onDay(LATE_ENTRY_DAYS).toISOString(), note: "Paid on Thursday, the system was down" });
+      expect(made.res.status).toBe(201);
+      const id = made.json.payment.id as string;
+      expect(await db.payment.findUniqueOrThrow({ where: { id } })).toMatchObject({ shiftId: null, note: "Paid on Thursday, the system was down" });
+      const logged = await db.auditLog.findFirstOrThrow({ where: { tenantId: a, action: "payment.record", entityId: id } });
+      expect(logged.after).toMatchObject({ enteredLate: dayKey(LATE_ENTRY_DAYS) });
+      await expect
+        .poll(() => db.notification.findFirst({ where: { tenantId: a, entity: "Payment", entityId: id }, select: { title: true, body: true, user: { select: { role: true } } } }))
+        .toMatchObject({ title: expect.stringContaining(`Entered late for ${dayKey(LATE_ENTRY_DAYS)}`), body: "Why: Paid on Thursday, the system was down", user: { role: "CLINIC_OWNER" } });
+
+      // The owner's own late entry tells no one; money taken today is not entered late.
+      const own = await raw({ paidAt: onDay(6).toISOString(), note: "Counted twice on the day" }, ownerCookie);
+      expect(own.res.status).toBe(201);
+      const today = await raw({ method: "CARD", reference: "POS-LATE-0" }, ownerCookie);
+      await new Promise((r) => setTimeout(r, 200));
+      expect(await db.notification.count({ where: { tenantId: a, entityId: { in: [own.json.payment.id, today.json.payment?.id ?? "none"] } } })).toBe(0);
     });
   });
 });

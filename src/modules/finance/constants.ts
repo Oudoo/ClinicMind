@@ -126,6 +126,13 @@ export const MAX_AMOUNT = 10_000_000;
 /** Payments at or above this amount notify the clinic owner. */
 export const LARGE_PAYMENT_THRESHOLD = 10_000;
 
+/**
+ * Money entered late (dated an earlier day than today on the branch's clock) goes into no drawer, so it is held to
+ * more: it always says why it is entered late, the desk enters it at most this many days back (further back, the
+ * clinic owner only), and the owner is told of every late entry the desk makes.
+ */
+export const LATE_ENTRY_DAYS = 7;
+
 /** Money in minus money out for a list of (non-voided) payments. Kinds that are not money in or out are ignored. */
 export function netPaid(payments: readonly { kind: string; amount: number }[]): number {
   let total = 0;
