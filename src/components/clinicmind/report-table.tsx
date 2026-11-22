@@ -37,7 +37,7 @@ export function ReportTable({
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             <MetricBadge id={table.metric} />
-            <h4 className="text-sm font-semibold">{table.title}</h4>
+            <h4 className="text-sm font-medium">{table.title}</h4>
           </div>
           {table.description ? <p className="mt-0.5 text-xs text-muted-foreground">{table.description}</p> : null}
         </div>

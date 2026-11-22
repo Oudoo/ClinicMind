@@ -6,6 +6,7 @@ import { Select } from "@/components/ui/input";
 import { Badge, Card, EmptyState, type Tone } from "@/components/ui/primitives";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn, formatDate, formatNumber, formatTime } from "@/lib/utils";
+import { SignedMark } from "./signed-mark";
 import type { ConsultationListItem, ConsultationStatus } from "@/modules/consultations/types";
 
 export const STATUS_LABEL: Record<ConsultationStatus, string> = {
@@ -30,8 +31,19 @@ const STATUS_STYLE: Record<ConsultationStatus, { tone: Tone; Icon: LucideIcon }>
   DISCARDED: { tone: "default", Icon: Ban },
 };
 
-/** The consultation's status as a chip: word, mark and tone, the same everywhere. */
-export function ConsultationStatusBadge({ status, className }: { status: ConsultationStatus; className?: string }) {
+/** The consultation's status as a chip: word, mark and tone, the same everywhere. A signed one carries the ink signature instead. */
+export function ConsultationStatusBadge({
+  status,
+  className,
+  signedAt,
+  signedBy,
+}: {
+  status: ConsultationStatus;
+  className?: string;
+  signedAt?: string | null;
+  signedBy?: string | null;
+}) {
+  if (status === "SIGNED") return <SignedMark at={signedAt} by={signedBy} className={className} />;
   const { tone, Icon } = STATUS_STYLE[status];
   return (
     <Badge tone={tone} className={cn("gap-1", className)}>
@@ -156,7 +168,7 @@ export function ConsultationList({
                 >
                   <span className="flex items-center justify-between gap-2">
                     <span className="truncate text-sm font-medium">{c.patient.fullName}</span>
-                    <ConsultationStatusBadge status={c.status} className="shrink-0" />
+                    <ConsultationStatusBadge status={c.status} signedAt={c.reviewedAt} className="shrink-0" />
                   </span>
                   <span className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
                     <time dateTime={c.createdAt} suppressHydrationWarning className="shrink-0 tabular-nums">

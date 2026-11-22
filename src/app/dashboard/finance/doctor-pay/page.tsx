@@ -61,7 +61,7 @@ export default async function DoctorPayPage({ searchParams }: { searchParams: Pr
         <Link href={href(shiftMonth(month, -1))} className="text-accent underline-offset-2 hover:underline">
           ← {monthLabel(shiftMonth(month, -1))}
         </Link>
-        <span className="font-display text-base font-semibold">{overview.monthLabel}</span>
+        <span className="font-display text-base font-medium">{overview.monthLabel}</span>
         {month < thisMonth ? (
           <Link href={href(shiftMonth(month, 1))} className="text-accent underline-offset-2 hover:underline">
             {monthLabel(shiftMonth(month, 1))} →

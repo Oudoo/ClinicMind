@@ -91,7 +91,7 @@ export default async function CashPage({ searchParams }: { searchParams: Promise
       <Card className="space-y-4" data-testid="cash-day">
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div className="min-w-0 flex-1 basis-60">
-            <h2 className="font-display text-lg font-semibold tracking-tight">{label}</h2>
+            <h2 className="font-display text-lg font-medium">{label}</h2>
             <p className="mt-0.5 text-sm text-muted-foreground">
               {day.clinic.name}
               {day.signedOff ? ` · signed off by ${day.signedOff.by ?? "the owner"}, ${formatDateInTz(new Date(day.signedOff.at), tz, { day: "numeric", month: "short" })} ${time(day.signedOff.at)}` : ""}

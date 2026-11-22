@@ -73,13 +73,13 @@ export function DeltaChip({
 }) {
   if (previous == null || !Number.isFinite(previous) || !Number.isFinite(current)) return null;
   const view = describeDelta(current, previous, goodWhen, mode);
-  const tone =
-    view.tone === "neutral" ? "bg-muted text-muted-foreground" : view.tone === "good" ? "bg-success/10 text-success" : "bg-danger/10 text-danger";
+  // A change is quiet text beside its figure, coloured by whether it is good news: not a chip.
+  const tone = view.tone === "neutral" ? "text-muted-foreground" : view.tone === "good" ? "text-success" : "text-danger";
   const Icon = view.direction === "up" ? TrendingUp : TrendingDown;
   const title = `${format(current)} ${currentLabel} · ${format(previous)} ${previousLabel}`;
   return (
     <span
-      className={cn("inline-flex h-5 items-center gap-0.5 whitespace-nowrap rounded-md px-1.5 text-xs font-medium tabular-nums", tone)}
+      className={cn("inline-flex items-center gap-0.5 whitespace-nowrap text-xs font-medium tabular-nums", tone)}
       title={title}
       data-testid="delta-chip"
     >
@@ -147,38 +147,47 @@ export function Kpi({
   );
 }
 
-/** Vertical columns, optionally paired with a comparison value (grey, behind). */
+/**
+ * Vertical columns, optionally paired with a comparison value (light grey, behind). One accent
+ * per chart: the `highlight` column (today, the current month) is in ink, the rest in graphite.
+ */
 export function Columns({
   items,
   height = "h-44",
   note,
   format = (v) => String(v),
+  highlight,
 }: {
   items: { label: string; value: number; compare?: number }[];
   height?: string;
   note?: string;
   format?: (v: number) => string;
+  /** Index of the column that matters; without one every column is graphite. */
+  highlight?: number;
 }) {
   const max = Math.max(1, ...items.map((x) => Math.max(x.value, x.compare ?? 0)));
   return (
     <div>
       <div className={cn("flex items-end gap-1 sm:gap-1.5", height)}>
-        {items.map((x) => (
+        {items.map((x, i) => (
           <div
             key={x.label}
             className="flex h-full min-w-0 flex-1 items-end justify-center gap-px"
             title={`${x.label}: ${format(x.value)}${x.compare != null ? ` (comparison ${format(x.compare)})` : ""}`}
           >
             {x.compare != null ? (
-              <div className="w-full rounded-t bg-muted-foreground/30" style={{ height: `${Math.max(2, Math.round((x.compare / max) * 100))}%` }} />
+              <div className="w-full rounded-t bg-muted-foreground/20" style={{ height: `${Math.max(2, Math.round((x.compare / max) * 100))}%` }} />
             ) : null}
-            <div className="w-full rounded-t bg-accent" style={{ height: `${Math.max(2, Math.round((x.value / max) * 100))}%` }} />
+            <div
+              className={cn("w-full rounded-t", i === highlight ? "bg-accent" : "bg-foreground/70")}
+              style={{ height: `${Math.max(2, Math.round((x.value / max) * 100))}%` }}
+            />
           </div>
         ))}
       </div>
-      <div className="mt-1 flex gap-1 sm:gap-1.5">
-        {items.map((x) => (
-          <span key={x.label} className="min-w-0 flex-1 truncate text-center text-xs text-muted-foreground">
+      <div className="mt-1 flex gap-1 border-t border-border pt-1.5 sm:gap-1.5">
+        {items.map((x, i) => (
+          <span key={x.label} className={cn("min-w-0 flex-1 truncate text-center font-mono text-xs", i === highlight ? "text-accent" : "text-muted-foreground")}>
             {x.label}
           </span>
         ))}
@@ -205,8 +214,9 @@ export function HBars({
           <span className={cn("shrink-0 truncate", labelWidth)} title={x.label}>
             {x.label}
           </span>
-          <div className="h-2.5 min-w-0 flex-1 overflow-hidden rounded bg-muted">
-            <div className="h-full rounded bg-accent" style={{ width: `${Math.round((x.value / max) * 100)}%` }} />
+          {/* A ranked list beside the main chart: thin graphite bars, the accent stays with the chart. */}
+          <div className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-muted">
+            <div className="h-full rounded-full bg-foreground/45" style={{ width: `${Math.round((x.value / max) * 100)}%` }} />
           </div>
           <span className="w-10 shrink-0 text-right text-xs font-medium tabular-nums">{format(x.value)}</span>
         </li>

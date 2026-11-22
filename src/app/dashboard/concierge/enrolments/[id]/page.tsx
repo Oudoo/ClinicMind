@@ -132,7 +132,7 @@ export default async function EnrolmentPage({ params }: { params: Promise<{ id: 
 
       {open.length ? (
         <section aria-labelledby="open-escalations" className="space-y-3">
-          <h3 id="open-escalations" className="font-display text-base font-semibold tracking-tight">
+          <h3 id="open-escalations" className="font-display text-base font-medium">
             Open escalations
           </h3>
           <ul className="space-y-3">
@@ -144,7 +144,7 @@ export default async function EnrolmentPage({ params }: { params: Promise<{ id: 
       ) : null}
 
       <section aria-labelledby="timeline" className="space-y-3">
-        <h3 id="timeline" className="font-display text-base font-semibold tracking-tight">
+        <h3 id="timeline" className="font-display text-base font-medium">
           Steps
         </h3>
         <ol className="relative space-y-3 border-l border-border pl-4 sm:pl-6">
@@ -163,7 +163,7 @@ export default async function EnrolmentPage({ params }: { params: Promise<{ id: 
 
       {closed.length ? (
         <section aria-labelledby="closed-escalations" className="space-y-3">
-          <h3 id="closed-escalations" className="font-display text-base font-semibold tracking-tight">
+          <h3 id="closed-escalations" className="font-display text-base font-medium">
             Resolved escalations
           </h3>
           <ul className="space-y-3">
@@ -280,7 +280,7 @@ function TaskItem({
                   return (
                     <div key={q.key} className="min-w-0">
                       <dt className="text-xs text-muted-foreground">{q.label.en}</dt>
-                      <dd className={cn("text-sm", hit && "font-semibold text-danger")}>
+                      <dd className={cn("text-sm", hit && "font-medium text-danger")}>
                         {answerText(q.type, value, q.max ?? 10)}
                         {expected && value !== undefined ? <span className="ml-1 text-xs font-normal text-muted-foreground">(expected {expected})</span> : null}
                       </dd>

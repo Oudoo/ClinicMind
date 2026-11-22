@@ -128,7 +128,7 @@ export default async function PriceListPage({ searchParams }: { searchParams: Pr
             {groups.map((g) => (
               <TBody key={g.category}>
                 <TR className="bg-muted/40 hover:bg-muted/40">
-                  <TD colSpan={canManage ? 6 : 5} className="py-2 text-xs font-semibold text-muted-foreground">
+                  <TD colSpan={canManage ? 6 : 5} className="py-2 text-xs font-medium text-muted-foreground">
                     {CATEGORY_LABELS[g.category]}
                   </TD>
                 </TR>

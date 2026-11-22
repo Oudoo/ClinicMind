@@ -100,7 +100,7 @@ async function main() {
       slug: TENANT_SLUG,
       name: "Aura Derma & Hair Clinic",
       status: "ACTIVE",
-      branding: { accent: "#4F46E5", productName: "ClinicMind" },
+      branding: { accent: "#1D4B9A", productName: "ClinicMind" },
       settings: { locale: "ar", channels: { whatsapp: true, voice: true } },
       embed: {
         create: {

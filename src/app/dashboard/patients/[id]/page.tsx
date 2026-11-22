@@ -154,7 +154,7 @@ export default async function PatientPage({ params, searchParams }: { params: Pr
             </span>
             <div className="min-w-0 space-y-1.5">
               <div className="flex flex-wrap items-center gap-2">
-                <h1 className="font-display text-[1.375rem] font-semibold leading-7 tracking-[-0.02em]">{patient.fullName}</h1>
+                <h1 className="font-display text-[1.375rem] font-medium leading-7 tracking-[-0.02em]">{patient.fullName}</h1>
                 {archived ? (
                   <Badge className="gap-1">
                     <Archive className="h-3 w-3" aria-hidden="true" />

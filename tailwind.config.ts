@@ -17,11 +17,11 @@ const config: Config = {
     },
     extend: {
       colors: {
-        // Brand primitives (institutional tech)
+        // Brand primitives: graphite and prescription ink.
         "stark-white": "#FFFFFF",
-        alabaster: "#F8F9FA",
-        "charcoal-slate": "#1A202C",
-        "electric-indigo": "#4F46E5",
+        alabaster: "#FAFAFA",
+        "charcoal-slate": "#171717",
+        ink: "#1D4B9A",
         // Semantic tokens driven by CSS variables (theme + tenant override aware)
         background: "hsl(var(--background) / <alpha-value>)",
         foreground: "hsl(var(--foreground) / <alpha-value>)",
@@ -48,21 +48,29 @@ const config: Config = {
         danger: "hsl(var(--danger) / <alpha-value>)",
       },
       fontFamily: {
-        // One face for the interface; monospace only for codes and reference numbers.
-        sans: ["var(--font-jakarta)", "Plus Jakarta Sans", "system-ui", "sans-serif"],
-        display: ["var(--font-jakarta)", "Plus Jakarta Sans", "system-ui", "sans-serif"],
-        mono: ["var(--font-jetbrains)", "JetBrains Mono", "ui-monospace", "monospace"],
+        // IBM Plex for the interface, with its Arabic sibling behind it so a patient's name in
+        // Arabic is drawn in the same family; Plex Mono only for codes and reference numbers.
+        sans: ["var(--font-plex)", "var(--font-plex-arabic)", "IBM Plex Sans", "system-ui", "sans-serif"],
+        display: ["var(--font-plex)", "var(--font-plex-arabic)", "IBM Plex Sans", "system-ui", "sans-serif"],
+        mono: ["var(--font-plex-mono)", "IBM Plex Mono", "ui-monospace", "monospace"],
       },
       borderRadius: {
-        lg: "0.5rem", // 8px — brand radius
-        md: "0.375rem",
+        xl: "0.75rem", // 12px: cards and panels
+        lg: "0.5rem", // 8px: buttons, fields, rows
+        md: "0.375rem", // 6px: chips and menu items
         sm: "0.25rem",
+      },
+      transitionTimingFunction: {
+        // One curve for every transition.
+        DEFAULT: "cubic-bezier(0.22, 1, 0.36, 1)",
+      },
+      transitionDuration: {
+        DEFAULT: "150ms",
       },
       letterSpacing: {
         tightest: "-0.04em",
       },
       backgroundImage: {
-        "indigo-flow": "linear-gradient(135deg, #4F46E5 0%, #6366F1 50%, #818CF8 100%)",
         "mesh-grid":
           "linear-gradient(hsl(var(--border)/0.6) 1px, transparent 1px), linear-gradient(90deg, hsl(var(--border)/0.6) 1px, transparent 1px)",
       },
@@ -81,15 +89,10 @@ const config: Config = {
           from: { opacity: "0", transform: "translate(-50%, calc(-50% + 6px))" },
           to: { opacity: "1", transform: "translate(-50%, -50%)" },
         },
-        "pulse-spike": {
-          "0%, 100%": { opacity: "1" },
-          "50%": { opacity: "0.4" },
-        },
       },
       animation: {
-        "fade-in": "fade-in 0.25s ease-out",
-        "dialog-in": "dialog-in 0.25s ease-out",
-        "pulse-spike": "pulse-spike 1.6s ease-in-out infinite",
+        "fade-in": "fade-in 0.2s cubic-bezier(0.22, 1, 0.36, 1)",
+        "dialog-in": "dialog-in 0.2s cubic-bezier(0.22, 1, 0.36, 1)",
       },
     },
   },

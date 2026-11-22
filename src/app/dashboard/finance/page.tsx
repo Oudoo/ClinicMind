@@ -177,10 +177,15 @@ export default async function FinancePage({ searchParams }: { searchParams: Prom
         <Card className="min-w-0 space-y-4 lg:col-span-2">
           <SectionTitle
             title={s.bucketStep === "day" ? "Collected per day" : "Collected per week"}
-            description="Money in net of refunds. Grey: the same day of the comparison period."
+            description="Money in net of refunds: the latest day in ink. Light: the same day of the comparison period."
           />
           {s.collectedPerBucket.some((b) => b.value || b.compare) ? (
-            <Columns items={s.collectedPerBucket.map((b) => ({ label: b.label, value: Math.max(0, b.value), compare: b.compare === undefined ? undefined : Math.max(0, b.compare) }))} format={fmtEgp} />
+            <Columns
+              items={s.collectedPerBucket.map((b) => ({ label: b.label, value: Math.max(0, b.value), compare: b.compare === undefined ? undefined : Math.max(0, b.compare) }))}
+              format={fmtEgp}
+              height="h-64"
+              highlight={s.collectedPerBucket.length - 1}
+            />
           ) : (
             <EmptyState title="Nothing collected in this period" />
           )}
@@ -200,8 +205,8 @@ export default async function FinancePage({ searchParams }: { searchParams: Prom
                         {fmtEgp(m.amount)} · {fmtPct(methodTotal ? m.amount / methodTotal : null)}
                       </span>
                     </div>
-                    <div className="h-2 overflow-hidden rounded bg-muted">
-                      <div className="h-full rounded bg-accent" style={{ width: `${methodTotal ? Math.round((m.amount / methodTotal) * 100) : 0}%` }} />
+                    <div className="h-1.5 overflow-hidden rounded-full bg-muted">
+                      <div className="h-full rounded-full bg-foreground/45" style={{ width: `${methodTotal ? Math.round((m.amount / methodTotal) * 100) : 0}%` }} />
                     </div>
                   </li>
                 ))}
@@ -291,7 +296,7 @@ export default async function FinancePage({ searchParams }: { searchParams: Prom
                     </Link>
                     {o.oldestDueAt ? <div className="text-xs text-muted-foreground lg:hidden">invoiced {date(new Date(o.oldestDueAt))}</div> : null}
                   </TD>
-                  <TD className="whitespace-nowrap text-right tabular-nums text-warning">{fmtEgp(o.amount)}</TD>
+                  <TD className="whitespace-nowrap text-right font-medium tabular-nums">{fmtEgp(o.amount)}</TD>
                   <TD className="hidden whitespace-nowrap text-right tabular-nums md:table-cell">{fmtEgp(o.dueOnInvoices)}</TD>
                   <TD className="hidden whitespace-nowrap text-right tabular-nums md:table-cell">{fmtEgp(o.notInvoiced)}</TD>
                   <TD className="tabular-nums hidden text-xs lg:table-cell">{o.oldestDueAt ? date(new Date(o.oldestDueAt)) : "—"}</TD>

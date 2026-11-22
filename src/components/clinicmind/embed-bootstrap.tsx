@@ -118,10 +118,10 @@ export function EmbedBootstrap({
     return (
       <div className="flex h-screen flex-col bg-background">
         <header className="flex h-12 items-center gap-2 border-b border-border bg-card px-4">
-          <div className="flex h-6 w-6 items-center justify-center rounded bg-indigo-flow text-white">
+          <div className="flex h-6 w-6 items-center justify-center rounded bg-accent text-accent-foreground">
             <Activity className="h-3.5 w-3.5" />
           </div>
-          <span className="font-display text-sm font-semibold">{productName}</span>
+          <span className="font-display text-sm font-medium">{productName}</span>
           <span className="tabular-nums text-xs text-muted-foreground">· {tenantName}</span>
         </header>
         <div className="flex-1 overflow-hidden p-3">
@@ -133,7 +133,7 @@ export function EmbedBootstrap({
 
   return (
     <div className="flex h-screen flex-col items-center justify-center gap-3 bg-background text-center">
-      <div className="flex h-10 w-10 animate-pulse-spike items-center justify-center rounded-lg bg-indigo-flow text-white">
+      <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-accent text-accent-foreground">
         <Activity className="h-5 w-5" />
       </div>
       <p className="text-sm font-medium">

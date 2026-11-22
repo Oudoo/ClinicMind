@@ -37,7 +37,7 @@ export async function PatientAccount({ tenantId, role, patientId, canWrite }: { 
         {/* The buttons sit beside the title where there is room, and under it on a phone. */}
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div className="min-w-0 flex-1 basis-56">
-            <h2 className="font-display text-lg font-semibold tracking-tight">Account</h2>
+            <h2 className="font-display text-lg font-medium">Account</h2>
             <p className="mt-0.5 text-sm text-muted-foreground">Every charge and every payment, with the balance after each.</p>
           </div>
           <div className="flex flex-wrap gap-2">

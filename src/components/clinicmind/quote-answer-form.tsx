@@ -113,7 +113,7 @@ export function QuoteAnswerForm({ quote, mode, onDone }: { quote: PublicQuoteDTO
     return (
       <section dir={t.dir} lang={quote.language} className="bento space-y-1 text-center" role="status" data-testid="quote-answered">
         <CheckCircle2 className="mx-auto h-8 w-8 text-success" aria-hidden="true" />
-        <h2 className="font-display text-lg font-semibold">{copy.title}</h2>
+        <h2 className="font-display text-lg font-medium">{copy.title}</h2>
         <p className="text-sm text-muted-foreground">{copy.body}</p>
       </section>
     );
@@ -123,7 +123,7 @@ export function QuoteAnswerForm({ quote, mode, onDone }: { quote: PublicQuoteDTO
     <form dir={t.dir} lang={quote.language} onSubmit={accept} className="space-y-5" noValidate aria-label={t.form.title} data-testid="quote-answer-form">
       {mode.kind === "link" ? (
         <div className="space-y-1">
-          <h2 className="font-display text-lg font-semibold tracking-tight">{t.form.title}</h2>
+          <h2 className="font-display text-lg font-medium">{t.form.title}</h2>
           <p className="text-sm text-muted-foreground">{t.form.intro}</p>
         </div>
       ) : null}
@@ -161,7 +161,7 @@ export function QuoteAnswerForm({ quote, mode, onDone }: { quote: PublicQuoteDTO
         {errors.items ? <p className="text-xs text-danger">{errors.items}</p> : null}
       </fieldset>
 
-      <p className="flex items-baseline justify-between gap-4 border-t border-border pt-2 font-semibold">
+      <p className="flex items-baseline justify-between gap-4 border-t border-border pt-2 font-medium">
         <span>{t.total}</span>
         <span className="tabular-nums" dir="ltr" data-testid="quote-chosen-total">
           {formatNumber(total)}

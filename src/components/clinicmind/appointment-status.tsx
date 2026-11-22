@@ -6,13 +6,14 @@ import { STATUS_LABEL, type AppointmentStatus } from "@/modules/appointments/tra
 /**
  * How each status reads: its word, a mark of its own and a tone, so no two steps of the visit
  * look alike and none is told by colour alone. Amber is "someone is waiting" (the patient in
- * the clinic, or the clinic for the patient's answer); the solid chip is the visit under way.
+ * the clinic, or the clinic for the patient's answer); the solid ink chip is the visit under
+ * way, the one status on a busy list that carries the accent.
  */
 export const STATUS_STYLE: Record<AppointmentStatus, { tone: Tone; Icon: LucideIcon; className?: string }> = {
   SCHEDULED: { tone: "default", Icon: Circle },
-  CONFIRMED: { tone: "accent", Icon: Check },
+  CONFIRMED: { tone: "default", Icon: Check, className: "text-foreground" },
   CHECKED_IN: { tone: "warning", Icon: UserCheck },
-  IN_PROGRESS: { tone: "accent", Icon: Play, className: "bg-accent text-accent-foreground" },
+  IN_PROGRESS: { tone: "accent", Icon: Play, className: "bg-accent text-accent-foreground ring-0" },
   COMPLETED: { tone: "success", Icon: CheckCheck },
   WAITLISTED: { tone: "default", Icon: Hourglass },
   CANCELLED: { tone: "default", Icon: Ban, className: "bg-transparent ring-1 ring-inset ring-border" },

@@ -286,11 +286,11 @@ export function AssistantChat({ initialPatient = null }: { initialPatient?: Pati
       <div ref={scrollRef} className="flex-1 space-y-4 overflow-y-auto p-3 sm:p-6">
         {turns.length === 0 ? (
           <div className="flex min-h-full flex-col items-center justify-center gap-5 py-4 text-center">
-            <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-indigo-flow text-white">
+            <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-accent text-accent-foreground">
               <Sparkles className="h-6 w-6" />
             </div>
             <div>
-              <h3 className="font-display text-lg font-semibold">Doctor AI Assistant</h3>
+              <h3 className="font-display text-lg font-medium">Doctor AI Assistant</h3>
               <p className="mt-1 max-w-md text-sm text-muted-foreground">
                 List questions (allergies, conditions, medications, sex, age, tags, doctors, appointments, last visit) are answered
                 from every patient record, with the full count. Other questions are answered from the most relevant records, with
@@ -351,7 +351,7 @@ export function AssistantChat({ initialPatient = null }: { initialPatient?: Pati
         {loading ? (
           <div className="flex justify-start">
             <div className="rounded-lg border border-border bg-card px-4 py-3">
-              <span className="data-label animate-pulse-spike">searching the records…</span>
+              <span className="data-label animate-pulse">searching the records…</span>
             </div>
           </div>
         ) : null}

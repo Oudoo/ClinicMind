@@ -97,7 +97,7 @@ export function ProtocolManager({
               <Card className="space-y-4 p-4 sm:p-6">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <h3 className="font-display text-base font-semibold tracking-tight">{t.treatment.name}</h3>
+                    <h3 className="font-display text-base font-medium">{t.treatment.name}</h3>
                     <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                       {t.active ? (
                         <>

@@ -26,7 +26,7 @@ export function QuoteDocument({ quote }: { quote: PublicQuoteDTO }) {
       <header className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
           {/* <bdi>: English names keep their own order inside an Arabic quote. */}
-          <p className="font-display text-lg font-semibold">
+          <p className="font-display text-lg font-medium">
             <bdi>{quote.tenantName}</bdi>
           </p>
           <p className="text-muted-foreground">
@@ -44,7 +44,7 @@ export function QuoteDocument({ quote }: { quote: PublicQuoteDTO }) {
           ) : null}
         </div>
         <div className="sm:text-end">
-          <h1 className="font-display text-xl font-semibold tracking-tight sm:text-2xl">
+          <h1 className="font-display text-xl font-medium tracking-tight sm:text-2xl">
             <bdi>{quote.title ?? t.title}</bdi>
           </h1>
           {quote.number ? (
@@ -105,7 +105,7 @@ export function QuoteDocument({ quote }: { quote: PublicQuoteDTO }) {
         const phaseTotal = items.reduce((s, i) => s + i.net, 0);
         return (
           <section key={p} className="space-y-2" aria-label={`${t.phase(p + 1)}: ${title}`}>
-            <h2 className="font-display text-base font-semibold">
+            <h2 className="font-display text-base font-medium">
               {t.phase(p + 1)} · <bdi>{title}</bdi>
             </h2>
             <table className="w-full">
@@ -150,14 +150,14 @@ export function QuoteDocument({ quote }: { quote: PublicQuoteDTO }) {
             </div>
           </>
         ) : null}
-        <div className="flex justify-between gap-4 border-t border-border pt-1 font-semibold">
+        <div className="flex justify-between gap-4 border-t border-border pt-1 font-medium">
           <dt>{t.total}</dt>
           <dd className="tabular-nums" dir="ltr" data-testid="quote-total">
             {money(quote.total)}
           </dd>
         </div>
         {answered && quote.acceptedTotal !== null && quote.acceptedTotal !== quote.total ? (
-          <div className="flex justify-between gap-4 font-semibold text-success">
+          <div className="flex justify-between gap-4 font-medium text-success">
             <dt>{t.acceptedTotal}</dt>
             <dd className="tabular-nums" dir="ltr">
               {money(quote.acceptedTotal)}

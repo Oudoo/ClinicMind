@@ -313,7 +313,7 @@ function ConsultationReadOnly({
       <SectionTitle
         title={status === "SIGNED" ? "Signed consultation" : status === "DISCARDED" ? "Discarded draft" : "Draft awaiting review"}
         description={`${patient.fullName} · captured ${formatDate(consultation.createdAt)} ${formatTime(consultation.createdAt)} by ${capturedBy}`}
-        action={<ConsultationStatusBadge status={status} />}
+        action={<ConsultationStatusBadge status={status} signedAt={consultation.reviewedAt} signedBy={consultation.reviewedBy?.fullName} />}
       />
 
       {outcome ? <p className="text-sm text-muted-foreground">{outcome}</p> : null}

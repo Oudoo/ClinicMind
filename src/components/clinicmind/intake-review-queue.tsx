@@ -95,7 +95,7 @@ export function IntakeReviewQueue({
             href={`/dashboard/patients/intake?status=${t.key}`}
             aria-current={t.key === status ? "page" : undefined}
             className={cn(
-              "inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-xs font-medium",
+              "inline-flex h-8 items-center gap-1.5 rounded-md border px-3 text-xs font-medium",
               t.key === status ? "border-accent bg-accent-muted text-accent" : "border-border text-muted-foreground hover:bg-muted hover:text-foreground",
             )}
           >
@@ -165,7 +165,7 @@ function SubmissionCard({ submission: s, timezone, treatments }: { submission: I
       <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
         <div className="min-w-0 space-y-1">
           <div className="flex flex-wrap items-center gap-2">
-            <h3 dir="auto" className="font-display text-lg font-semibold tracking-tight">
+            <h3 dir="auto" className="font-display text-lg font-medium">
               {s.fullName}
             </h3>
             <Badge tone={STATUS_TONE[s.status]}>{s.status}</Badge>

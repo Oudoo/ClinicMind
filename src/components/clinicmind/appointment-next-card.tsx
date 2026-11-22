@@ -304,13 +304,13 @@ export function NextAppointmentCard({ initial, timezone, variant, patientId, pat
               {hero ? (
                 <Link
                   href={`/dashboard/patients/${a.patientId}`}
-                  className="max-w-full truncate font-display text-2xl font-semibold tracking-[-0.02em] hover:underline"
+                  className="max-w-full truncate font-display text-2xl font-medium tracking-[-0.02em] hover:underline"
                 >
                   {a.patient.fullName}
                 </Link>
               ) : (
                 // On the patient's own record the day is the headline, not their name.
-                <span className="font-display text-2xl font-semibold tracking-[-0.02em]">{dayLabel(start)}</span>
+                <span className="font-display text-2xl font-medium tracking-[-0.02em]">{dayLabel(start)}</span>
               )}
               <span className={cn("text-base font-medium", TIME)}>
                 {formatTimeInTz(start, timezone)}

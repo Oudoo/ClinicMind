@@ -90,7 +90,7 @@ export default async function UnbilledPage({ searchParams }: { searchParams: Pro
 
       {day.visits.length ? (
         <Card className="space-y-2">
-          <h2 className="flex items-center gap-2 font-display text-base font-semibold">
+          <h2 className="flex items-center gap-2 font-display text-base font-medium">
             Visits with nothing billed <Badge tone="warning">{day.visits.length}</Badge>
           </h2>
           <ul className="divide-y divide-border">
@@ -137,7 +137,7 @@ export default async function UnbilledPage({ searchParams }: { searchParams: Pro
 
       {day.procedures.length ? (
         <Card className="space-y-2">
-          <h2 className="flex items-center gap-2 font-display text-base font-semibold">
+          <h2 className="flex items-center gap-2 font-display text-base font-medium">
             Done, not signed <Badge tone="warning">{day.procedures.length}</Badge>
           </h2>
           <ul className="divide-y divide-border">

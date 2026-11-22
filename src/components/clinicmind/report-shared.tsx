@@ -114,7 +114,7 @@ export function MetricBlock({
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             <MetricBadge id={id} />
-            <h3 className="font-display text-base font-semibold tracking-tight">{title}</h3>
+            <h3 className="font-display text-base font-medium">{title}</h3>
           </div>
           {description ? <p className="mt-1 text-sm text-muted-foreground">{description}</p> : null}
         </div>
@@ -139,7 +139,7 @@ export function OwnerOnly({ what = "Revenue figures" }: { what?: string }) {
 export function NotForRole({ title, hint }: { title: string; hint: string }) {
   return (
     <Card className="flex flex-col items-start gap-2">
-      <h2 className="font-display text-lg font-semibold tracking-tight">{title}</h2>
+      <h2 className="font-display text-lg font-medium">{title}</h2>
       <p className="text-sm text-muted-foreground">{hint}</p>
       <Link href="/dashboard" className="text-sm text-accent underline-offset-2 hover:underline">
         Back to the overview
@@ -153,7 +153,7 @@ export function Stat({ label, value, hint }: { label: string; value: React.React
   return (
     <div className="min-w-0">
       <div className="data-label">{label}</div>
-      <div className="font-display text-lg font-semibold tabular-nums">{value}</div>
+      <div className="font-display text-lg font-medium tabular-nums">{value}</div>
       {hint ? <div className="text-xs text-muted-foreground">{hint}</div> : null}
     </div>
   );

@@ -80,7 +80,7 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
             </span>
             <div className="min-w-0 space-y-2">
               <div className="flex flex-wrap items-center gap-2">
-                <h2 className="font-display text-2xl font-semibold tracking-tight">{lead.fullName}</h2>
+                <h2 className="font-display text-2xl font-medium tracking-tight">{lead.fullName}</h2>
                 <StageBadge stage={lead.stage} />
                 {lead.stage === "LOST" ? <LostReasonBadge reason={lead.lostReason} /> : null}
               </div>

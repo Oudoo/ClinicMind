@@ -171,7 +171,7 @@ export function SafetyPanel({
   return (
     <section aria-labelledby="safety-checks-title" className="space-y-3 rounded-lg border border-border p-3 sm:p-4" data-testid="safety-panel">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h3 id="safety-checks-title" className="flex items-center gap-2 text-sm font-semibold">
+        <h3 id="safety-checks-title" className="flex items-center gap-2 text-sm font-medium">
           <ShieldAlert className="h-4 w-4 text-accent" aria-hidden="true" />
           Safety checks
         </h3>

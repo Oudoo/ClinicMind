@@ -81,7 +81,7 @@ export function InvoiceDocument({ invoice }: { invoice: InvoiceDTO }) {
       <header className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
           {/* <bdi>: English names keep their own order inside an Arabic invoice, and its alignment. */}
-          <p className="font-display text-lg font-semibold">
+          <p className="font-display text-lg font-medium">
             <bdi>{invoice.tenantName}</bdi>
           </p>
           <p className="text-muted-foreground">
@@ -99,7 +99,7 @@ export function InvoiceDocument({ invoice }: { invoice: InvoiceDTO }) {
           ) : null}
         </div>
         <div className="sm:text-end">
-          <h1 className="font-display text-2xl font-semibold tracking-tight">{t.invoice}</h1>
+          <h1 className="font-display text-2xl font-medium tracking-tight">{t.invoice}</h1>
           {invoice.number ? (
             <p>
               <span className="text-muted-foreground">{t.number}: </span>
@@ -191,7 +191,7 @@ export function InvoiceDocument({ invoice }: { invoice: InvoiceDTO }) {
                 </dd>
               </div>
             ) : null}
-            <div className="flex justify-between gap-4 border-t border-border pt-1 font-semibold">
+            <div className="flex justify-between gap-4 border-t border-border pt-1 font-medium">
               <dt>{t.due}</dt>
               <dd className="tabular-nums" dir="ltr">
                 {money(invoice.due)}

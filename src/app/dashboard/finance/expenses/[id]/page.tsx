@@ -56,7 +56,7 @@ export default async function ExpensePage({ params }: { params: Promise<{ id: st
       </Link>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
-          <h2 className={`font-display text-lg font-semibold tracking-tight ${live ? "" : "line-through"}`}>{expense.description}</h2>
+          <h2 className={`font-display text-lg font-medium ${live ? "" : "line-through"}`}>{expense.description}</h2>
           <p className="mt-0.5 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
             {expense.categoryLabel}
             <ExpenseStatusBadge status={expense.status} label={expense.statusLabel} daysLate={expense.daysLate} />
@@ -117,7 +117,7 @@ export default async function ExpensePage({ params }: { params: Promise<{ id: st
       </div>
 
       <Card className="space-y-3" aria-label="Payments">
-        <h3 className="font-display text-base font-semibold">Payments</h3>
+        <h3 className="font-display text-base font-medium">Payments</h3>
         {expense.payments.length ? (
           <ul className="divide-y divide-border" data-testid="expense-payments">
             {expense.payments.map((p) => (
@@ -147,7 +147,7 @@ export default async function ExpensePage({ params }: { params: Promise<{ id: st
 
       <Card className="space-y-3" aria-label="Receipts">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <h3 className="font-display text-base font-semibold">The bill or the receipt</h3>
+          <h3 className="font-display text-base font-medium">The bill or the receipt</h3>
           {canWrite && live ? <AddReceiptButton expenseId={expense.id} room={MAX_EXPENSE_FILES - expense.files.length} /> : null}
         </div>
         <ReceiptList files={expense.files} canRemove={isOwner} />

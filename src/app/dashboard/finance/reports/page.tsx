@@ -146,7 +146,7 @@ export default async function FinanceReportsPage({ searchParams }: { searchParam
       <Card className="space-y-3">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0 flex-1 basis-64">
-            <h2 className="font-display text-lg font-semibold tracking-tight">{FINANCE_REPORT_LABELS[report]}</h2>
+            <h2 className="font-display text-lg font-medium">{FINANCE_REPORT_LABELS[report]}</h2>
             <p className="mt-0.5 text-sm text-muted-foreground">{DESCRIPTIONS[report]}</p>
           </div>
           <CsvLink href={`/api/finance/reports/${report}?${csvQuery.toString()}`} label="Download CSV" />
@@ -234,7 +234,7 @@ export default async function FinanceReportsPage({ searchParams }: { searchParam
       {report === "sources" ? <Sources scope={scope} /> : null}
 
       <Card className="space-y-2 text-sm" aria-label="How these are counted">
-        <h2 className="font-display text-base font-semibold tracking-tight">How these are counted</h2>
+        <h2 className="font-display text-base font-medium">How these are counted</h2>
         <ul className="list-disc space-y-1 ps-5 text-muted-foreground">
           {monthly ? (
             <>
@@ -344,7 +344,7 @@ async function DayClose({ scope }: { scope: ReportScope }) {
 
       <Card className="overflow-hidden p-0">
         <div className="space-y-1 px-4 pt-4 sm:px-5">
-          <h3 className="font-display text-base font-semibold tracking-tight">Every receipt, traced</h3>
+          <h3 className="font-display text-base font-medium">Every receipt, traced</h3>
           <p className="text-sm text-muted-foreground" data-testid="trace-summary">
             {s.receipts} receipt{s.receipts === 1 ? "" : "s"} · {egp(s.onInvoices)} EGP on invoices · {egp(s.credit)} the patients&apos; credit · {egp(s.fees)} consultation fees · {egp(s.refunds)} paid back ·{" "}
             <span className={s.untraced ? "text-danger" : "text-success"}>{s.untraced ? `${s.untraced} not traced` : "every pound traced"}</span>
@@ -661,13 +661,13 @@ async function Adjustments({ scope, day, href }: { scope: ReportScope; day: (key
       <nav aria-label="Adjustment types">
         <ul className="flex flex-wrap gap-2">
           <li>
-            <Link href={href({ type: undefined })} aria-current={!type ? "page" : undefined} className={cn("inline-flex items-center gap-2 rounded-full border px-3 py-1 text-sm", !type ? "border-accent bg-accent-muted" : "border-border hover:bg-muted")}>
+            <Link href={href({ type: undefined })} aria-current={!type ? "page" : undefined} className={cn("inline-flex items-center gap-2 rounded-md border px-3 py-1 text-sm", !type ? "border-accent bg-accent-muted" : "border-border hover:bg-muted")}>
               All <span className="text-xs tabular-nums text-muted-foreground">{all}</span>
             </Link>
           </li>
           {ADJUSTMENT_TYPES.map((k) => (
             <li key={k}>
-              <Link href={href({ type: k })} aria-current={type === k ? "page" : undefined} className={cn("inline-flex items-center gap-2 rounded-full border px-3 py-1 text-sm", type === k ? "border-accent bg-accent-muted" : "border-border hover:bg-muted")}>
+              <Link href={href({ type: k })} aria-current={type === k ? "page" : undefined} className={cn("inline-flex items-center gap-2 rounded-md border px-3 py-1 text-sm", type === k ? "border-accent bg-accent-muted" : "border-border hover:bg-muted")}>
                 {ADJUSTMENT_LABELS[k]}
                 <span className="text-xs tabular-nums text-muted-foreground">
                   {r.totals[k].count} · {egp(r.totals[k].amount)}
@@ -799,7 +799,7 @@ async function Balances({ scope }: { scope: ReportScope }) {
       </Card>
       <Card className="space-y-3 p-0">
         <div className="px-4 pt-4 sm:px-5">
-          <h3 className="font-display text-base font-semibold tracking-tight">Invoices issued in the period</h3>
+          <h3 className="font-display text-base font-medium">Invoices issued in the period</h3>
           <p className="text-sm text-muted-foreground">
             {r.invoices.issued} issued · {egp(r.invoices.issuedTotal)} EGP · paid {egp(r.invoices.paid)} · written off {egp(r.invoices.writtenOff)} · due {egp(r.invoices.due)}
             {r.invoices.cancelled ? ` · ${r.invoices.cancelled} cancelled by credit note` : ""}
@@ -858,13 +858,13 @@ async function Procedures({ scope, href }: { scope: ReportScope; href: (e: Recor
         <nav aria-label="Procedure status">
           <ul className="flex flex-wrap gap-2">
             <li>
-              <Link href={href({ status: undefined, doctorId })} aria-current={!status ? "page" : undefined} className={cn("inline-flex items-center gap-2 rounded-full border px-3 py-1 text-sm", !status ? "border-accent bg-accent-muted" : "border-border hover:bg-muted")}>
+              <Link href={href({ status: undefined, doctorId })} aria-current={!status ? "page" : undefined} className={cn("inline-flex items-center gap-2 rounded-md border px-3 py-1 text-sm", !status ? "border-accent bg-accent-muted" : "border-border hover:bg-muted")}>
                 All <span className="text-xs tabular-nums text-muted-foreground">{all}</span>
               </Link>
             </li>
             {PROCEDURE_STATUSES.map((k) => (
               <li key={k}>
-                <Link href={href({ status: k, doctorId })} aria-current={status === k ? "page" : undefined} className={cn("inline-flex items-center gap-2 rounded-full border px-3 py-1 text-sm", status === k ? "border-accent bg-accent-muted" : "border-border hover:bg-muted")}>
+                <Link href={href({ status: k, doctorId })} aria-current={status === k ? "page" : undefined} className={cn("inline-flex items-center gap-2 rounded-md border px-3 py-1 text-sm", status === k ? "border-accent bg-accent-muted" : "border-border hover:bg-muted")}>
                   {k === "STARTED" ? "Under way" : k === "SIGNED" ? "Done" : PROCEDURE_STATUS_LABELS[k]}
                   <span className="text-xs tabular-nums text-muted-foreground">{r.counts[k]}</span>
                 </Link>

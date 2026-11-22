@@ -196,7 +196,7 @@ export function IntakeForm({ token, intake }: { token: string; intake: PublicInt
       <header className="border-b border-border bg-card">
         <div className="mx-auto flex max-w-xl items-center justify-between gap-3 px-4 py-3">
           <div className="min-w-0">
-            <p className="truncate font-display text-base font-semibold tracking-tight">{intake.clinicName}</p>
+            <p className="truncate font-display text-base font-medium">{intake.clinicName}</p>
             <p className="truncate text-xs text-muted-foreground">{copy.title}</p>
           </div>
           <button
@@ -214,7 +214,7 @@ export function IntakeForm({ token, intake }: { token: string; intake: PublicInt
         {done ? (
           <div className="bento flex flex-col items-center gap-3 text-center" role="status">
             <CheckCircle2 className="h-12 w-12 text-success" aria-hidden="true" />
-            <h1 className="font-display text-2xl font-semibold tracking-tight">{copy.done.title}</h1>
+            <h1 className="font-display text-2xl font-medium tracking-tight">{copy.done.title}</h1>
             <p className="text-sm text-muted-foreground">{copy.done.body}</p>
             <p className="text-xs text-muted-foreground">{copy.done.close}</p>
           </div>
@@ -222,7 +222,7 @@ export function IntakeForm({ token, intake }: { token: string; intake: PublicInt
           <form onSubmit={submit} noValidate className="space-y-4">
             <div>
               <p className="data-label">{copy.stepOf(step + 1, TOTAL_STEPS)}</p>
-              <h1 className="mt-0.5 font-display text-xl font-semibold tracking-tight">{copy.steps[step]}</h1>
+              <h1 className="mt-0.5 font-display text-xl font-medium tracking-tight">{copy.steps[step]}</h1>
               {step === 0 ? <p className="mt-1 text-sm text-muted-foreground">{copy.intro}</p> : null}
               <ol className="mt-3 flex gap-1" aria-hidden="true">
                 {copy.steps.map((label, i) => (

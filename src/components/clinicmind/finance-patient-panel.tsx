@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { SignedMark } from "@/components/clinicmind/signed-mark";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Plus, Receipt } from "lucide-react";
@@ -187,7 +188,7 @@ export function FinancePatientPanel({
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-1.5">
                         <span className="font-medium">{p.treatmentName}</span>
-                        <Badge tone={STATUS_TONE[p.status]}>{PROCEDURE_STATUS_LABELS[p.status]}</Badge>
+                        {p.status === "SIGNED" ? <SignedMark by={p.doctorName} /> : <Badge tone={STATUS_TONE[p.status]}>{PROCEDURE_STATUS_LABELS[p.status]}</Badge>}
                       </div>
                       <p className="mt-0.5 text-xs text-muted-foreground">
                         {p.undated ? (

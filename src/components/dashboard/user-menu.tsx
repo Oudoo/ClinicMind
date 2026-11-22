@@ -47,7 +47,7 @@ export function UserMenu({ user }: { user: ShellUser }) {
           className="flex items-center gap-2 rounded-md px-2 py-1.5 text-left hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           aria-label="Account menu"
         >
-          <span className="flex h-8 w-8 items-center justify-center rounded-full bg-accent-muted text-xs font-semibold text-accent">
+          <span className="flex h-8 w-8 items-center justify-center rounded-full bg-accent-muted text-xs font-medium text-accent">
             {user.fullName ? initials(user.fullName) : <UserRound className="h-4 w-4" />}
           </span>
           <span className="hidden flex-col leading-tight sm:flex">

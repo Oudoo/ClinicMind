@@ -43,12 +43,12 @@ function ExpiredLink() {
       <div className="bento w-full max-w-md space-y-4 text-center">
         <FileX2 className="mx-auto h-10 w-10 text-warning" aria-hidden="true" />
         <section dir="rtl" lang="ar" className="space-y-1">
-          <h1 className="font-display text-xl font-semibold tracking-tight">هذا الرابط لم يعد يعمل</h1>
+          <h1 className="font-display text-xl font-medium tracking-tight">هذا الرابط لم يعد يعمل</h1>
           <p className="text-sm text-muted-foreground">اطلب من العيادة إرسال الفاتورة مرة أخرى.</p>
         </section>
         <hr className="border-border" />
         <section dir="ltr" lang="en" className="space-y-1">
-          <h2 className="font-display text-xl font-semibold tracking-tight">This link no longer works</h2>
+          <h2 className="font-display text-xl font-medium tracking-tight">This link no longer works</h2>
           <p className="text-sm text-muted-foreground">Ask the clinic to send the invoice again.</p>
         </section>
       </div>

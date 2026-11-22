@@ -303,15 +303,15 @@ async function ResultsTab({ tenantId, role, sp, timezone }: { tenantId: string; 
           <dl className="grid grid-cols-3 gap-3 text-sm">
             <div>
               <dt className="data-label">Came back</dt>
-              <dd className="font-display text-2xl font-semibold tabular-nums text-success">{r.ended.done}</dd>
+              <dd className="font-display text-2xl font-medium tabular-nums text-success">{r.ended.done}</dd>
             </div>
             <div>
               <dt className="data-label">Declined</dt>
-              <dd className="font-display text-2xl font-semibold tabular-nums">{r.ended.declined}</dd>
+              <dd className="font-display text-2xl font-medium tabular-nums">{r.ended.declined}</dd>
             </div>
             <div>
               <dt className="data-label">Unreachable</dt>
-              <dd className="font-display text-2xl font-semibold tabular-nums">{r.ended.unreachable}</dd>
+              <dd className="font-display text-2xl font-medium tabular-nums">{r.ended.unreachable}</dd>
             </div>
           </dl>
           {r.ended.reasons.length ? (

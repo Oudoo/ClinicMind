@@ -50,7 +50,7 @@ export default async function SettingsPage() {
     : [];
 
   const branding = (ctx.branding as TenantBranding | null) ?? null;
-  const accent = branding?.accent ?? BRAND.primitives.electricIndigo;
+  const accent = branding?.accent ?? BRAND.primitives.ink;
   const embed = tenant?.embed ?? null;
 
   return (

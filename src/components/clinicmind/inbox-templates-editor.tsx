@@ -156,7 +156,7 @@ function TemplateDialog({ template, onOpenChange }: { template: TemplateDTO | nu
           <div className="space-y-1.5">
             <div className="flex flex-wrap items-center gap-1.5" aria-label="Insert a placeholder">
               {TEMPLATE_PLACEHOLDERS.map((p) => (
-                <button key={p} type="button" onClick={() => insertPlaceholder(p)} title={PLACEHOLDER_HINTS[p]} className="inline-flex h-7 items-center rounded-full border border-border px-2.5 font-mono text-xs text-muted-foreground hover:bg-muted hover:text-foreground">
+                <button key={p} type="button" onClick={() => insertPlaceholder(p)} title={PLACEHOLDER_HINTS[p]} className="inline-flex h-7 items-center rounded-md border border-border px-2.5 font-mono text-xs text-muted-foreground hover:bg-muted hover:text-foreground">
                   {`{{${p}}}`}
                 </button>
               ))}

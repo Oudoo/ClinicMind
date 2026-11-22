@@ -299,7 +299,7 @@ async function FollowUpsTab({
             href={leadsHref("follow-ups", { scope: s })}
             aria-current={scope === s ? "page" : undefined}
             className={cn(
-              "inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-xs font-medium transition-colors",
+              "inline-flex h-8 items-center gap-1.5 rounded-md border px-3 text-xs font-medium transition-colors",
               scope === s ? "border-accent bg-accent-muted text-accent" : "border-border bg-card text-muted-foreground hover:bg-muted hover:text-foreground",
             )}
           >
@@ -363,7 +363,7 @@ async function CampaignsTab({ tenantId, canWrite, treatments, timezone }: { tena
     <Card className="overflow-hidden p-0">
       <div className="flex flex-wrap items-end justify-between gap-3 border-b border-border px-4 py-4 sm:px-5">
         <div>
-          <p className="font-display text-base font-semibold tracking-tight">Ads campaigns</p>
+          <p className="font-display text-base font-medium">Ads campaigns</p>
           <p className="text-sm text-muted-foreground">Leads, consultations and spend per campaign. Costs are entered by period or imported as CSV.</p>
         </div>
         {canWrite ? <NewCampaignButton treatments={treatments} /> : null}
